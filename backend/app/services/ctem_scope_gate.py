@@ -39,7 +39,7 @@ from app.services.ctem_primary_assets import (
     PrimaryAssetIndex,
     contains_word,
     is_family_word,
-    is_generic_word,
+    is_url_like,
     link_basis,
 )
 from app.services.organization_context import (
@@ -397,7 +397,7 @@ def _product_matches(product: str, ref: str) -> bool:
     """A software product named in a software reference (a name, or a CPE's product part).
 
     #2628: a bare OS or vendor family (``Windows``, ``Linux``) names only itself, never
-    ``Windows Server`` or ``Linux Kernel``; #2685: nor does a bare generic word (``Client``).
+    ``Windows Server`` or ``Linux Kernel``.
     """
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
@@ -405,7 +405,10 @@ def _product_matches(product: str, ref: str) -> bool:
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
-    if (is_family_word(p) or is_generic_word(p)) and p != r.replace("_", " "):
+    if is_family_word(p) and p != r.replace("_", " "):
+        return False
+    # #2679: a URL or host name label (a web-app shortcut row) names only itself.
+    if p != r and (is_url_like(p) or is_url_like(r)):
         return False
     return contains_word(p, r)
 
@@ -424,22 +427,8 @@ def version_not_verified(facts: SignalFacts, resolution: Resolution) -> int:
     ``to_validate``. A versioned installed row, a typed software row, an asset or
     repository the signal names, or a proving verdict keeps today's path to a case.
     """
-    if facts.trigger_path not in VERSION_PATHS or not name_only_reach(resolution):
+    if facts.trigger_path not in VERSION_PATHS or not resolution.primary_assets:
         return 0
-    if _verdict(facts.evidence) in PROVING_VERDICTS:
-        return 0
-    return max(1, sum(int(row.get("assets") or 0) for row in resolution.primary_asset_totals.values()))
-
-
-def name_only_reach(resolution: Resolution) -> bool:
-    """Whether *resolution* reached the organization by a software name alone (#2628, #2685).
-
-    Only inventory software chains, each naming the software it matched, none from an
-    installed row that reports a version, and no asset key, typed software row (a bare
-    family excepted), repository or domain: nobody verified the organization runs it.
-    """
-    if not resolution.primary_assets:
-        return False
     # A typed software row that is a bare family (``Windows``) proves no product either.
     if (
         resolution.assets
@@ -450,11 +439,15 @@ def name_only_reach(resolution: Resolution) -> bool:
         or resolution.domains
         or resolution.hosted_domains
     ):
-        return False
+        return 0
+    if _verdict(facts.evidence) in PROVING_VERDICTS:
+        return 0
     hits = resolution.primary_assets
     if not all(str(hit.get("software") or "") for hit in hits):
-        return False
-    return not any(hit.get("version_verified") for hit in hits)
+        return 0
+    if any(hit.get("version_verified") for hit in hits):
+        return 0
+    return max(1, sum(int(row.get("assets") or 0) for row in resolution.primary_asset_totals.values()))
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
@@ -681,20 +674,14 @@ def _resolve_repositories(profile: OrganizationProfile, software: list[str], out
             out.assets.append(asset)
 
 
-def _confidence(
-    facts: SignalFacts, related: list[RelatedSignal], *, name_only: bool = False
-) -> tuple[str, list[str], bool]:
-    """``(confidence, lenses, proven)`` of a signal.
-
-    #2685: KEV proves exploitation in the wild, not that the organization runs the product:
-    a KEV CVE reached by a software name alone, or not reached (*name_only*), is not proven by its KEV flag.
-    """
+def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, list[str], bool]:
     lenses = sorted({facts.lens, *(r.lens for r in related if r.verdict not in CONTRADICTING_VERDICTS)})
     proven = (
         facts.trigger_path in PROVING_PATHS
         or _verdict(facts.evidence) in PROVING_VERDICTS
         or any(r.verdict in PROVING_VERDICTS for r in related)
-        or (not name_only and (_kev(facts.evidence) or facts.cve_kev))
+        or _kev(facts.evidence)
+        or facts.cve_kev
     )
     if proven or len(lenses) >= 3:
         return "high", lenses, proven
@@ -841,9 +828,7 @@ def decide(
         facts.threat_lookup, applicable=bool(threat_opencti_id(facts)), resolved=resolution.resolved
     )
     incomplete = not resolution.resolved and any(value not in LOOKUP_SETTLED for value in (cve_lookup, threat_lookup))
-    # #2685: KEV proves the organization runs nothing; an unresolved or name-only subject is not proven by it.
-    unproven_reach = not resolution.resolved or name_only_reach(resolution)
-    confidence, lenses, proven = _confidence(facts, related, name_only=unproven_reach)
+    confidence, lenses, proven = _confidence(facts, related)
     contradicted = [r.id for r in related if r.verdict in CONTRADICTING_VERDICTS]
     if _verdict(facts.evidence) in CONTRADICTING_VERDICTS:
         contradicted.insert(0, "this signal")
@@ -888,8 +873,6 @@ def decide(
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,
-            # #2685: KEV says exploited in the wild, apart from whether the organization runs it.
-            "exploited_in_wild": bool(_kev(facts.evidence) or facts.cve_kev),
             "contradicted_by": contradicted,
         },
         "scope": None,

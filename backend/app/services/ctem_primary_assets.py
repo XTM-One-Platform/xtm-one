@@ -185,69 +185,52 @@ FAMILY_WORDS: frozenset[str] = frozenset(
 )
 
 
-def is_family_word(value: str) -> bool:
-    """Whether *value* is a bare OS or vendor family (``Windows``, ``Linux``, ``macOS``), not a product (#2628)."""
-    return _needle(str(value or "")) in FAMILY_WORDS
-
-
-#: #2685: words that name a kind of software, never one product. As a reference alone (a CVE
-#: whose OpenCTI software list holds only ``Client``) they name only an equal label: ``Client``
-#: is not ``Cisco AnyConnect Secure Mobility Client`` nor ``TrueConf Client``.
-GENERIC_PRODUCT_WORDS: frozenset[str] = frozenset(
+#: #2679: top-level domains that make a dotted label a host name (``tenant-my.sharepoint.com-1A2B``), not a product.
+_HOST_TLDS: frozenset[str] = frozenset(
     {
-        "agent",
+        "com",
+        "net",
+        "org",
+        "io",
+        "co",
         "app",
-        "application",
-        "client",
-        "core",
-        "daemon",
-        "desktop",
-        "driver",
-        "framework",
-        "helper",
-        "installer",
-        "launcher",
-        "library",
-        "manager",
-        "module",
-        "plugin",
-        "runtime",
-        "sdk",
-        "server",
-        "service",
-        "tool",
-        "tools",
-        "update",
-        "updater",
+        "dev",
+        "cloud",
+        "ai",
+        "biz",
+        "info",
+        "gov",
+        "edu",
+        "eu",
+        "us",
+        "uk",
+        "fr",
+        "de",
     }
 )
-
-
-def is_generic_word(value: str) -> bool:
-    """Whether *value* is a bare generic product word (``Client``, ``Agent``, ``Updater``), not a product (#2685)."""
-    return _needle(str(value or "")) in GENERIC_PRODUCT_WORDS
+#: A host of at least three labels (``a.b.com``), so ``ASP.NET`` or ``socket.io`` stay product names.
+_HOST = re.compile(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+\.([a-z]{2,6})(?![a-z0-9])")
 
 
 @lru_cache(maxsize=65536)
-def _generic_cpe(ref: str) -> tuple[str, str] | None:
-    """``(vendor, product)`` of a CPE whose product part is a generic word (#2685), else ``None``.
+def is_url_like(value: str) -> bool:
+    """Whether *value* is a URL or a host name label (a web-app shortcut row), not a product name (#2679).
 
-    ``cpe:2.3:a:trueconf:client:...`` names TrueConf's client: an installed label matches it
-    only when it names both the vendor and the product, never by the word ``client`` alone.
+    ``https://...``, ``www.`` or a host of three labels or more ending in a known top-level domain
+    (``tenant-my.sharepoint.com-1A2B``); a CPE, a version (``4.8.1``) or a product with a dot
+    (``node.js``, ``ASP.NET Core``, ``.NET Framework``) is not one.
     """
-    text = ref.strip().lower()
-    if text.startswith("cpe:2.3:"):
-        parts = text.split(":")
-        vendor, product = (parts[3], parts[4]) if len(parts) > 4 else ("", "")
-    elif text.startswith("cpe:/"):
-        parts = text[len("cpe:/") :].split(":")
-        vendor, product = (parts[1], parts[2]) if len(parts) > 2 else ("", "")
-    else:
-        return None
-    vendor, product = vendor.replace("_", " ").strip(), product.replace("_", " ").strip()
-    if product not in GENERIC_PRODUCT_WORDS or vendor in {"", "*", "-"}:
-        return None
-    return vendor, product
+    text = str(value or "").strip().lower()
+    if not text or text.startswith("cpe:"):
+        return False
+    if "://" in text or text.startswith("www."):
+        return True
+    return any(m.group(1) in _HOST_TLDS for m in _HOST.finditer(text))
+
+
+def is_family_word(value: str) -> bool:
+    """Whether *value* is a bare OS or vendor family (``Windows``, ``Linux``, ``macOS``), not a product (#2628)."""
+    return _needle(str(value or "")) in FAMILY_WORDS
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True) -> bool:
@@ -259,19 +242,15 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True) -> boo
     a device whose OS family is ``Windows`` never runs ``Windows Server 2019`` by that word.
     *family_exact* False lets a family reference name a product of that family (a CVE
     naming only ``Windows`` reaches ``Windows 11``): a family-only match, never proven.
-    A generic product word (:data:`GENERIC_PRODUCT_WORDS`) matches only itself whatever
-    *family_exact* says, and a CPE whose product is one names only a label that also
-    names its vendor (#2685).
+    A URL or host name label (:func:`is_url_like`, a web-app shortcut such as
+    ``tenant-my.sharepoint.com-1A2B``) matches only itself (#2679): ``SharePoint`` is a
+    word of it, yet the device runs no SharePoint.
     """
     p, r = _needle(str(product or "")), _haystack(str(ref or ""))
     if not p or not r:
         return False
-    generic = _generic_cpe(str(ref or ""))
-    if generic is not None:
-        vendor, word = generic
-        return contains_word(vendor, p) and contains_word(word, p)
-    if p in GENERIC_PRODUCT_WORDS:
-        return p == r
+    if p != r and (is_url_like(p) or is_url_like(r)):
+        return False
     if family_exact and p in FAMILY_WORDS and p != r:
         return False
     return contains_word(p, r)
@@ -314,10 +293,7 @@ class ProductIndex:
         self._untokened: list[int] = []
         for i, value in enumerate(self.values):
             first = _TOKEN.search(_needle(value))
-            if _generic_cpe(value) is not None:
-                # #2685: a generic CPE matches a label by its vendor, whatever word the label starts with.
-                self._untokened.append(i)
-            elif first:
+            if first:
                 self._by_first.setdefault(first.group(), []).append(i)
             else:
                 self._untokened.append(i)
@@ -333,7 +309,7 @@ class ProductIndex:
         for token in set(_TOKEN.findall(_haystack(text))):
             candidates.update(self._by_first.get(token, ()))
         first = _TOKEN.search(_needle(text))
-        if first and _generic_cpe(text) is None:
+        if first:
             candidates.update(self._by_token.get(first.group(), ()))
         else:
             candidates = set(range(len(self.values)))
@@ -377,8 +353,6 @@ class Reacher:
     os_family: str = ""
     #: #2628: the product labels an installed software row reports with a version (a running version known).
     versioned: set[str] = field(default_factory=set)
-    #: #2685: a code repository record: its SBOM dependencies never run a bare generic word (``client``).
-    repository: bool = False
     #: (link, through kind ``asset`` or ``asset_group``, through name)
     links: list[tuple[Link, str, str]] = field(default_factory=list)
 
@@ -417,10 +391,7 @@ class PrimaryAssetIndex:
                 (
                     ref
                     for ref in software
-                    if ref
-                    and i in self._running(ref)
-                    and platform_compatible(ref, reacher.os_family)
-                    and not (reacher.repository and is_generic_word(ref))
+                    if ref and i in self._running(ref) and platform_compatible(ref, reacher.os_family)
                 ),
                 "",
             )
@@ -438,18 +409,22 @@ class PrimaryAssetIndex:
         """
         if not self.reachers:
             return []
+        generic = generic_refs(software)
+        # The specific references first, so a device matched by both reports the specific one.
+        ordered = [r for r in software if r not in generic] + [r for r in software if r in generic]
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for reacher, matched in self._matching(software, keys):
+        for reacher, matched in self._matching(ordered, keys):
+            verified = matched not in generic and runs_versioned(reacher, matched)
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
-                    if not found[key]["version_verified"] and runs_versioned(reacher, matched):
+                    if not found[key]["version_verified"] and verified:
                         found[key]["version_verified"] = True
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
                     "software": matched,
-                    "version_verified": runs_versioned(reacher, matched),
+                    "version_verified": verified,
                     "asset": reacher.name,
                     "through": through,
                     "through_kind": kind,
@@ -538,13 +513,24 @@ def member_primary_assets(
     return reached, inferred
 
 
+def generic_refs(software: list[str]) -> frozenset[str]:
+    """The references of *software* that a more specific reference of the same list names (#2679).
+
+    ``SharePoint`` beside ``SharePoint Server 2019``: the short row is the product family the
+    CVE record repeats, not an affected product, so a match through it alone is never version-verified.
+    """
+    refs = [str(r) for r in software if str(r or "").strip()]
+    return frozenset(
+        ref for ref in refs if any(_needle(other) != _needle(ref) and product_matches(ref, other) for other in refs)
+    )
+
+
 def runs_versioned(reacher: Reacher, ref: str) -> bool:
     """Whether *reacher* runs software *ref* from an installed row that reports its version (#2628).
 
-    A bare family reference (``Windows``) is never verified: it names no product to version,
-    nor is a bare generic word (``Client``, #2685).
+    A bare family reference (``Windows``) is never verified: it names no product to version.
     """
-    if not ref or is_family_word(ref) or is_generic_word(ref):
+    if not ref or is_family_word(ref):
         return False
     return any(product_matches(label, ref) or product_matches(ref, label) for label in reacher.versioned)
 
@@ -659,9 +645,7 @@ async def load_index(
         holder = by_asset.setdefault(asset_id or record_id, Reacher(name=str(name)))
         holder.keys |= {k for k in (_key(name), _key(external_id), _key((fields or {}).get("hostname"))) if k}
         holder.products.update(_record_products(dict(fields or {}), category=category))
-        if _is_repository(category, dict(fields or {})):
-            holder.repository = True
-        elif not holder.os_family:
+        if not holder.os_family and not _is_repository(category, dict(fields or {})):
             holder.os_family = str((fields or {}).get("os_family") or "").strip()
         for item, kind, through in record_links.get(record_id, []):
             entry = (item, kind, through or str(name))
