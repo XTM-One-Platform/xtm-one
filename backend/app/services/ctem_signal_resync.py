@@ -17,9 +17,10 @@ threat actor was read):
 - **World events from OpenCTI** (paths 1, 2, 10): one query and one cap per
   entity type the live listener reads, fed to ``ctem_signal_listeners.note_event``
   as an ``update`` delivery. Vulnerabilities default to 7 days, the rest to 30.
-- **PIR matches** (paths 1, 2): the entities flagged in each PIR of OpenCTI, with
-  their PIR score, delivered as the PIR playbook delivers them, so the relevance
-  floor is computed as live.
+- **PIR matches** (paths 1, 2): the entities flagged in each PIR the live PIR
+  playbooks listen to (enabled, selected for a PIR path), at or above that PIR's
+  minimum score, with their PIR score, delivered as the PIR playbook delivers
+  them, so the relevance floor is computed as live.
 - **Third-party events** (path 11): the reports naming a tracked organization's
   OpenCTI identity, through ``note_tracked_organizations``.
 - **Inside state** (paths 3, 10): the open Aikido issues and the open Dependabot
@@ -332,6 +333,32 @@ async def resync_world(
     return routes
 
 
+async def _pir_scope(sessions: Any) -> dict[str, int]:
+    """The PIRs the live PIR playbooks listen to, each with its own minimum score (#2436, #2435).
+
+    The union of :func:`ctem_platform_sources.pir_path_selections` over the PIR
+    paths; a PIR's minimum is its Intelligence policy row's, 1 otherwise, as the
+    provisioning reads it.
+    """
+    from sqlalchemy import select
+
+    from app.models.organization_pir import OrganizationPir
+    from app.services.ctem_platform_sources import pir_path_selections
+
+    async with sessions() as db:
+        selected = {pid for ids in (await pir_path_selections(db)).values() for pid in ids}
+        rows = (await db.execute(select(OrganizationPir).where(OrganizationPir.enabled.is_(True)))).scalars().all()
+    minimums = {r.pir_id: int(r.min_score) for r in rows}
+    return {pid: minimums.get(pid, 1) for pid in selected}
+
+
+def _pir_score(node: dict[str, Any]) -> float | None:
+    info = node.get("pirInformation") or {}
+    info = info[0] if isinstance(info, list) and info else info
+    score = info.get("pir_score") if isinstance(info, dict) else None
+    return float(score) if isinstance(score, int | float) and not isinstance(score, bool) else None
+
+
 async def resync_pir(
     sessions: Any,
     *,
@@ -339,7 +366,12 @@ async def resync_pir(
     now: datetime | None = None,
     note: Callable[..., Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
-    """The entities flagged in each PIR, delivered as the PIR playbook delivers them."""
+    """The entities flagged in each PIR the playbooks listen to, at or above that PIR's minimum score.
+
+    Delivered as the PIR playbook delivers them. A PIR switched off, not selected
+    for any PIR path, or a match below its PIR's minimum is never delivered live,
+    so the resync leaves it too (``below_minimum`` counts the latter).
+    """
     from app.integrations.providers.opencti.pir import _build_pir_context_filters
     from app.services.ctem_signal_listeners import note_event
     from app.services.ctem_signal_sources import PIR_PATHS
@@ -347,6 +379,15 @@ async def resync_pir(
     notify = note or note_event
     windows = windows or default_windows()
     out = _route("pir", windows)
+    out["below_minimum"] = 0
+    try:
+        scope_by_pir = await _pir_scope(sessions)
+    except Exception as exc:  # one route's failure is reported, the resync goes on
+        out["errors"].append(f"PIR selection: {type(exc).__name__}"[:300])
+        return out
+    if not scope_by_pir:
+        out["skipped"] = "no enabled PIR is selected for a PIR path (Settings > Organization)"
+        return out
     since = _since(now or datetime.now(UTC), windows.get("pir"))
     types = sorted({t for entity_types in PIR_PATHS.values() for t in entity_types})
     connections, errors = await _opencti_connections(sessions)
@@ -357,10 +398,15 @@ async def resync_pir(
             out["errors"].append(f"OpenCTI PIRs: {err}"[:300])
             continue
         pirs = [((e or {}).get("node") or {}).get("id") for e in ((data or {}).get("pirs") or {}).get("edges") or []]
-        for pir_id in [p for p in pirs if p]:
+        for pir_id in [p for p in pirs if p in scope_by_pir]:
+            minimum = scope_by_pir[pir_id]
             scope = _filters(since) if since is not None else None
             variables = {"pirId": pir_id, "types": types, "filters": _build_pir_context_filters(pir_id, scope)}
             async for node in _pages(gql, _PIR_ENTITIES, variables, "stixDomainObjects", out):
+                score = _pir_score(node)
+                if score is None or score < minimum:
+                    out["below_minimum"] += 1
+                    continue
                 payload = delivery(node, pir_id=pir_id)
                 if payload is None:
                     continue

@@ -216,10 +216,65 @@ async def test_pir_matches_are_read_per_pir_with_their_score(monkeypatch: pytest
         seen.append(payload)
         return True
 
+    async def _scope(sessions: Any) -> dict[str, int]:
+        return {"pir-1": 50}
+
     _one_source(monkeypatch, _gql)
+    monkeypatch.setattr(resync, "_pir_scope", _scope)
     out = await resync.resync_pir(lambda: _Session(), now=NOW, note=_note)
     assert out["read"] == 1 and out["recorded"] == 1 and out["window_days"] == 30
     assert seen[0]["xtm_source"] == "pir_playbook"
+
+
+@pytest.mark.asyncio
+async def test_a_pir_the_playbooks_do_not_listen_to_and_a_match_below_its_minimum_are_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #2590: only the selected PIRs, each at its own minimum score, as the live playbook."""
+    asked: list[str] = []
+
+    async def _gql(query: str, variables: dict[str, Any]) -> tuple[dict[str, Any], None]:
+        if "CtemResyncPirs" in query:
+            return {"pirs": {"edges": [{"node": {"id": "pir-on"}}, {"node": {"id": "pir-off"}}]}}, None
+        asked.append(variables["pirId"])
+        nodes = [
+            {
+                "id": f"a{score}",
+                "standard_id": f"intrusion-set--{score}",
+                "entity_type": "Intrusion-Set",
+                "name": f"APT{score}",
+                "pirInformation": {"pir_score": score},
+            }
+            for score in (40, 75)
+        ]
+        edges = [{"node": n} for n in nodes]
+        return {"stixDomainObjects": {"edges": edges, "pageInfo": {"hasNextPage": False}}}, None
+
+    seen: list[dict[str, Any]] = []
+
+    async def _note(provider: str, event: str, payload: dict[str, Any], *, verified: bool) -> bool:
+        seen.append(payload)
+        return True
+
+    async def _scope(sessions: Any) -> dict[str, int]:
+        return {"pir-on": 60}
+
+    _one_source(monkeypatch, _gql)
+    monkeypatch.setattr(resync, "_pir_scope", _scope)
+    out = await resync.resync_pir(lambda: _Session(), now=NOW, note=_note)
+    assert asked == ["pir-on"]  # the PIR no playbook listens to is never read
+    assert out["read"] == 1 and out["recorded"] == 1 and out["below_minimum"] == 1
+    assert seen[0]["data"]["name"] == "APT75"
+
+
+@pytest.mark.asyncio
+async def test_no_selected_pir_skips_the_route_with_its_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _scope(sessions: Any) -> dict[str, int]:
+        return {}
+
+    monkeypatch.setattr(resync, "_pir_scope", _scope)
+    out = await resync.resync_pir(lambda: _Session(), now=NOW, note=None)
+    assert out["read"] == 0 and "no enabled PIR" in out["skipped"]
 
 
 # ── inside state, passes, the whole step ────────────────────────────────
