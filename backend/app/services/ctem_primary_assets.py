@@ -315,6 +315,31 @@ class PrimaryAssetIndex:
         return out
 
 
+def primary_asset_key(name: Any) -> str:
+    """The key a link stores for the primary asset *name*: its words, case-folded, cut at 200."""
+    return _key(name)[:200]
+
+
+def member_primary_assets(
+    index: PrimaryAssetIndex, names: dict[str, str], *, software: list[str], keys: list[str]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(reached, inferred)``: the primary assets a product case member reaches, by name (#2563).
+
+    *software* is what the member runs (an OpenCTI member's product), *keys* the
+    assets it was found on (an OpenAEV member's asset names, folded with
+    :func:`_key`); *names* maps a link key to the primary asset's name in the
+    profile (a link to a primary asset the profile no longer names keeps its key).
+    A primary asset is inferred unless a manual or OpenCRQ link supports it, as
+    the gate records it for a signal member (#2396).
+    """
+    chains: dict[str, list[dict[str, Any]]] = {}
+    for hit in index.reach(software, keys):
+        chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
+    reached = tuple(names.get(key, key) for key in chains)
+    inferred = tuple(names.get(key, key) for key, chain in chains.items() if link_basis(chain) == "inferred")
+    return reached, inferred
+
+
 def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     """What a record says it runs: its own software list and the OS family a device reports."""
     out: dict[str, str] = {}
