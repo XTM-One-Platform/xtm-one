@@ -90,7 +90,8 @@ import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CaseOwnerWhy } from "./ctem/CaseOwnerWhy";
-import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, CaseToValidateChip } from "./ctem/cases-shared";
+import { owningTeam } from "./ctem/case-owner-why";
+import { CASE_STATE_LABEL, CaseOwner, CaseOwnerTeam, CaseStateChip, CaseToValidateChip } from "./ctem/cases-shared";
 import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entity-page-header";
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { caseActionDef, caseHeaderActions, type CaseActionId } from "./ctem/case-actions";
@@ -767,6 +768,9 @@ export default function CtemCaseDetail() {
       });
   };
 
+  // The platform group owning the case as a team (#2577), shown next to its lead (#2586).
+  const ownerTeam = owningTeam(kase.owner_basis, kase.owner_group_id);
+
   return (
     <div className="space-y-6">
       {/* The app's standard entity header (#1367, Sam 23 Nov 2026: no band with a surface and a border): the
@@ -781,7 +785,8 @@ export default function CtemCaseDetail() {
             <CaseToValidateChip unverified={kase.version_unverified} />
             <span className="flex min-w-0 items-center gap-1">
               <CaseOwner name={ownerName} />
-              <CaseOwnerWhy basis={kase.owner_basis} contributors={kase.owner_contributors} personName={personName} />
+              <CaseOwnerTeam name={ownerTeam?.name} />
+              <CaseOwnerWhy basis={kase.owner_basis} contributors={kase.owner_contributors} personName={personName} team={ownerTeam} />
             </span>
             <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />

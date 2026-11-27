@@ -22110,5 +22110,10 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "No se encontró responsable de grupo de activos ni de activo principal: un administrador, ya que ningún grupo decide en CTEM.",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "El primero de {count, plural, one {# candidato} other {# candidatos}} por fecha de creación de la cuenta.",
   "No owner was found: the current owner is kept.": "No se encontró responsable: se mantiene el responsable actual.",
-  "Set by a person.": "Definido por una persona."
+  "Set by a person.": "Definido por una persona.",
+  "The person shown leads the case for the team, and every member of the team sees it as theirs.": "La persona mostrada lleva el caso por el equipo, y cada miembro del equipo lo ve como suyo.",
+  "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "El equipo {team} es responsable del grupo de activos {group}, que contiene {assets} de los {affected, plural, one {# activo afectado} other {# activos afectados}}.",
+  "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "El equipo {team} es responsable del grupo de activos {group}, que contiene {assets, plural, one {# activo afectado} other {# activos afectados}}.",
+  "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "El equipo {team} es responsable del activo principal {name}, al que llega el caso. Ningún grupo de activos afectado tiene responsable.",
+  "The team owns this case: every member sees it as theirs.": "El equipo es responsable de este caso: cada miembro lo ve como suyo."
 }
