@@ -93,7 +93,7 @@ async def audit_partner_read(partner: PartnerPrincipal, owner_id: uuid.UUID, too
                 },
             )
             await db.commit()
-    except Exception:  # noqa: BLE001 - the trail never breaks the read
+    except Exception:  # the trail never breaks the read
         logger.exception("Could not audit the partner read %s of task %s", tool, task)
 
 
@@ -135,7 +135,11 @@ async def list_owner_runs(
     async with database.async_session() as db:
         total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
         rows = (
-            (await db.execute(query.order_by(AssignmentRun.created_at.desc(), AssignmentRun.id).limit(limit).offset(offset)))
+            (
+                await db.execute(
+                    query.order_by(AssignmentRun.created_at.desc(), AssignmentRun.id).limit(limit).offset(offset)
+                )
+            )
             .scalars()
             .all()
         )
