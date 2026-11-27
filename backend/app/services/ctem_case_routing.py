@@ -490,18 +490,17 @@ async def queue_headroom(db: AsyncSession) -> dict[str, int]:
     ).all()
     if not rows:
         return {}
-    queued = dict(
-        (
-            await db.execute(
-                select(AssignmentRun.assignment_id, func.count())
-                .where(
-                    AssignmentRun.assignment_id.in_(sorted({r[3] for r in rows}, key=str)),
-                    AssignmentRun.status == QUEUED_RUN_STATUS,
-                )
-                .group_by(AssignmentRun.assignment_id)
+    counts = (
+        await db.execute(
+            select(AssignmentRun.assignment_id, func.count())
+            .where(
+                AssignmentRun.assignment_id.in_(sorted({r[3] for r in rows}, key=str)),
+                AssignmentRun.status == QUEUED_RUN_STATUS,
             )
-        ).all()
-    )
+            .group_by(AssignmentRun.assignment_id)
+        )
+    ).all()
+    queued: dict[Any, int] = {aid: int(n) for aid, n in counts}
     max_depth = max(1, int(settings.assignment_queue_max_depth))
     room: dict[str, int] = {}
     for fleet_id, slug, is_builtin, assignment_id, config in rows:
