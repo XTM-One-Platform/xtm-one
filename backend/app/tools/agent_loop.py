@@ -53,6 +53,7 @@ import asyncio
 import bisect
 import contextlib
 import dataclasses
+import difflib
 import functools
 import hashlib
 import inspect
@@ -2032,6 +2033,94 @@ def _session_reference_error(value: str, key: str, session_vars: dict) -> str:
     if var_key == "$collected":
         message += " Check the field names and the item count in the collect_task_results output."
     return message
+
+
+# ── Retyped $collected content guard (#2686) ─────────────────────────────
+# A run that holds ``$collected`` must hand an item's content to a write tool
+# BY REFERENCE (``$collected.rules[3].pattern``): a model that retypes a long
+# converted rule silently writes its own text, presented as the producer's
+# verified output. A write-tool argument that is a near copy of a collected
+# field (similar, not identical) is refused before the tool runs, naming the
+# path to pass. Short values (a type, a score, a label) legitimately repeat
+# and are never compared; an exact copy is the same content and passes.
+_RETYPE_MIN_CHARS = 40
+_RETYPE_SIMILARITY = 0.75
+_RETYPE_COMPARE_CHARS = 4000
+_RETYPE_MAX_ITEMS = 200
+
+
+def _collected_item_lists(collected: Any) -> list[tuple[str, list[tuple[int, dict[str, Any]]]]]:
+    """The item lists of a ``$collected`` value: ``(path, [(index, item), ...])``."""
+    lists: list[tuple[str, list[tuple[int, dict[str, Any]]]]] = []
+    if not isinstance(collected, dict):
+        return lists
+    for key, value in collected.items():
+        if isinstance(value, dict):
+            values = list(value.values())
+        elif isinstance(value, list):
+            values = value
+        else:
+            continue
+        items = [(i, item) for i, item in enumerate(values[:_RETYPE_MAX_ITEMS]) if isinstance(item, dict)]
+        if items:
+            segment = f".{key}" if str(key).isidentifier() else _quote_session_key(str(key))
+            lists.append((f"$collected{segment}", items))
+    return lists
+
+
+def _near_copy(typed: str, stored: str) -> bool:
+    """True when *typed* is a retyped (similar, not identical) copy of *stored*."""
+    if typed == stored:
+        return False
+    a, b = typed[:_RETYPE_COMPARE_CHARS], stored[:_RETYPE_COMPARE_CHARS]
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    if matcher.real_quick_ratio() < _RETYPE_SIMILARITY or matcher.quick_ratio() < _RETYPE_SIMILARITY:
+        return False
+    return matcher.ratio() >= _RETYPE_SIMILARITY
+
+
+def _retyped_collected_error(arguments: dict[str, Any] | None, session_vars: dict[str, Any] | None) -> str | None:
+    """The refusal for a write call that retypes a ``$collected`` field, else None.
+
+    An argument is compared with the field of the same name of every collected
+    item (``update_*_field`` style tools, ``key`` + ``value``, compare
+    ``value`` with the field ``key`` names). Only strings of at least
+    ``_RETYPE_MIN_CHARS`` on both sides are compared.
+    """
+    if not arguments or not session_vars or "$collected" not in session_vars:
+        return None
+    lists = _collected_item_lists(session_vars["$collected"])
+    if not lists:
+        return None
+    pairs: list[tuple[str, str, str]] = []  # (argument, field, typed value)
+    for arg, value in arguments.items():
+        if isinstance(value, str) and len(value) >= _RETYPE_MIN_CHARS:
+            pairs.append((arg, arg, value))
+    field = arguments.get("key")
+    typed_value = arguments.get("value")
+    if isinstance(field, str) and isinstance(typed_value, str) and len(typed_value) >= _RETYPE_MIN_CHARS:
+        pairs.append(("value", field, typed_value))
+    for arg, field_name, typed in pairs:
+        candidates: list[tuple[str, int, str]] = []
+        for base, items in lists:
+            for index, item in items:
+                stored = item.get(field_name)
+                if isinstance(stored, str) and len(stored) >= _RETYPE_MIN_CHARS:
+                    candidates.append((base, index, stored))
+        # The exact text of any item is that item's content: nothing retyped.
+        if any(stored == typed for _base, _index, stored in candidates):
+            continue
+        for base, index, held in candidates:
+            if _near_copy(typed, held):
+                segment = f".{field_name}" if field_name.isidentifier() else _quote_session_key(field_name)
+                path = f"{base}[{index}]{segment}"
+                return (
+                    f"Argument '{arg}' retypes the collected field {path} instead of "
+                    f"passing it by reference: the text differs from the stored value. "
+                    f"The tool was NOT executed. Pass the string `{path}` as the value of "
+                    f"'{arg}' and the platform writes the collected text verbatim."
+                )
+    return None
 
 
 def _build_truncated_tool_call_retry(*, remaining_iterations: int) -> str:
@@ -15781,6 +15870,8 @@ async def run_agent_loop(
             # OTHER argument on the call is still schema-checked.
             _session_injected_keys: dict[str, set[str]] = {}
             _session_ref_errors: dict[str, str] = {}
+            # Keys whose value came from a resolved reference (never a literal).
+            _session_resolved_keys: dict[str, set[str]] = {}
             _ref_vars = {**(session_vars or {}), **_input_vars} if _input_vars is not None else session_vars
             # A ``$input`` placeholder on a run that does not expose the input
             # is refused with the opt-in named, before schema validation would
@@ -15849,6 +15940,24 @@ async def run_agent_loop(
                             # against the declared type, so there is no reason
                             # to weaken the schema check for it.
                             tc.arguments[key] = resolved
+                        _session_resolved_keys.setdefault(tc.id, set()).add(key)
+            # A write call that retypes a collected field instead of passing
+            # its reference is refused before it runs (#2686): the literal is
+            # compared against the collected items only, after the references
+            # of the same call were resolved (a resolved value is the stored
+            # value itself and passes).
+            if session_vars and "$collected" in session_vars:
+                for tc in tool_calls:
+                    if tc.id in _session_ref_errors or not _is_write_tool(tc.name):
+                        continue
+                    _literal_args = {
+                        k: v
+                        for k, v in (tc.arguments or {}).items()
+                        if k not in _session_resolved_keys.get(tc.id, set())
+                    }
+                    _retyped = _retyped_collected_error(_literal_args, session_vars)
+                    if _retyped is not None:
+                        _session_ref_errors[tc.id] = _retyped
             # ``$workspace:PATH`` arguments are read from the run's sandbox
             # workspace at dispatch (``tools.base.resolve_workspace_references``,
             # which checks the file against the declared type and refuses the

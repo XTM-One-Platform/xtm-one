@@ -17,7 +17,11 @@ test), and the platform states it on the ``ctem.validation.non_readonly`` card:
 - :func:`complete_gate_ask`: the validation card keyed by the case carries the
   scenario and the threat package in ``links``, and, when the scenario is not
   playable, opens with "Scenario not playable" and offers the three options
-  below instead of a launch, whatever the agent wrote.
+  below instead of a launch, whatever the agent wrote; on a patch (upgrade) case,
+  which validation evidence never closes, the agent's options whose pass closes
+  the case (remediation or installed-version evidence) are kept first and one
+  of them is recommended, each option saying whether its pass closes the case
+  (#2683, the #2461 rule).
 """
 
 from __future__ import annotations
@@ -41,6 +45,18 @@ NOT_PLAYABLE_LEAD = "Scenario not playable:"
 NOT_PLAYABLE_QUESTION = "The scenario cannot test this threat: how should the case be validated?"
 _MAX_CONTEXT_CHARS = 800
 _MAX_TESTS_CHARS = 200
+#: The agent options a not-playable card of a patch case keeps beside its own three (#2683).
+_MAX_KEPT_OPTIONS = 3
+#: The remediation kind of a patch case: only remediation evidence closes it, never a validation (#2683).
+PATCH_KIND = "upgrade"
+#: What the validation options of a patch case say of their pass (#2683, the #2461 rule).
+PATCH_NOT_CLOSING = "; its pass does not close the case: a patch case closes on remediation evidence only."
+#: What a kept remediation option of a patch case says of its pass when the agent did not say it.
+PATCH_CLOSING = " Its pass closes the case."
+#: Words of an option that brings remediation evidence on a patch case (installed or fixed version read).
+_REMEDIATION_MARKERS: tuple[str, ...] = ("installed version", "fixed version", "remediation evidence")
+#: Characters of a raw list a person should not read in the not-playable line (#2683).
+_RAW_LIST = re.compile(r"[\[\]{}\"]")
 #: ``playable/total``, the ``from`` value of a scenario event.
 _FIGURES = re.compile(r"^(\d{1,4})/(\d{1,4})(?:\|(.*))?$", re.S)
 #: An OpenAEV scenario page, with or without the tenant segment.
@@ -209,25 +225,97 @@ def scenario_for(events: list[Any], view: Any) -> dict[str, Any] | None:
     }
 
 
+def _plain(text: object) -> str | None:
+    """*text* when a person can read it in a sentence, else ``None`` (pure, #2683).
+
+    A raw list (brackets, braces, quotes) or a text holding an id, a key or a
+    timestamp is never written on a card: the reader gets plain words.
+    """
+    from app.services.decision_ask import unreadable_reasons
+
+    value = " ".join(str(text or "").split()).strip(" .;,")
+    if not value or _RAW_LIST.search(value) or unreadable_reasons(value):
+        return None
+    return value
+
+
 def not_playable_line(found: Mapping[str, Any], threat: str | None) -> str:
-    """The first line of the card of a scenario that is not playable (pure)."""
+    """The first line of the card of a scenario that is not playable, in plain words (pure, #2683)."""
     missing = found.get("techniques_missing") or 0
     total = found.get("techniques_total") or 0
     line = f"{NOT_PLAYABLE_LEAD} {missing} of {total} techniques have no payload"
-    tests = found.get("playable_tests")
+    tests = _plain(found.get("playable_tests"))
     if tests:
-        line += f"; the only playable injects test {tests}, not {threat or 'the threat'}"
+        line += f"; the only playable injects test {tests}, not {_plain(threat) or 'the threat'}"
     elif not found.get("techniques_playable"):
         line += "; no inject of the scenario can run"
     return line + "."
 
 
+def _closes_patch_case(option: Mapping[str, Any]) -> bool:
+    """Whether an agent option of a patch case brings evidence that closes it (pure, #2683)."""
+    from app.services.ctem_control_measurement import option_outcome
+
+    outcome = option_outcome(option)
+    if outcome is not None:
+        return outcome == "closes"
+    text = f"{option.get('label') or ''} {option.get('effect') or ''}".casefold()
+    return any(marker in text for marker in _REMEDIATION_MARKERS)
+
+
+def _patch_options(ask: Mapping[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
+    """The options of a not-playable card of a patch case and its recommendation (pure, #2683).
+
+    The agent's options whose pass closes the case come first (at most
+    :data:`_MAX_KEPT_OPTIONS`), then the three not-playable options, each
+    saying its pass does not close the case; keys are rewritten A, B, C...
+    The recommendation is the agent's when it is a kept option, else the first
+    kept option, else the completion of the scenario (nothing closes the case).
+    """
+    from app.services.ctem_control_measurement import CLOSES_WORDS
+    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
+
+    standard = {o["label"] for o in NOT_PLAYABLE_OPTIONS}
+    given = [o for o in (ask.get("options") or []) if isinstance(o, Mapping) and o.get("label") not in standard]
+    kept = [o for o in given if _closes_patch_case(o)][:_MAX_KEPT_OPTIONS]
+    recommended = str(ask.get("recommendation") or "")
+    keys = iter("ABCDEFGH")
+    options: list[dict[str, Any]] = []
+    recommendation: str | None = None
+    for option in kept:
+        key = next(keys)
+        effect = str(option.get("effect") or "").strip()
+        if CLOSES_WORDS not in f"{option.get('label') or ''} {effect}".casefold():
+            effect = fit(f"{effect}{PATCH_CLOSING}".strip(), MAX_EFFECT_CHARS)
+        options.append({**dict(option), "key": key, "effect": effect})
+        if recommendation is None or str(option.get("key")) == recommended:
+            recommendation = key
+    first_standard: str | None = None
+    for option in NOT_PLAYABLE_OPTIONS:
+        key = next(keys)
+        first_standard = first_standard or key
+        effect = option["effect"]
+        if option["key"] != "C":
+            effect = fit(effect.rstrip(".") + PATCH_NOT_CLOSING, MAX_EFFECT_CHARS)
+        options.append({**option, "key": key, "effect": effect})
+    return options, recommendation or first_standard
+
+
 def complete_ask(
-    ask: Mapping[str, Any], found: Mapping[str, Any] | None, package: Mapping[str, Any] | None, threat: str | None
+    ask: Mapping[str, Any],
+    found: Mapping[str, Any] | None,
+    package: Mapping[str, Any] | None,
+    threat: str | None,
+    *,
+    patch_case: bool = False,
 ) -> dict[str, Any]:
     """*ask* with the scenario and the threat package in ``links`` and, when the scenario is not
-    playable, the not-playable line first and the three options of :data:`NOT_PLAYABLE_OPTIONS` (pure)."""
-    from app.services.decision_ask import fit
+    playable, the not-playable line first and the three options of :data:`NOT_PLAYABLE_OPTIONS` (pure).
+
+    On a patch case (*patch_case*), the agent's options that close the case are kept and recommended
+    (:func:`_patch_options`, #2683).
+    """
+    from app.services.decision_ask import lead_then_fit
 
     out = dict(ask)
     links = [dict(link) for link in (out.get("links") or []) if isinstance(link, Mapping)]
@@ -249,10 +337,13 @@ def complete_ask(
         head = not_playable_line(found, threat)
         rest = str(out.get("context") or "").strip()
         if not rest.startswith(NOT_PLAYABLE_LEAD):
-            out["context"] = fit(f"{head}\n{rest}" if rest else head, _MAX_CONTEXT_CHARS)
+            out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS)
         out["question"] = NOT_PLAYABLE_QUESTION
-        out["options"] = [dict(o) for o in NOT_PLAYABLE_OPTIONS]
-        out["recommendation"] = "A"
+        if patch_case:
+            out["options"], out["recommendation"] = _patch_options(ask)
+        else:
+            out["options"] = [dict(o) for o in NOT_PLAYABLE_OPTIONS]
+            out["recommendation"] = "A"
     return out
 
 
@@ -289,4 +380,4 @@ async def complete_gate_ask(
     # The threat is what the scenario emulates: the threat package, else the scenario itself; never
     # the case title, which names the remediation (UX round 1 of #2485).
     threat = (package or {}).get("name") or (found or {}).get("name") or None
-    return complete_ask(ask, found, package, threat)
+    return complete_ask(ask, found, package, threat, patch_case=getattr(case, "remediation_kind", None) == PATCH_KIND)
