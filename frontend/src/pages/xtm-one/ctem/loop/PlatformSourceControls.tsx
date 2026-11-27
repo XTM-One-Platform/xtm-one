@@ -10,7 +10,6 @@
  */
 import { useEffect, useId, useState } from "react";
 import { Chip, Icon } from "@filigran/design-system";
-import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -35,7 +34,7 @@ import {
   PLATFORM_SOURCE_STATUS_LABEL,
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
-  holdsLegacyCleanup,
+  legacyCleanupCount,
   platformObjectLinks,
   platformSourceReason,
   sharedFeeds,
@@ -47,7 +46,8 @@ const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "Op
 /**
  * One labelled button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
  * Objects that open the same page (several triggers in one list) share one button. The kind is written on the
- * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592).
+ * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592); two links
+ * of one kind (the PIR playbooks of each path) also carry the path they serve (#2627).
  */
 function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const { t_i18n } = useFormatter();
@@ -55,15 +55,19 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const links = platformObjectLinks(source).filter((link) => !seen.has(link.href) && seen.add(link.href));
   if (links.length === 0) return null;
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+  const perKind = links.reduce<Record<string, number>>((n, link) => ({ ...n, [link.kind]: (n[link.kind] ?? 0) + 1 }), {});
   return (
-    <span className="flex shrink-0 items-center" data-testid="ctem-platform-source-objects">
+    <span className="flex min-w-0 flex-wrap items-center gap-2" data-testid="ctem-platform-source-objects">
       {links.map((link) => {
-        const label = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        const path = perKind[link.kind] > 1 && link.pathLabel ? t_i18n(link.pathLabel) : null;
+        const open = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        const kind = t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind]);
+        const label = path ? t_i18n("{label}: {value}", { label: open, value: path }) : open;
         return (
           <Tip key={link.href} content={label}>
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost" size="sm" className="shrink-0">
               <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
-                {t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind])}
+                <span>{path ? t_i18n("{label}: {value}", { label: kind, value: path }) : kind}</span>
                 <Icon name="external-link" size={16} aria-hidden />
               </a>
             </Button>
@@ -112,7 +116,7 @@ export function PlatformSourceEnableDialog({
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const { data: users } = useUsers(Boolean(source) && !isRunAsModule(source?.provider));
+  const { data: users } = useUsers(Boolean(source));
   const enable = useEnableCtemPlatformSource();
   const [runAs, setRunAs] = useState<string>("");
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -142,7 +146,7 @@ export function PlatformSourceEnableDialog({
     <Dialog open={!!source} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="md" data-testid="ctem-platform-source-enable">
         <DialogHeader>
-          <DialogTitle>{source?.enabled ? t_i18n("Change the run-as user of {source}", { source: label }) : t_i18n("Turn on {source}", { source: label })}</DialogTitle>
+          <DialogTitle>{t_i18n("Turn on {source}", { source: label })}</DialogTitle>
           <DialogDescription>
             {t_i18n("XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.", {
               integration: source?.integration_name ?? "",
@@ -150,50 +154,40 @@ export function PlatformSourceEnableDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
-          {/* #2650: who XTM One acts as in the module, asked before any object is created there; the caller by default. */}
-          {isRunAsModule(source?.provider) ? (
-            <ModuleRunAsField
-              module={source.provider}
+          {/* The run-as is the only field and Turn on needs it: marked required, its info bubble says who it is (#2442 UX r1 B2). */}
+          <SettingsField
+            id={fieldId}
+            label={t_i18n("Run as")}
+            required
+            info={t_i18n(
+              "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.",
+              { integration: source?.integration_name ?? "" },
+            )}
+            helper={t_i18n("Pick a user with a connected integration to this platform and the rights to create its triggers.")}
+            error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
+          >
+            <SearchableSelect
+              id={fieldId}
+              aria-label={t_i18n("Run as")}
+              aria-invalid={refusal ? true : undefined}
+              aria-describedby={settingsFieldHintId(fieldId)}
+              options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
               value={runAs}
-              onChange={(value) => {
+              onValueChange={(value) => {
                 setRunAs(value);
                 setRefusal(null);
               }}
-              active={Boolean(source)}
               disabled={enable.isPending}
-              helper={t_i18n("XTM One creates the notifier and its triggers, or the playbook, with this user's connection.")}
-              error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
+              placeholder={t_i18n("Search users...")}
             />
-          ) : (
-            <SettingsField
-              id={fieldId}
-              label={t_i18n("Run as")}
-              required
-              error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
-            >
-              <SearchableSelect
-                id={fieldId}
-                aria-label={t_i18n("Run as")}
-                aria-invalid={refusal ? true : undefined}
-                aria-describedby={settingsFieldHintId(fieldId)}
-                options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
-                value={runAs}
-                onValueChange={(value) => {
-                  setRunAs(value);
-                  setRefusal(null);
-                }}
-                disabled={enable.isPending}
-                placeholder={t_i18n("Search users...")}
-              />
-            </SettingsField>
-          )}
+          </SettingsField>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={enable.isPending}>
             {t_i18n("Cancel")}
           </Button>
           <Button onClick={submit} disabled={!runAs || enable.isPending} data-testid="ctem-platform-source-enable-submit">
-            {source?.enabled ? t_i18n("Save") : t_i18n("Turn on")}
+            {t_i18n("Turn on")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -226,9 +220,11 @@ function PlatformSourceLine({
   return (
     <li className="flex flex-col gap-1 content-compact" data-testid="ctem-platform-source" data-status={source.status} data-integration={source.integration_id}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate" title={source.integration_name}>
-          {source.integration_name}
-        </span>
+        <Tip content={source.integration_name}>
+          <span className="min-w-0 truncate" data-testid="ctem-platform-source-name">
+            {source.integration_name}
+          </span>
+        </Tip>
         <Chip
           label={t_i18n(PLATFORM_SOURCE_STATUS_LABEL[source.status])}
           severity={PLATFORM_SOURCE_STATUS_TONE[source.status]}
@@ -236,7 +232,6 @@ function PlatformSourceLine({
           data-testid="ctem-platform-source-status"
         />
         <span className="ml-auto" />
-        {source.enabled && <PlatformObjectLinks source={source} />}
         <Switch
           className="shrink-0"
           checked={source.enabled}
@@ -246,24 +241,11 @@ function PlatformSourceLine({
           data-testid="ctem-platform-source-switch"
         />
       </div>
+      {/* The Open in links take their own wrapping line under the name, so neither the name nor a link label is cut (#2649 UX r1 B1). */}
+      {source.enabled && <PlatformObjectLinks source={source} />}
       {source.enabled && (
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-default-secondary" data-testid="ctem-platform-source-run-as">
-            {t_i18n("Runs as: {user}", { user: runAs })}
-          </span>
-          {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
-          {isAdmin && source.integration_connected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onEnable(source)}
-              aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
-              data-testid="ctem-platform-source-run-as-change"
-            >
-              {t_i18n("Change")}
-            </Button>
-          )}
+        <span className="text-default-secondary" data-testid="ctem-platform-source-run-as">
+          {t_i18n("Runs as: {user}", { user: runAs })}
         </span>
       )}
       <PlatformSourceBlastRadius source={source} />
@@ -354,7 +336,7 @@ function LegacyReportLine({ report, names, dryRun }: { report: CtemLegacyOpencti
  * Admin "Remove legacy OpenCTI objects" (#2583 point 4): the dialog lists first (dry run) what the former
  * Threat response holders left in OpenCTI, per integration a Signals source is on for; Remove deletes them.
  */
-function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<string, string> }) {
+function LegacyOpenctiCleanup({ pending, integrationNames }: { pending: number; integrationNames: Record<string, string> }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const run = useRemoveLegacyOpenctiObjects();
@@ -362,6 +344,10 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
   const [removed, setRemoved] = useState(false);
   const report = run.data?.integrations ?? [];
   const found = report.reduce((n, r) => n + (r.objects?.length ?? 0), 0);
+  // Nothing left to remove (#2627): no destructive action, the dialog only closes.
+  const nothingLeft = removed || (!run.isPending && run.data !== undefined && found === 0);
+  // XTM One holds no legacy object any more: the action hides, once its dialog is closed.
+  if (pending === 0 && !open) return null;
   const start = () => {
     setOpen(true);
     setRemoved(false);
@@ -381,7 +367,7 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
   return (
     <>
       <Button variant="ghost" size="sm" className="self-start" onClick={start} data-testid="ctem-legacy-cleanup">
-        {t_i18n("Remove legacy OpenCTI objects")}
+        {t_i18n("Remove legacy OpenCTI objects ({count})", { count: pending })}
       </Button>
       <Dialog open={open} onOpenChange={(next) => !next && !run.isPending && setOpen(false)}>
         <DialogContent size="md" data-testid="ctem-legacy-cleanup-dialog">
@@ -408,9 +394,9 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={run.isPending}>
-              {removed ? t_i18n("Close") : t_i18n("Cancel")}
+              {nothingLeft ? t_i18n("Close") : t_i18n("Cancel")}
             </Button>
-            {!removed && (
+            {!nothingLeft && (
               <Button variant="destructive" onClick={remove} disabled={run.isPending || found === 0} data-testid="ctem-legacy-cleanup-confirm">
                 {t_i18n("Remove {count, plural, one {# object} other {# objects}}", { count: found })}
               </Button>
@@ -448,8 +434,11 @@ export function PlatformSourceControls({
           ))}
         </ul>
       )}
-      {isAdmin && holdsLegacyCleanup(source, own) && (
-        <LegacyOpenctiCleanup integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))} />
+      {isAdmin && source.provider === "opencti" && source.kind === "listener" && (
+        <LegacyOpenctiCleanup
+          pending={legacyCleanupCount(source, own)}
+          integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))}
+        />
       )}
     </div>
   );

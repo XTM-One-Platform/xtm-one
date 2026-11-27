@@ -124,16 +124,26 @@ async def list_ctem_signal_paths(
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
     by_source: dict[str, dict[str, dict[str, Any]]] = {}
+    quiet: dict[str, dict[str, Any]] = {}
     if primary is not None:
+        from app.services.ctem_attack_surface import quiet_reasons
+
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
         by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
+        from app.services import ctem_signal_purge
+
+        job = await ctem_signal_purge.read_status() or {}
+        replaying = job.get("state") == "running" and bool(job.get("resync"))
+        quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
     return {
-        "paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks)
+        "paths": signals.path_catalog(
+            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, quiet=quiet
+        )
     }
 
 
@@ -163,8 +173,12 @@ async def list_ctem_signal_sources(
     from app.models.integration import Integration
     from app.services import ctem_platform_sources as platform_sources
     from app.services.integration_tools import get_integration_public_url
+    from app.services.opencti_trigger_provisioning import legacy_pending
 
     providers = sorted({p for p, _ in platform_sources.PROVISIONED})
+    # Legacy Threat response objects XTM One still holds, per OpenCTI integration (#2627): the
+    # "Remove legacy OpenCTI objects" action shows only while some are left.
+    pending = await legacy_pending(db)
     integrations = (
         (
             await db.execute(
@@ -179,7 +193,6 @@ async def list_ctem_signal_sources(
         for r in (await db.execute(select(CtemSignalSource))).scalars().all()
     }
     out: list[dict[str, Any]] = []
-    names: dict[str, str | None] = {}
     for (provider, kind), spec in platform_sources.PROVISIONED.items():
         for integration in integrations:
             if integration.provider != provider:
@@ -204,17 +217,13 @@ async def list_ctem_signal_sources(
                     "feeds": platform_sources.fed_paths(provider, kind),
                 }
             )
-            # "Runs as" of the source row (#2650).
-            run_as_id = item.get("run_as_user_id")
-            if run_as_id and run_as_id not in names:
-                person = await db.get(User, uuid.UUID(run_as_id))
-                names[run_as_id] = (getattr(person, "full_name", None) or person.email) if person else None
-            item["run_as_name"] = names.get(run_as_id) if run_as_id else None
             item["integration_name"] = integration.name
             # The platform's web UI host, for the Open in links of its objects (#2583 point 2).
             item["integration_url"] = get_integration_public_url(integration)
             item["integration_connected"] = integration.status == "connected"
             item["label"] = spec.label
+            if provider == "opencti":
+                item["legacy_pending"] = pending.get(str(integration.id), 0)
             out.append(item)
     return {"sources": out}
 
@@ -232,20 +241,14 @@ async def enable_ctem_signal_source(
     """
     _require_xtm_one()
     from app.services import ctem_platform_sources as platform_sources
-    from app.services import module_run_as
 
-    # #2650: the user chosen in the "Act in <module> as" dialog, checked before any object is made.
-    try:
-        run_as = await module_run_as.resolve(db, actor=user, raw=body.run_as_user_id, providers=[body.provider])
-    except module_run_as.RunAsRefusedError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
     try:
         row = await platform_sources.enable(
             db,
             provider=body.provider,
             kind=body.kind,
             integration_id=body.integration_id,
-            run_as_user_id=run_as,
+            run_as_user_id=body.run_as_user_id,
         )
     except platform_sources.SourceRefusedError as exc:
         await db.commit()
