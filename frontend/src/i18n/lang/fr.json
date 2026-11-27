@@ -22160,7 +22160,7 @@
   "Triggers": "Déclencheurs",
   "Playbook": "Playbook",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Alimente {count, plural, one {# chemin} other {# chemins}} : {paths}. La désactiver les arrête tous.",
-  "Objects in {platform}:": "Objets dans {platform} :",
+  "Owner: {owner}": "Propriétaire : {owner}",
   "No legacy object left.": "Aucun ancien objet restant.",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {# objet serait supprimé :} other {# objets seraient supprimés :}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {Aucun objet supprimé.} one {# objet supprimé.} other {# objets supprimés.}}",
@@ -22174,5 +22174,8 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
-  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
+  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} écoute aussi {event} avec son propre déclencheur : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
 }

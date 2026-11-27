@@ -22160,7 +22160,7 @@
   "Triggers": "トリガー",
   "Playbook": "プレイブック",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "{count, plural, other {# 件のパス}}に供給: {paths}。オフにするとすべて停止します。",
-  "Objects in {platform}:": "{platform} のオブジェクト:",
+  "Owner: {owner}": "所有者: {owner}",
   "No legacy object left.": "旧オブジェクトは残っていません。",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, other {# 件のオブジェクトが削除されます:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {オブジェクトは削除されませんでした。} other {# 件のオブジェクトを削除しました。}}",
@@ -22174,5 +22174,8 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, other {証明済みの主要資産 # 件}}、{inferred, plural, other {推定 # 件}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, other {推定の主要資産 # 件}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, other {推定 # 件}}",
-  "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}"
+  "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
+  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} も独自のトリガーで {event} を受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。"
 }
