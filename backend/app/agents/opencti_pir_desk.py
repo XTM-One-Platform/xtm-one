@@ -235,7 +235,8 @@ PIR_DESK_AGENTS: list[dict[str, Any]] = [
 #: item nobody owns.
 _UNFINISHED = (
     "\nWhen the hunt package or the detections of a top threat cannot be finished in this run, "
-    "delegate the rest again now until it is done; when it still cannot be finished, create one "
+    "delegate the rest again now until it is done, at most 2 more times; when it still cannot be "
+    "finished, create one "
     f"work item keyed {FOLLOWUP_PREFIX} followed by the entity's OpenCTI id, owner_agent_id "
     "yourself, naming the staged draft, what is done and what remains (your Follow-up due "
     "automation resumes it); when a person must act, create it with needs_human true and a "
