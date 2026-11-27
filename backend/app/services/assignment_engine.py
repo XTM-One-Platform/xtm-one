@@ -4730,8 +4730,18 @@ async def execute_assignment_run(
         _run_replay = None
         if _resuming:
             from app.services import schedule_overlap
+            from app.services.builtin_tool_aliases import runtime_builtin_tool_ids as _resume_builtin_ids
+            from app.services.code_interpreter import code_interpreter_callable
 
-            _run_replay = await assignment_run_resume.load_replay(run.id, user_id=getattr(run, "user_id", None))
+            # The resume note names attachments/ only to a run that can call the code interpreter (#2677).
+            _run_replay = await assignment_run_resume.load_replay(
+                run.id,
+                user_id=getattr(run, "user_id", None),
+                code_interpreter=code_interpreter_callable(
+                    _resume_builtin_ids(agent.builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None)),
+                    agent.tool_deny_list,
+                ),
+            )
             # The timeout bounds the run's wall time across its resumes, from
             # its first ``started_at``; a run a fire of its schedule
             # waits behind gets a shorter graceful streak. A run that never

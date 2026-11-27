@@ -538,13 +538,19 @@ def _cut_note(total: int, file_id: str | None, filename: str, named_ids: Sequenc
             f"\n\n[Result cut for the replay of an interrupted turn: the first {REPLAY_HEAD_CHARS:,} of "
             f"{total:,} characters are shown; the rest was not kept.{named}]"
         )
-    from app.services.code_interpreter import mount_path_hint
+    from app.services.code_interpreter import code_interpreter_offered, mount_path_hint
+    from app.tools.base import offered_tools
 
+    # The mount is named only to a run that can call the code interpreter (#2677).
+    mount = (
+        f", and code_interpreter opens it as {mount_path_hint(filename, file_id)}"
+        if code_interpreter_offered(offered_tools())
+        else ""
+    )
     return (
         f"\n\n[Result cut for the replay of an interrupted turn: the first {REPLAY_HEAD_CHARS:,} of "
         f"{total:,} characters are shown. The whole result is conversation file {file_id}: "
-        f'read_file_content(file_id="{file_id}") reads it, and code_interpreter opens it as '
-        f"{mount_path_hint(filename, file_id)}.{named}]"
+        f'read_file_content(file_id="{file_id}") reads it{mount}.{named}]'
     )
 
 
@@ -683,12 +689,18 @@ def _arguments_line(arguments: object, limit: int = 160) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
-def resume_note(resumed: ResumedWork, *, workspace: str | None = None) -> ChatMessage | None:
+def resume_note(
+    resumed: ResumedWork, *, workspace: str | None = None, code_interpreter: bool = False
+) -> ChatMessage | None:
     """The line the resuming turn reads after the replayed rounds; ``None`` with nothing replayed.
 
     The calls replayed, the last one completed, the results cut and the file
     each is whole in, and the sandbox workspace's manifest: what the
     model needs to go on from the last completed call. Facts only.
+    *code_interpreter* says the resumed run can call the code interpreter
+    (``code_interpreter.code_interpreter_callable``): only then does the note
+    name ``attachments/`` (#2677); without it a cut result is read with
+    ``read_file_content`` alone.
     """
     calls = [call for message in resumed.messages for call in message.tool_calls or ()]
     if not calls and not resumed.in_flight:
@@ -734,7 +746,14 @@ def resume_note(resumed: ResumedWork, *, workspace: str | None = None) -> ChatMe
         more = f", +{len(resumed.spilled) - _NOTE_MAX_SPILLED} more" if len(resumed.spilled) > _NOTE_MAX_SPILLED else ""
         parts.append(
             f"{len(resumed.spilled)} result(s) are replayed cut and kept whole as conversation files "
-            "(read_file_content, or attachments/ in code_interpreter): " + "; ".join(named) + more + "."
+            + (
+                "(read_file_content, or attachments/ in code_interpreter): "
+                if code_interpreter
+                else "(read_file_content): "
+            )
+            + "; ".join(named)
+            + more
+            + "."
         )
     if workspace:
         parts.append(f"The sandbox workspace (workspace/) holds: {workspace}")
@@ -997,11 +1016,13 @@ async def load_replay(
     *,
     user_id: object = None,
     now: datetime | None = None,
+    code_interpreter: bool = False,
 ) -> tuple[ResumedWork, list[ChatMessage]]:
     """:func:`load_resumable`, and the messages the resuming turn appends to its history.
 
     The replayed rounds, then :func:`resume_note` with the manifest of the
-    conversation's sandbox workspace when it has one.
+    conversation's sandbox workspace when it has one. *code_interpreter*: the
+    resuming turn can call the code interpreter (:func:`resume_note`).
     """
     resumed = await load_resumable(db, conversation_id, now=now)
     if not resumed.messages and not resumed.in_flight:
@@ -1017,7 +1038,9 @@ async def load_replay(
     await resume_landed.judge_for_resume(resumed.in_flight, conversation_id, user_id)
     # A file the note names is one the resumed turn can open (#11847).
     resumed = replace(resumed, spilled=await readable_spills(resumed.spilled, user_id))
-    note = resume_note(resumed, workspace=await manifest_for_resume(conversation_id, user_id))
+    note = resume_note(
+        resumed, workspace=await manifest_for_resume(conversation_id, user_id), code_interpreter=code_interpreter
+    )
     return resumed.with_note(note), [*resumed.messages, *([note] if note is not None else [])]
 
 
