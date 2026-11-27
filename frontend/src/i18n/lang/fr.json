@@ -21915,6 +21915,7 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Seuls les personnes et groupes ci-dessous peuvent le voir. L'accès à un agent intégré ne peut pas être modifié.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible par tous les utilisateurs de la plateforme. L'accès à un agent intégré ne peut pas être restreint.",
   "Partners read this agent's fleet": "Les partenaires lisent la flotte de cet agent",
+  "Partners read fleets and runs as the owner": "Les partenaires lisent les flottes et les exécutions comme le propriétaire",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tâche d'un partenaire lit aussi la flotte d'origine de cet agent, sa santé, ses éléments de travail et la version en service. Jamais une autre flotte, jamais une écriture.",
   "Could not change the partner fleet reads": "Impossible de modifier la lecture de la flotte par les partenaires",
   "Defender XDR alert raised": "Alerte Defender XDR levée",
@@ -22174,5 +22175,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
-  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "La tâche d'un partenaire lit les flottes, leur santé et les exécutions que le propriétaire peut lire, et la version en service. Jamais d'écriture ; chaque lecture est auditée avec la tâche du partenaire."
 }
