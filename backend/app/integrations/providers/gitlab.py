@@ -6,7 +6,7 @@ GitLab.com or a self-managed instance, through the REST API v4:
 
   - Projects: list (search, membership, a user's), read one.
   - Issues: list (state, labels, search, assignee), read, create, edit (close,
-    reopen, labels, assignees, due date, lock), notes (list, add).
+    reopen, labels, assignees, due date, lock), notes (list, read one, add).
   - Merge requests: list, read, add a note.
   - Repository files: list a tree, read a file, create / update / delete one.
   - Releases: list, read, create, update, delete.
@@ -16,6 +16,9 @@ Authentication is a personal, project or group access token sent in the
 integration sets a ``base_url`` (an http(s) URL with no credentials, query or
 fragment, see :func:`~app.integrations.http.operator_base_url`); the API lives
 under ``/api/v4``.
+A single-item read (an issue, a merge request, a release, a comment) shows its
+text whole; the notes listing cuts a long comment through ``clip_text`` with the
+``get_gitlab_issue_note`` call that reads it.
 A project is named by its numeric id or its ``group/project`` path, which is
 URL-encoded whole into a single path segment, like every file path and tag.
 
@@ -51,6 +54,8 @@ _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
 #: Largest repository file read into the conversation as text.
 _MAX_FILE_CHARS = 60_000
+#: Head of one comment a notes listing shows; get_gitlab_issue_note reads it whole.
+_LISTING_NOTE_CHARS = 2000
 
 _PROJECT_PATH_RE = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]{0,254}")
 _ISSUE_STATES = ("opened", "closed", "all")
@@ -116,6 +121,11 @@ def _iid(value: Any) -> int | None:
     return n if n > 0 else None
 
 
+def _note_id(note: dict[str, Any]) -> str:
+    nid = _iid(note.get("id"))
+    return str(nid) if nid is not None else "?"
+
+
 def _labels(value: Any) -> str:
     if isinstance(value, list):
         return ",".join(str(v).strip() for v in value if str(v).strip())
@@ -141,7 +151,7 @@ def _format_issue(issue: dict[str, Any], *, detail: bool = False) -> str:
             + (" | Confidential" if issue.get("confidential") else "")
         )
         if issue.get("description"):
-            lines.append("  Description:\n" + clip_text(str(issue["description"]), 4000))
+            lines.append("  Description:\n" + str(issue["description"]))
     if issue.get("web_url"):
         lines.append(f"  Link: {_clean(issue.get('web_url'), 300)}")
     return "\n".join(lines)
@@ -159,7 +169,7 @@ def _format_mr(mr: dict[str, Any], *, detail: bool = False) -> str:
             f" | Draft: {'yes' if mr.get('draft') else 'no'} | Updated: {_clean(mr.get('updated_at'), 40)}"
         )
         if mr.get("description"):
-            lines.append("  Description:\n" + clip_text(str(mr["description"]), 4000))
+            lines.append("  Description:\n" + str(mr["description"]))
     if mr.get("web_url"):
         lines.append(f"  Link: {_clean(mr.get('web_url'), 300)}")
     return "\n".join(lines)
@@ -171,7 +181,7 @@ def _format_release(rel: dict[str, Any], *, detail: bool = False) -> str:
         f" (released {_clean(rel.get('released_at'), 40)})"
     )
     if detail and rel.get("description"):
-        line += "\n  Notes:\n" + clip_text(str(rel["description"]), 4000)
+        line += "\n  Notes:\n" + str(rel["description"])
     return line
 
 
@@ -410,10 +420,34 @@ def build_tools(
         lines = [
             f"- {_clean(n.get('created_at'), 40)} {_people([n.get('author')])}"
             + (" (system)" if n.get("system") else "")
-            + f": {_clean(n.get('body'), 2000)}"
+            + f" [note {_note_id(n)}]: "
+            + clip_text(
+                " ".join(str(n.get("body") or "").split()) or "-",
+                _LISTING_NOTE_CHARS,
+                f"get_gitlab_issue_note(project={project!r}, issue_iid={iid}, note_id={_note_id(n)})",
+            )
             for n in notes
         ]
         return f"Comments on #{iid} ({len(notes)}):\n" + "\n".join(lines) + _next(resp)
+
+    async def get_gitlab_issue_note(project: str, issue_iid: int, note_id: int) -> str:
+        ref, iid, nid = project_ref(project), _iid(issue_iid), _iid(note_id)
+        if not ref:
+            return _bad_project()
+        if iid is None:
+            return "Error: issue_iid must be the issue's number in the project (#12 -> 12)."
+        if nid is None:
+            return "Error: note_id must be the comment's id, as list_gitlab_issue_notes shows it."
+        resp, err = await _get(f"/projects/{ref}/issues/{iid}/notes/{nid}", f"get note {nid} of issue #{iid}")
+        if err:
+            return err
+        note = _json(resp) or {}
+        return (
+            f"Comment {_note_id(note)} on #{iid}, {_clean(note.get('created_at'), 40)} {_people([note.get('author')])}"
+            + (" (system)" if note.get("system") else "")
+            + ":\n"
+            + (str(note.get("body") or "") or "-")
+        )
 
     async def add_gitlab_issue_note(project: str, issue_iid: int, body: str) -> str:
         ref, iid = project_ref(project), _iid(issue_iid)
@@ -644,6 +678,7 @@ def build_tools(
         "create_gitlab_issue": create_gitlab_issue,
         "update_gitlab_issue": update_gitlab_issue,
         "list_gitlab_issue_notes": list_gitlab_issue_notes,
+        "get_gitlab_issue_note": get_gitlab_issue_note,
         "add_gitlab_issue_note": add_gitlab_issue_note,
         "list_gitlab_merge_requests": list_gitlab_merge_requests,
         "get_gitlab_merge_request": get_gitlab_merge_request,
@@ -718,7 +753,7 @@ def build_tools(
             },
             ["project"],
         ),
-        _tool("get_gitlab_issue", "Read a GitLab issue with its description, labels, assignees and dates.",
+        _tool("get_gitlab_issue", "Read a GitLab issue with its whole description, labels, assignees and dates.",
               {"project": project_p, "issue_iid": issue_p}, ["project", "issue_iid"]),
         _tool(
             "create_gitlab_issue",
@@ -753,8 +788,13 @@ def build_tools(
             },
             ["project", "issue_iid"],
         ),
-        _tool("list_gitlab_issue_notes", "List the comments of a GitLab issue, oldest first.",
+        _tool("list_gitlab_issue_notes",
+              "List the comments of a GitLab issue, oldest first, each on one line with its note id "
+              f"(a comment longer than {_LISTING_NOTE_CHARS} characters is cut: get_gitlab_issue_note reads it whole).",
               {"project": project_p, "issue_iid": issue_p, "limit": limit_p, "page": page_p}, ["project", "issue_iid"]),
+        _tool("get_gitlab_issue_note", "Read one comment of a GitLab issue whole, by the note id the listing shows.",
+              {"project": project_p, "issue_iid": issue_p, "note_id": _i("Note id from list_gitlab_issue_notes")},
+              ["project", "issue_iid", "note_id"]),
         _tool("add_gitlab_issue_note", "Comment on a GitLab issue.",
               {"project": project_p, "issue_iid": issue_p, "body": _s("Markdown comment")},
               ["project", "issue_iid", "body"]),
@@ -771,7 +811,7 @@ def build_tools(
             },
             ["project"],
         ),
-        _tool("get_gitlab_merge_request", "Read a GitLab merge request: branches, merge status, reviewers, description.",
+        _tool("get_gitlab_merge_request", "Read a GitLab merge request: branches, merge status, reviewers, whole description.",
               {"project": project_p, "merge_request_iid": mr_p}, ["project", "merge_request_iid"]),
         _tool("add_gitlab_merge_request_note", "Comment on a GitLab merge request.",
               {"project": project_p, "merge_request_iid": mr_p, "body": _s("Markdown comment")},

@@ -78,6 +78,12 @@ MISSED_RECORD_CAP = 3
 #: summary says "at least".
 MISSED_SCAN_LIMIT = 1440
 
+#: Where a ``skipped`` run behind an active run says how many windows it records (#2582).
+SKIPPED_WINDOWS_KEY = "skipped_windows"
+
+#: Where a ``skipped`` run says it records a fire whose run was never created (#2582).
+LOST_FIRE_KEY = "fire_lost"
+
 
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
@@ -281,6 +287,82 @@ def missed_window_runs(
     return runs
 
 
+def due_slots(
+    cron: str, base: datetime | None, now: datetime, *, tz: Any = None
+) -> tuple[datetime | None, list[datetime], bool]:
+    """Every cron slot after *base* due at *now*, in order (#2582).
+
+    Answers ``(served, slots, truncated)``: *served* the latest slot at or
+    before *now*, *slots* the slots after *base* up to and including it (at
+    most :data:`MISSED_SCAN_LIMIT` before it), *truncated* whether more were
+    left uncounted. No base, or no slot after it: ``(None, [], False)``.
+    """
+    if base is None:
+        return None, [], False
+    served, missed, truncated = missed_windows(cron, base, now, tz=tz)
+    if served is None or served <= base:
+        return None, [], False
+    return served, [*missed, served], truncated
+
+
+def lost_fire_run(assignment: Any, slot: datetime, *, cron: str, now: datetime, reason: str) -> dict[str, Any]:
+    """The columns of the ``skipped`` run recording a fire whose run was never created (#2582).
+
+    The schedule base had already moved past *slot* when the run creation
+    did not complete (the tick was stopped, the creation raised): the slot is
+    recorded instead of being lost in silence. Never executed.
+    """
+    stamp = now.isoformat()
+    scheduled = slot.isoformat()
+    return {
+        "assignment_id": assignment.id,
+        "agent_id": assignment.agent_id,
+        "user_id": getattr(assignment, "run_as_user_id", None) or assignment.user_id,
+        "is_company_managed": assignment.is_company_managed,
+        "trigger_payload": {"trigger_type": "schedule", "scheduled_at": scheduled},
+        "trigger_context": {
+            "type": "schedule",
+            "cron": cron,
+            "scheduled_at": scheduled,
+            "triggered_at": stamp,
+            LOST_FIRE_KEY: True,
+        },
+        "status": "skipped",
+        "result_summary": f"Scheduled fire lost: the run of the window of {scheduled} was not created ({reason}).",
+        "started_at": now,
+        "completed_at": now,
+    }
+
+
+def skipped_fire_runs(
+    assignment: Any,
+    active_run: Any,
+    *,
+    cron: str,
+    now: datetime,
+    slots: list[datetime],
+    truncated: bool = False,
+) -> list[dict[str, Any]]:
+    """The ``skipped`` runs of the due *slots* the overlap guard drops behind *active_run* (#2582).
+
+    One run per slot, stamped on it, up to :data:`MISSED_RECORD_CAP`; past it
+    (or when the count is *truncated*) one summary run stamped on the first
+    slot names them all. No slot (a first fire, no base): one run at *now*.
+    """
+    if not slots:
+        return [skipped_fire_run(assignment, active_run, cron=cron, now=now)]
+    if len(slots) <= MISSED_RECORD_CAP and not truncated:
+        return [skipped_fire_run(assignment, active_run, cron=cron, now=now, slot=slot) for slot in slots]
+    fields = skipped_fire_run(assignment, active_run, cron=cron, now=now, slot=slots[0])
+    count = f"at least {len(slots)}" if truncated else str(len(slots))
+    fields["trigger_context"][SKIPPED_WINDOWS_KEY] = len(slots)
+    fields["result_summary"] = (
+        f"Scheduled fire skipped: {count} windows between {slots[0].isoformat()} and {slots[-1].isoformat()}; "
+        + fields["result_summary"].removeprefix("Scheduled fire skipped: ")
+    )
+    return [fields]
+
+
 def skipped_fire_summary(active_run: Any, *, now: datetime | None = None) -> str:
     """The summary of a scheduled fire dropped because *active_run* is in the way."""
     since = _aware(getattr(active_run, "started_at", None) or getattr(active_run, "created_at", None))
@@ -293,27 +375,29 @@ def skipped_fire_summary(active_run: Any, *, now: datetime | None = None) -> str
 
 
 def skipped_fire_run(
-    assignment: Any, active_run: Any, *, cron: str, now: datetime | None = None
+    assignment: Any, active_run: Any, *, cron: str, now: datetime | None = None, slot: datetime | None = None
 ) -> dict[str, Any]:
     """The columns of the ``skipped`` run recorded for a dropped fire.
 
     The shape of a schedule run (``trigger_type`` / ``scheduled_at`` in the
     payload, ``type`` / ``cron`` / ``scheduled_at`` / ``triggered_at`` in the
     context) plus :data:`SKIPPED_BEHIND_KEY`, never executed (no orchestration
-    execution is created for it).
+    execution is created for it). ``scheduled_at`` is the cron *slot* it
+    records (#2582), *now* when none is given.
     """
     now = now or datetime.now(UTC)
     stamp = now.isoformat()
+    scheduled = (slot or now).isoformat()
     return {
         "assignment_id": assignment.id,
         "agent_id": assignment.agent_id,
         "user_id": getattr(assignment, "run_as_user_id", None) or assignment.user_id,
         "is_company_managed": assignment.is_company_managed,
-        "trigger_payload": {"trigger_type": "schedule", "scheduled_at": stamp},
+        "trigger_payload": {"trigger_type": "schedule", "scheduled_at": scheduled},
         "trigger_context": {
             "type": "schedule",
             "cron": cron,
-            "scheduled_at": stamp,
+            "scheduled_at": scheduled,
             "triggered_at": stamp,
             SKIPPED_BEHIND_KEY: str(getattr(active_run, "id", "")),
         },

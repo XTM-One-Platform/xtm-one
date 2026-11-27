@@ -214,12 +214,14 @@ async def clear_raised_state(db: AsyncSession) -> dict[str, int]:
     holding (``ctem_surface_observations.signalled``): left as is, two identical
     passes after a purge would record nothing and paths 5, 6, 7 would never come
     back. Each held key is undone so the next pass finds its difference again:
-    a new port leaves the host's baseline ports, a new host leaves the baseline
-    (the next pass decides it new again, with its complete-read check); the keys
+    a new port leaves the host's baseline ports, a new host keeps its row with the
+    ``REARM_NEW_HOST`` mark, so the next pass that sees it raises it again once (#2578:
+    a deleted row was withheld "known_to_provider", the provider having seen the host
+    before the previous pass, and never raised again); the keys
     the diff recomputes every pass (answers, dangling, unowned, unseen) only need
     the key gone. Every other host stays as it is.
     """
-    from app.services.ctem_attack_surface import SOURCE, host_key
+    from app.services.ctem_attack_surface import REARM_NEW_HOST, SOURCE, host_key
 
     rows = list(
         (
@@ -228,13 +230,14 @@ async def clear_raised_state(db: AsyncSession) -> dict[str, int]:
             )
         ).scalars()
     )
-    dropped = 0
+    rearmed = 0
     for row in rows:
         marker = f":{SOURCE}:{host_key(row.host)}:"
         details = [key.split(marker, 1)[1] for key in row.signalled or [] if marker in key]
-        if "new_host" in details:
-            await db.delete(row)
-            dropped += 1
+        # A host still re-armed from an earlier purge (no pass saw it since) stays re-armed.
+        if "new_host" in details or REARM_NEW_HOST in (row.signalled or []):
+            row.signalled = [REARM_NEW_HOST]
+            rearmed += 1
             continue
         raised_ports = {d.removeprefix("port:") for d in details if d.startswith("port:")}
         if raised_ports:
@@ -245,7 +248,7 @@ async def clear_raised_state(db: AsyncSession) -> dict[str, int]:
             ]
         row.signalled = []
     await db.flush()
-    return {"surface_hosts": len(rows), "surface_hosts_dropped": dropped}
+    return {"surface_hosts": len(rows), "surface_hosts_rearmed": rearmed}
 
 
 # ── the job ─────────────────────────────────────────────────────────────
@@ -334,9 +337,13 @@ async def _release_job() -> None:
         logger.info("CTEM signal purge: job lock not released in Redis (its TTL ends it)", exc_info=True)
 
 
-def new_status(job_id: str, actor: Any, *, resync: bool) -> dict[str, Any]:
+def new_status(
+    job_id: str, actor: Any, *, resync: bool, windows: dict[str, int | None] | None = None
+) -> dict[str, Any]:
     return {
         "id": job_id,
+        # The resync window per route the administrator chose (#2578), defaults filled in.
+        "windows": windows if resync else None,
         "state": "running",
         "resync": resync,
         "started_by": getattr(actor, "email", None) or str(getattr(actor, "id", "")),
@@ -398,12 +405,14 @@ async def run_job(
                 status["steps"]["resync"]["counts"].setdefault("paths", {})[path] = recorded
                 await _write_status(status)
 
-            if resync is None:
-                from app.services.ctem_signal_resync import resync as resync
+            from app.services.ctem_signal_resync import resync as resync_all
 
+            run_resync = resync or resync_all
             token = RESYNC_BYPASS.set(True)
             try:
-                result = await resync(sessions=sessions, actor_id=actor_id, progress=path_done)
+                result = await run_resync(
+                    sessions=sessions, actor_id=actor_id, progress=path_done, windows=status.get("windows")
+                )
             finally:
                 RESYNC_BYPASS.reset(token)
             await mark("resync", "done", **result)
@@ -473,11 +482,14 @@ async def _announce(status: dict[str, Any]) -> None:
         logger.info("CTEM signal purge: case views not dropped", exc_info=True)
 
 
-async def start(actor: Any, *, resync: bool) -> dict[str, Any]:
-    """Start a job in the background as *actor* (an administrator); its first status. :class:`PurgeBusyError` when one runs."""
+async def start(actor: Any, *, resync: bool, windows: dict[str, int | None] | None = None) -> dict[str, Any]:
+    """Start a job in the background as *actor* (an administrator); its first status. :class:`PurgeBusyError` when one runs.
+
+    *windows* are the resync windows already validated (``ctem_signal_resync.validate_windows``).
+    """
     if not await _take_job():
         raise PurgeBusyError(BUSY_DETAIL)
-    status = new_status(str(uuid.uuid4()), actor, resync=resync)
+    status = new_status(str(uuid.uuid4()), actor, resync=resync, windows=windows)
     await _write_status(status)
     task = asyncio.create_task(run_job(status, actor.id), name=f"ctem-signal-purge:{status['id']}")
     _JOBS.add(task)

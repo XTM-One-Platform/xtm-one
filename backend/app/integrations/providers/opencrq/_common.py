@@ -674,6 +674,46 @@ def _one_line(value: Any, limit: int = 200, fallback: str = "") -> str:
     return prompt_label(str(value), limit=limit, fallback=fallback)
 
 
+# ---------------------------------------------------------------------------
+# Finding scores and technique coverage wording
+# ---------------------------------------------------------------------------
+
+#: OpenCRQ scores CVE findings only: a technique finding is a control's answer to
+#: a test and carries no score by design (finding-score repository and service).
+TECHNIQUE_NOT_SCORED = "technique test, not scored by design (read as the asset's prevention/detection posture)"
+CVE_PENDING_VECTOR = "waiting for a CVSS vector"
+CVE_NOT_SCORED = "not scored yet"
+
+#: Said under a risk run that covers no technique: a run counts a technique as
+#: covered only when a declared control with strength and coverage above L0
+#: contests it, and test results only adjust such assessed controls.
+NO_COVERED_TECHNIQUE_HINT = (
+    "no technique is contested by an assessed control (strength and coverage "
+    "above L0); OpenAEV results only adjust assessed controls"
+)
+
+
+def _is_technique_finding(row: dict[str, Any]) -> bool:
+    """A technique-test finding (group or row), as opposed to a CVE finding."""
+    if row.get("cveId"):
+        return False
+    return str(row.get("key") or "").startswith("technique:") or bool(row.get("mitreTechniqueExternalId"))
+
+
+def _unscored_wording(row: dict[str, Any]) -> str:
+    """Why a finding OpenCRQ answered with no score has none."""
+    if _is_technique_finding(row):
+        return TECHNIQUE_NOT_SCORED
+    if row.get("pendingVector"):
+        return CVE_PENDING_VECTOR
+    return CVE_NOT_SCORED
+
+
+def _no_covered_technique(run: dict[str, Any]) -> bool:
+    """A risk run that reports its coverage and covers no technique."""
+    return run.get("coveredTechniqueCount") == 0
+
+
 def _untrusted(body: str, what: str) -> str:
     """*body*, records OpenCRQ answered, in a quarantine block whose source names *what*."""
     return wrap_untrusted(body, source=f"OpenCRQ {what}")
@@ -906,6 +946,8 @@ def _fmt_risk_scenario(s: dict, base_url: str = "", tenant_id: str = "") -> str:
                 + f", {run.get('coveredTechniqueCount', 0)} of "
                 f"{run.get('techniqueCount', 0)} techniques covered"
             )
+            if _no_covered_technique(run):
+                lines.append(f"  Coverage: {NO_COVERED_TECHNIQUE_HINT}")
     if s.get("noMappedAsset"):
         lines.append("  Estate: no asset of the risk scope is mapped to this scenario")
     readiness = s.get("readiness")

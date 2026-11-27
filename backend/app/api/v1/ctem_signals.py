@@ -518,6 +518,9 @@ class SignalPurge(BaseModel):
     confirm: str = Field(max_length=40)
     #: Resync the signals from their sources after the purge (default off).
     resync: bool = False
+    #: The resync read window per route in days (#2578); a route left out takes its default,
+    #: ``null`` on an inside-state route is no age limit. Validated by the server.
+    resync_windows: dict[str, int | None] | None = None
 
 
 @router.get("/purge")
@@ -525,11 +528,19 @@ async def get_ctem_signal_purge(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    """What a purge would delete now (``{signals, cases}``), the confirmation word, and the running or last job."""
+    """What a purge would delete now (``{signals, cases}``), the confirmation word, the resync routes
+    with their default windows (#2578), and the running or last job."""
     _require_xtm_one()
     from app.services import ctem_signal_purge as purge
+    from app.services import ctem_signal_resync as resync
 
-    return {"counts": await purge.counts(db), "confirm_word": purge.CONFIRM_WORD, "job": await purge.read_status()}
+    return {
+        "counts": await purge.counts(db),
+        "confirm_word": purge.CONFIRM_WORD,
+        "resync_routes": resync.describe_windows(),
+        "resync_max_days": resync.MAX_WINDOW_DAYS,
+        "job": await purge.read_status(),
+    }
 
 
 @router.post("/purge", status_code=202)
@@ -549,8 +560,14 @@ async def purge_ctem_signals(
 
     if body.confirm.strip() != purge.CONFIRM_WORD:
         raise HTTPException(status_code=422, detail=f"Type {purge.CONFIRM_WORD} to confirm the purge")
+    from app.services import ctem_signal_resync
+
     try:
-        job = await purge.start(admin, resync=body.resync)
+        windows = ctem_signal_resync.validate_windows(body.resync_windows) if body.resync else None
+    except ctem_signal_resync.WindowError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    try:
+        job = await purge.start(admin, resync=body.resync, windows=windows)
     except purge.PurgeBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     return {"job": job}

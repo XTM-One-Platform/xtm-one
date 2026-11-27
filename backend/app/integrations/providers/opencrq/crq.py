@@ -23,12 +23,14 @@ from typing import Any, NamedTuple
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
+    NO_COVERED_TECHNIQUE_HINT,
     TENANT_PROP,
     _client,
     _fmt_amount,
     _fmt_rate,
     _fmt_usd,
     _grc_link,
+    _no_covered_technique,
     _one_line,
     _organization_scope,
     _quarantined,
@@ -301,6 +303,8 @@ def _fmt_run(run: dict) -> str:
             f"  Techniques: {run.get('coveredTechniqueCount', 0)} covered "
             f"of {run['techniqueCount']}"
         )
+        if _no_covered_technique(run):
+            lines.append(f"  Coverage: {NO_COVERED_TECHNIQUE_HINT}")
     return "\n".join(lines)
 
 

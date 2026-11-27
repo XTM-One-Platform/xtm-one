@@ -148,6 +148,26 @@ def test_an_unknown_host_gives_one_path_7_signal() -> None:
     assert found[0].evidence["previous_pass_at"] == PREVIOUS.at.isoformat()
 
 
+def test_a_new_host_the_purge_rearmed_raises_again_on_an_identical_pass() -> None:
+    """#2578: after a purge, the same new host comes back once, though the provider dates it before
+    the previous pass (a deleted baseline row was withheld known_to_provider and never raised again)."""
+    old = NOW - timedelta(days=30)
+    host = [_obs("dev.corp.example", "203.0.113.20", 22, reads=[READ], known_since=old)]
+    shop = {"shop.corp.example": _base("shop.corp.example", 443)}
+    # Without the mark (the row deleted, as before #2578): withheld.
+    withheld: dict[str, str] = {}
+    assert _diff(host, shop, previous=PREVIOUS, statuses=COMPLETE, withheld=withheld) == []
+    assert withheld == {"dev.corp.example": "known_to_provider"}
+    # With the mark the purge leaves: raised once.
+    rearmed = {**shop, "dev.corp.example": _base("dev.corp.example", 22, signalled=(surface.REARM_NEW_HOST,))}
+    found = _diff(host, rearmed, previous=PREVIOUS, statuses=COMPLETE)
+    assert [(f.trigger_path, f.host, f.detail) for f in found] == [("surface_drift", "dev.corp.example", "new_host")]
+    # The pass that saw the host again drops the mark: the next identical pass raises nothing more.
+    assert surface._still_holding([surface.REARM_NEW_HOST], host[0]) == []
+    held = {**shop, "dev.corp.example": _base("dev.corp.example", 22, signalled=(found[0].dedupe_key,))}
+    assert _diff(host, held, previous=PREVIOUS, statuses=COMPLETE) == []
+
+
 def test_hosts_a_truncated_previous_read_missed_join_the_baseline_silently() -> None:
     """Pass 1 read 3 hosts on a truncated DNS page, pass 2 reads 41 completely: no new host."""
     known = [f"h{i}.corp.example" for i in range(3)]

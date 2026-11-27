@@ -110,11 +110,11 @@ async def test_the_scheduler_records_a_skipped_run_when_a_run_is_active(monkeypa
     assert await autonomous._process_scheduled_assignments(db) == 0
 
     trigger.assert_not_awaited()
-    db.add.assert_called_once()
-    skipped = db.add.call_args.args[0]
-    assert isinstance(skipped, AssignmentRun)
-    assert skipped.status == "skipped"
-    assert f"previous run {active.id} still running since" in skipped.result_summary
+    # The base is an hour back on a */20 cron: one row per slot it covers (#2582).
+    skipped = [call.args[0] for call in db.add.call_args_list]
+    assert len(skipped) == 3
+    assert all(isinstance(run, AssignmentRun) and run.status == "skipped" for run in skipped)
+    assert all(f"previous run {active.id} still running since" in run.result_summary for run in skipped)
     db.commit.assert_awaited()
 
 

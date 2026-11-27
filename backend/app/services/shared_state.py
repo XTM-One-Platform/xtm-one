@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -3373,7 +3374,7 @@ async def resolve_state_by_id(
 
 
 async def release_ended_run_holds(
-    *, limit: int = 500, run_ids: Sequence | None = None
+    *, limit: int = 500, run_ids: Sequence[Any] | None = None, deadline: float | None = None
 ) -> int:
     """Release every shared-state hold whose holding run has ended.
 
@@ -3387,6 +3388,8 @@ async def release_ended_run_holds(
     still not alive), so an entry taken over between the read and the write is
     never touched. A system write: it runs with no writer. *run_ids* scopes the
     sweep to those holders; an empty or unreadable list releases nothing.
+    *deadline* (a ``time.monotonic()`` instant) bounds the pass (#2582): past
+    it the released entries are committed and the rest waits for the next pass.
     Returns how many entries were released.
     """
     from sqlalchemy import update
@@ -3416,6 +3419,9 @@ async def release_ended_run_holds(
             return 0
         holders = await holding_runs(db, [row[1] for row in rows])
         for state_id, run_id, notes, is_lease in (tuple(row) + (None,) * (4 - len(row)) for row in rows):
+            if deadline is not None and time.monotonic() > deadline:
+                logger.info("Shared-state hold release stopped at its time budget: the rest waits for the next pass")
+                break
             holder = holders.get(run_id)
             if holder is not None and holder.alive:  # came back between the reads
                 continue
