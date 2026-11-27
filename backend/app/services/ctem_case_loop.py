@@ -108,6 +108,10 @@ ANNOUNCE_BATCH = 200
 #: Width of ``CtemCase.title`` and ``CtemCaseEvent.to_value`` (the opening event carries the key).
 COLUMN_MAX = 300
 _KEY_SPACES = re.compile(r"\s+")
+#: A CVE id anywhere in a text (#2558): a vulnerability patch case keys on it whatever the subject spelling.
+_CVE_ID = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
+#: Why the sweep folded an open case into another one (#2558).
+DUPLICATE_MERGE_REASON = "duplicate open case of the same fix (#2558)"
 
 
 @dataclass
@@ -121,6 +125,8 @@ class CaseFix:
     fixed_version: str | None = None
     #: ``{platform: version}`` when the source names the fix of each platform (#1572).
     fixed_versions: dict[str, str] = field(default_factory=dict)
+    #: Other spellings of the same key an open case may already hold (#2558): the signal joins it.
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass
@@ -201,12 +207,43 @@ def fix_of(signal: CtemSignal) -> CaseFix:
             title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
         )
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
+    cve = signal_cve(signal) if kind == "patch" and signal.subject_kind == "vulnerability" else ""
+    if cve:
+        # #2558: one CVE is one patch case, whether its subject is the CVE id, its STIX id or a name.
+        canonical = _bounded_key(f"patch:vulnerability/{cve.lower()}")
+        aliases = (key,) if key != canonical else ()
+        # A subject that is only a STIX id is titled on the CVE; any other keeps its own words.
+        shown = subject if subject and not subject.startswith("vulnerability--") else cve
+        return CaseFix(key=canonical, kind=kind, title=f"Patch {shown}"[:COLUMN_MAX], aliases=aliases)
     decay = _CONTROL_DECAY_TITLES.get(str(evidence.get("state") or "")) if path == "control_decay" else None
     asset = (signal.subject_ref or "").strip()
     if decay and asset:
         return CaseFix(key=key, kind=kind, title=decay.format(asset=asset)[:COLUMN_MAX])
     title = _TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:COLUMN_MAX]
     return CaseFix(key=key, kind=kind, title=title)
+
+
+def signal_cve(signal: Any) -> str:
+    """The CVE id a signal is about, upper case, empty when none (#2558).
+
+    Read from the evidence's ``cve`` first, then the subject reference and label.
+    """
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    for value in (evidence.get("cve"), getattr(signal, "subject_ref", None), getattr(signal, "subject_label", None)):
+        found = _CVE_ID.search(value) if isinstance(value, str) else None
+        if found:
+            return found.group(0).upper()
+    return ""
+
+
+def canonical_key(key: str) -> str:
+    """The spelling of a case key two open cases of one fix share (#2558): a vulnerability patch on its CVE."""
+    if key.startswith("patch:vulnerability/"):
+        found = _CVE_ID.search(key)
+        if found:
+            return f"patch:vulnerability/{found.group(0).lower()}"
+    return key
 
 
 #: Why a software signal with nothing to install opens no upgrade case (#2047).
@@ -352,7 +389,35 @@ def _event(case_id: uuid.UUID, actor: str, kind: str, at: datetime, **kw: Any) -
     return CtemCaseEvent(case_id=case_id, actor=actor, kind=kind, at=at, **kw)
 
 
-async def _open_case_for_key(db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str) -> CtemCase | None:
+def _is_postgres(db: AsyncSession) -> bool:
+    """Whether *db* runs on PostgreSQL, the only database the advisory locks exist on."""
+    get_bind = getattr(db, "get_bind", None)
+    if get_bind is None:
+        return False
+    try:
+        return bool(get_bind().dialect.name == "postgresql")
+    except Exception:  # a session with no bind: nothing to serialise against
+        return False
+
+
+async def hold_key_lock(db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str) -> None:
+    """Take the transaction-scoped advisory lock of one case key (#2558), PostgreSQL only.
+
+    Two transactions that open the case of one fix (a listener delivery, a drain pass, a source
+    recompute) meet here: the second waits for the first's commit, then finds its case and joins
+    it, so one fix never opens two cases. Released at the commit or the rollback.
+    """
+    if not _is_postgres(db):
+        return
+    from sqlalchemy import text
+
+    lock = f"ctem-case-key:{organization_id}:{vertical}:{canonical_key(key)}"
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": lock})
+
+
+async def _open_case_for_key(
+    db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str, aliases: tuple[str, ...] = ()
+) -> CtemCase | None:
     rows = list(
         (
             await db.execute(
@@ -366,6 +431,12 @@ async def _open_case_for_key(db: AsyncSession, organization_id: uuid.UUID, verti
     )
     for case in rows:
         if key in (case.keys or []):
+            return case
+    # #2558: the same CVE under another spelling (its STIX id, a name) joins the open case and adds the key.
+    wanted = {canonical_key(key), *aliases}
+    for case in rows:
+        if any(k in wanted or canonical_key(k) in wanted for k in case.keys or []):
+            case.keys = [*(case.keys or []), key]
             return case
     # The same fix of the same product under another spelling (vendor present or absent, label case)
     # joins the open case and adds its key there, so one fix never holds two SLAs (#2037).
@@ -408,7 +479,9 @@ async def open_from_signal(
         signal.decision = {**decision, "outcome": "review", "state": "to_validate", "reason": NOTHING_TO_UPGRADE}
         return None
     severity, hours, scenarios = severity_of(decision)
-    case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key)
+    # #2558: the lookup and the insert under the key's lock, so two openings of one fix meet.
+    await hold_key_lock(db, signal.organization_id, vertical, fix.key)
+    case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key, fix.aliases)
     created = case is None
     if case is None:
         case = CtemCase(
@@ -1405,8 +1478,18 @@ async def sweep(
         "stalled": 0,
         "retired": 0,
         "owned": 0,
+        "merged": 0,
     }
-    if await case_opening.may_open_waiting(db, vertical):
+    # #2558: every writer that takes several key locks (this sweep, a drain pass, a recompute) holds the
+    # vertical's writer lock first, so their key locks never cross; a listener takes one key lock only.
+    # The try form (#2555): when a drain pass or a recompute holds it, the sweep never waits on it; the
+    # opening and duplicate passes wait for the next tick and the other passes run now.
+    writer = not _is_postgres(db) or await case_opening.try_vertical_lock(db, vertical)
+    if not writer:
+        logger.info(
+            "CTEM sweep of %s: the writer lock is busy, opening and duplicate merge wait for the next tick", vertical
+        )
+    if writer and await case_opening.may_open_waiting(db, vertical):
         await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
     # #2452: an open case never waits with no owner; the cases opened before the decider fallback get it.
     from app.services.ctem_case_owner import backfill_owners
@@ -1440,6 +1523,8 @@ async def sweep(
         if events is not None:
             events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
             events.frame(case, "sla_breached", now)
+    if writer:
+        counts["merged"] = await merge_open_duplicates(db, vertical=vertical, events=events, now=now)
     counts["announced"] = await announce_unannounced(db, events=events, now=now)
     # #1736: an open case no gate and no reminder waits on is raised once per stall window.
     from app.services.ctem_case_stall import sweep_stalled
@@ -1500,6 +1585,91 @@ async def open_waiting(
             continue
         opened = events is not None and len(events.items) > before
         counts["opened" if opened else "joined"] += 1
+
+
+def duplicate_groups(cases: list[Any]) -> list[list[Any]]:
+    """The open cases that hold one fix, grouped, oldest first, groups of two or more only (#2558, pure).
+
+    Two cases hold one fix when they share a key once each key is spelled canonically
+    (:func:`canonical_key`); sharing is transitive, so three cases joined two by two are one group.
+    """
+    parent: dict[int, int] = {i: i for i in range(len(cases))}
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    owner: dict[str, int] = {}
+    for index, case in enumerate(cases):
+        for key in case.keys or []:
+            canonical = canonical_key(key)
+            if canonical in owner:
+                parent[root(index)] = root(owner[canonical])
+            else:
+                owner[canonical] = index
+    groups: dict[int, list[Any]] = {}
+    for index, case in enumerate(cases):
+        groups.setdefault(root(index), []).append(case)
+
+    def age(case: Any) -> tuple[datetime, str]:
+        created = rules.as_utc(getattr(case, "created_at", None)) or datetime.max.replace(tzinfo=UTC)
+        return created, str(case.id)
+
+    return [sorted(g, key=age) for g in groups.values() if len(g) > 1]
+
+
+async def merge_open_duplicates(
+    db: AsyncSession, *, vertical: str, events: PendingEvents | None, now: datetime | None = None
+) -> int:
+    """Fold every open case of a fix another open case already holds into the oldest one; how many folded (#2558).
+
+    The repair of the cases two concurrent openings wrote before the key lock
+    (:func:`hold_key_lock`): ``ctem_cases_store.merge_cases`` moves the keys, members,
+    history and signals to the survivor, which keeps its state, owner and SLA, and
+    records a system ``merge`` event. The caller commits.
+    """
+    from app.services import ctem_cases_store as store
+
+    now = now or datetime.now(UTC)
+    rows = list(
+        (await db.execute(select(CtemCase).where(CtemCase.vertical == vertical, CtemCase.state.in_(OPEN_STATES))))
+        .scalars()
+        .all()
+    )
+    by_org: dict[uuid.UUID, list[CtemCase]] = {}
+    for case in rows:
+        by_org.setdefault(case.organization_id, []).append(case)
+    merged = 0
+    for organization_id, cases in by_org.items():
+        for group in duplicate_groups(cases):
+            survivor, others = group[0], group[1:]
+            try:
+                async with db.begin_nested():
+                    for key in sorted({canonical_key(k) for c in group for k in c.keys or []}):
+                        await hold_key_lock(db, organization_id, vertical, key)
+                    await store.merge_cases(
+                        db,
+                        organization_id=organization_id,
+                        vertical=vertical,
+                        target_id=survivor.id,
+                        source_ids=[c.id for c in others],
+                        actor=rules.SYSTEM_ACTOR,
+                        reason=DUPLICATE_MERGE_REASON,
+                        now=now,
+                    )
+            except Exception:
+                logger.warning(
+                    "CTEM duplicate cases of %s not merged; the next sweep retries", survivor.id, exc_info=True
+                )
+                continue
+            merged += len(others)
+            logger.info("CTEM case %s took %s duplicate open case(s) of its fix", survivor.id, len(others))
+            if events is not None:
+                events.verticals.add(vertical)
+                events.frame(survivor, "merge", now)
+    return merged
 
 
 async def announce_unannounced(db: AsyncSession, *, events: PendingEvents | None, now: datetime | None = None) -> int:
