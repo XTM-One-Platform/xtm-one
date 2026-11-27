@@ -592,11 +592,11 @@ def _records_query(
         query = query.where(RoiRunRecord.fleet_id == fleet_id)
     if since is not None:
         query = query.where(RoiRunRecord.created_at >= since)
-    if fleet_id is not None:
-        # A fleet's records are counted from its last factory reset (#2580), as the report counts them.
-        from app.services.fleet_value_marks import counted_clause
+    # A fleet's records are counted from its last factory reset (#2580), as the report counts them,
+    # whatever the filter (agent, fleet, none): the list and its count mirror the figures.
+    from app.services.fleet_value_marks import counted_clause
 
-        query = query.where(counted_clause(RoiRunRecord.created_at, RoiRunRecord.fleet_id))
+    query = query.where(counted_clause(RoiRunRecord.created_at, RoiRunRecord.fleet_id))
     if outcome == roi.OUTCOME_UNREVIEWED:
         query = query.where(RoiRunRecord.outcome.is_(None))
     elif outcome is not None:

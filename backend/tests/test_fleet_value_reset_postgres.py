@@ -87,6 +87,10 @@ async def test_records_before_the_mark_leave_the_fleet_value_and_stay_stored() -
         assert await roi_records.count_records(session, fleet_id=fleet.id, since=since) == 0
         # A fleet never reset (mark NULL) reads as before.
         assert await roi_records.count_records(session, fleet_id=other.id, since=since) == 1
+        # The clip applies whatever the filter: an agent's list and count leave the pre-mark records out too.
+        assert await roi_records.count_records(session, agent_id=lead.id, since=since) == 0
+        assert await roi_records.list_records(session, agent_id=lead.id, since=since) == []
+        assert await roi_records.count_records(session, agent_id=other_lead.id, since=since) == 1
 
         session.add(_record(desk, fleet, now))
         await session.flush()
