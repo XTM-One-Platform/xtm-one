@@ -22179,5 +22179,17 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
   "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
+  "Last attempt {time}.": "Último intento {time}.",
+  "{integration}: {text}": "{integration}: {text}",
+  "Pick another run-as user.": "Elija otro usuario de ejecución.",
+  "Turn the source on again and pick the user it provisions as.": "Vuelva a activar la fuente y elija el usuario con el que se aprovisiona.",
+  "Connect the integration for the run-as user, or pick a user who has it.": "Conecte la integración para el usuario de ejecución, o elija un usuario que la tenga.",
+  "Set a webhook secret on the integration.": "Defina un secreto de webhook en la integración.",
+  "Authorize the integration again as the run-as user.": "Vuelva a autorizar la integración como el usuario de ejecución.",
+  "Turn the source on again on an existing integration.": "Vuelva a activar la fuente en una integración existente.",
+  "Fill the missing fields in Settings > Organization.": "Complete los campos que faltan en Configuración > Organización.",
+  "The next check removes them again; remove them by hand in the source platform if it keeps failing.": "La próxima comprobación vuelve a eliminarlos; elimínelos a mano en la plataforma de origen si sigue fallando.",
+  "Wait for the next check, or turn the source off and on again.": "Espere a la próxima comprobación, o desactive y vuelva a activar la fuente.",
+  "Check the integration's connection and the run-as user's rights in the source platform.": "Compruebe la conexión de la integración y los permisos del usuario de ejecución en la plataforma de origen.",
   "Not scored": "Sin puntuación"
 }
