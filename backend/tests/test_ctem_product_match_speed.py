@@ -23,7 +23,7 @@ from app.services.ctem_scope_gate import _product_matches as gate_product_matche
 
 
 def _former_rule(product: str, ref: str, *, family_exact: bool = True) -> bool:
-    """The regex rule of ``product_matches`` before #2032, the reference, with the #2628 family guard."""
+    """The regex rule of ``product_matches`` before #2032, the reference, with the #2628 and #2685 guards."""
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
     if not p or not r:
         return False
@@ -32,6 +32,8 @@ def _former_rule(product: str, ref: str, *, family_exact: bool = True) -> bool:
         r = parts[4] if len(parts) > 4 else r
     r = r.replace("_", " ")
     p = p.replace("_", " ")
+    if p in pa.GENERIC_PRODUCT_WORDS and p != r:
+        return False
     if family_exact and p in pa.FAMILY_WORDS and p != r:
         return False
     if p != r and (pa.is_url_like(p) or pa.is_url_like(r)):
@@ -89,7 +91,7 @@ def _gate_former(product: str, ref: str) -> bool:
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
-    if p in pa.FAMILY_WORDS and p != r.replace("_", " "):
+    if (p in pa.FAMILY_WORDS or p in pa.GENERIC_PRODUCT_WORDS) and p != r.replace("_", " "):
         return False
     if p != r and (pa.is_url_like(p) or pa.is_url_like(r)):
         return False
