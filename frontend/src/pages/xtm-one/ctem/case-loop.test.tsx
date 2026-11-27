@@ -12,16 +12,22 @@ const NOW = Date.parse("2026-11-21T12:00:00Z");
 
 describe("slaCountdown", () => {
   it("counts hours left under two days", () => {
-    expect(slaCountdown("2026-11-22T11:00:00Z", NOW)).toEqual({ late: false, value: 23, unit: "hour" });
+    expect(slaCountdown("2026-11-22T11:00:00Z", NOW)).toEqual({ late: false, value: 23, hours: 0, unit: "hour" });
   });
   it("counts days for a P3", () => {
-    expect(slaCountdown("2026-12-21T12:00:00Z", NOW)).toEqual({ late: false, value: 30, unit: "day" });
+    expect(slaCountdown("2026-12-21T12:00:00Z", NOW)).toEqual({ late: false, value: 30, hours: 0, unit: "day" });
+  });
+  it("counts days and hours under three days, rounded down (#2633)", () => {
+    expect(slaCountdown("2026-11-24T11:30:00Z", NOW)).toEqual({ late: false, value: 2, hours: 23, unit: "dayHour" });
+    expect(slaCountdown("2026-11-22T13:00:00Z", NOW)).toEqual({ late: false, value: 1, hours: 1, unit: "dayHour" });
+    expect(slaCountdown("2026-11-23T12:00:00Z", NOW)).toEqual({ late: false, value: 2, hours: 0, unit: "day" });
+    expect(slaCountdown("2026-11-24T12:00:00Z", NOW)).toEqual({ late: false, value: 3, hours: 0, unit: "day" });
   });
   it("says late past the due time", () => {
-    expect(slaCountdown("2026-11-21T09:00:00Z", NOW)).toEqual({ late: true, value: 3, unit: "hour" });
+    expect(slaCountdown("2026-11-21T09:00:00Z", NOW)).toEqual({ late: true, value: 3, hours: 0, unit: "hour" });
   });
   it("counts minutes in the last hour", () => {
-    expect(slaCountdown("2026-11-21T12:20:00Z", NOW)).toEqual({ late: false, value: 20, unit: "minute" });
+    expect(slaCountdown("2026-11-21T12:20:00Z", NOW)).toEqual({ late: false, value: 20, hours: 0, unit: "minute" });
   });
   it("is nothing without an SLA", () => {
     expect(slaCountdown(null, NOW)).toBeNull();
