@@ -124,26 +124,16 @@ async def list_ctem_signal_paths(
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
     by_source: dict[str, dict[str, dict[str, Any]]] = {}
-    quiet: dict[str, dict[str, Any]] = {}
     if primary is not None:
-        from app.services.ctem_attack_surface import quiet_reasons
-
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
         by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
-        from app.services import ctem_signal_purge
-
-        job = await ctem_signal_purge.read_status() or {}
-        replaying = job.get("state") == "running" and bool(job.get("resync"))
-        quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
     return {
-        "paths": signals.path_catalog(
-            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, quiet=quiet
-        )
+        "paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks)
     }
 
 
@@ -173,8 +163,12 @@ async def list_ctem_signal_sources(
     from app.models.integration import Integration
     from app.services import ctem_platform_sources as platform_sources
     from app.services.integration_tools import get_integration_public_url
+    from app.services.opencti_trigger_provisioning import legacy_pending
 
     providers = sorted({p for p, _ in platform_sources.PROVISIONED})
+    # Legacy Threat response objects XTM One still holds, per OpenCTI integration (#2627): the
+    # "Remove legacy OpenCTI objects" action shows only while some are left.
+    pending = await legacy_pending(db)
     integrations = (
         (
             await db.execute(
@@ -218,6 +212,8 @@ async def list_ctem_signal_sources(
             item["integration_url"] = get_integration_public_url(integration)
             item["integration_connected"] = integration.status == "connected"
             item["label"] = spec.label
+            if provider == "opencti":
+                item["legacy_pending"] = pending.get(str(integration.id), 0)
             out.append(item)
     return {"sources": out}
 
