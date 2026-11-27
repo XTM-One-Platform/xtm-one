@@ -22115,5 +22115,5 @@
   "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.",
   "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.",
   "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.",
-  "The team owns this case: every member sees it as theirs.": "The team owns this case: every member sees it as theirs."
+  "{team}: the team owns this case, every member sees it as theirs.": "{team}: the team owns this case, every member sees it as theirs."
 }

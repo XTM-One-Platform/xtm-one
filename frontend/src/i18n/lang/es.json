@@ -22115,5 +22115,5 @@
   "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "El equipo {team} es responsable del grupo de activos {group}, que contiene {assets} de los {affected, plural, one {# activo afectado} other {# activos afectados}}.",
   "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "El equipo {team} es responsable del grupo de activos {group}, que contiene {assets, plural, one {# activo afectado} other {# activos afectados}}.",
   "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "El equipo {team} es responsable del activo principal {name}, al que llega el caso. Ningún grupo de activos afectado tiene responsable.",
-  "The team owns this case: every member sees it as theirs.": "El equipo es responsable de este caso: cada miembro lo ve como suyo."
+  "{team}: the team owns this case, every member sees it as theirs.": "{team}: el equipo es responsable de este caso, cada miembro lo ve como suyo."
 }
