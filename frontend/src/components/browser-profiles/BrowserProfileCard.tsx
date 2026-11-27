@@ -147,6 +147,7 @@ export function BrowserProfileCard({
   const [dryRun, setDryRun] = useState<BrowserSignInState | null>(null);
   const busy = profile.session_status === "signing_in" || signIn.isPending;
   const probe = profile.last_probe_result;
+  const appsLine = profile.apps.length > 0 ? appsSummary(profile.apps) : null;
   const runSignIn = async () => {
     try {
       const state: BrowserSignInState = await signIn.mutateAsync(profile.id);
@@ -253,7 +254,7 @@ export function BrowserProfileCard({
             </Tip>
           )}
         </div>
-        {profile.apps.length > 0 && (
+        {appsLine && (
           <Tip
             content={
               <ul aria-label={t_i18n("Also signs in")} className="max-w-sm space-y-0.5 content-compact">
@@ -271,7 +272,8 @@ export function BrowserProfileCard({
               data-testid="browser-profile-apps"
             >
               <LogIn className="h-3 w-3 shrink-0" aria-hidden />
-              <span className="truncate">{t_i18n("Also signs in: {names}", { names: appsSummary(profile.apps) })}</span>
+              <span className="truncate">{t_i18n("Also signs in: {names}", { names: appsLine.names })}</span>
+              {appsLine.more > 0 && <span className="shrink-0">{`+${appsLine.more}`}</span>}
             </p>
           </Tip>
         )}

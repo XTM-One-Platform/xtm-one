@@ -88,11 +88,10 @@ export function appLabel(app: BrowserProfileApp): string {
   }
 }
 
-/** The applications on one line of the card: the first two labels, then how many more. */
-export function appsSummary(apps: BrowserProfileApp[]): string {
+/** The applications on one line of the card: the first two labels, and how many more (shown apart, so a cut name never hides the count). */
+export function appsSummary(apps: BrowserProfileApp[]): { names: string; more: number } {
   const labels = apps.map(appLabel);
-  const shown = labels.slice(0, 2).join(", ");
-  return labels.length > 2 ? `${shown}, +${labels.length - 2}` : shown;
+  return { names: labels.slice(0, 2).join(", "), more: Math.max(labels.length - 2, 0) };
 }
 
 /** The sign-in setting listing the storage keys the application keeps its session in. */

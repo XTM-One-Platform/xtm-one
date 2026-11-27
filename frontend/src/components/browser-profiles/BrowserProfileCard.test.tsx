@@ -150,7 +150,7 @@ describe("BrowserProfileCard of a profile that signs in other applications", () 
       }),
     );
     const line = screen.getByTestId("browser-profile-apps");
-    expect(line).toHaveTextContent("Also signs in: Risk, Intel, +1");
+    expect(line).toHaveTextContent("Also signs in: Risk, Intel+1");
     expect(line).not.toHaveTextContent("https://");
   });
 

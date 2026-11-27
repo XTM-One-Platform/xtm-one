@@ -46,13 +46,13 @@ test("an application URL is refused in the form as the save would refuse it", ()
 });
 
 test("the card names two applications, then how many more, a nameless one by its host", () => {
-  assert.equal(appsSummary([{ name: "Risk", url: "https://risk.example.com/" }]), "Risk");
-  assert.equal(
+  assert.deepEqual(appsSummary([{ name: "Risk", url: "https://risk.example.com/" }]), { names: "Risk", more: 0 });
+  assert.deepEqual(
     appsSummary([
       { name: "", url: "https://risk.example.com/x" },
       { name: "Intel", url: "https://intel.example.com/" },
       { name: "Third", url: "https://third.example.com/" },
     ]),
-    "risk.example.com, Intel, +1",
+    { names: "risk.example.com, Intel", more: 1 },
   );
 });
