@@ -68,6 +68,46 @@ def decision_primary_assets(decision: Any) -> list[dict[str, str]]:
     return [{"name": n, "basis": b} for n, b in out.items()]
 
 
+def decision_assets(decision: Any) -> list[str]:
+    """The inventory assets a gate decision matched, each name once, in order (#2635).
+
+    The assets the reconcile resolved the subject to (``reconcile.assets``), then the
+    assets of the chains that reached a primary asset (``reconcile.primary_assets``
+    and each scope source's kept ``chain``): the assets a case opened from the
+    signal is about, so the case counts them instead of an empty list.
+    """
+    if not isinstance(decision, dict):
+        return []
+    raw_reconcile = decision.get("reconcile")
+    raw_scope = decision.get("scope")
+    reconcile: dict[str, Any] = raw_reconcile if isinstance(raw_reconcile, dict) else {}
+    scope: dict[str, Any] = raw_scope if isinstance(raw_scope, dict) else {}
+    raw_assets = reconcile.get("assets")
+    names: list[Any] = list(raw_assets) if isinstance(raw_assets, list) else []
+    reached = reconcile.get("primary_assets")
+    hops: list[Any] = list(reached) if isinstance(reached, list) else []
+    raw_sources = scope.get("sources")
+    sources: list[Any] = raw_sources if isinstance(raw_sources, list) else []
+    for entry in sources:
+        if isinstance(entry, dict) and isinstance(entry.get("chain"), list):
+            hops += entry["chain"]
+    names += [hop.get("asset") for hop in hops if isinstance(hop, dict)]
+    return list(dict.fromkeys(str(n).strip() for n in names if isinstance(n, str) and n.strip()))
+
+
+def decision_scope_kinds(decision: Any) -> list[str]:
+    """What put a gate decision in scope, by kind, each once in order (#2635).
+
+    The ``from`` of each scope source (``asset``, ``asset_group``, ``primary_asset``,
+    ``owned_domain``, ``risk_scenario``): the reason a case whose members match no
+    asset and no primary asset was still opened.
+    """
+    scope = decision.get("scope") if isinstance(decision, dict) else None
+    sources = scope.get("sources") if isinstance(scope, dict) else None
+    kinds = [str(s["from"]) for s in sources or [] if isinstance(s, dict) and s.get("from")]
+    return list(dict.fromkeys(kinds))
+
+
 #: Records read at most as members of a linked group (a larger group is cut, said in ``truncated``).
 MAX_MEMBERS = 20000
 #: Installed software rows read at most for the assets that reach a primary asset.
@@ -119,16 +159,71 @@ def _haystack(ref: str) -> str:
     return r.replace("_", " ")
 
 
-def product_matches(product: str, ref: str) -> bool:
+#: #2628: words that name a whole operating system or vendor family, never one product. As the
+#: needle of a match they name only themselves: ``windows`` (a device's OS family) is not
+#: ``Windows Server 2019``, ``linux`` is not ``Linux Kernel``, ``microsoft`` is not ``Microsoft Excel``.
+FAMILY_WORDS: frozenset[str] = frozenset(
+    {
+        "windows",
+        "microsoft",
+        "microsoft windows",
+        "linux",
+        "gnu linux",
+        "macos",
+        "mac os",
+        "mac os x",
+        "os x",
+        "osx",
+        "apple",
+        "ios",
+        "ipados",
+        "android",
+        "chromeos",
+        "chrome os",
+        "unix",
+    }
+)
+
+
+def is_family_word(value: str) -> bool:
+    """Whether *value* is a bare OS or vendor family (``Windows``, ``Linux``, ``macOS``), not a product (#2628)."""
+    return _needle(str(value or "")) in FAMILY_WORDS
+
+
+def product_matches(product: str, ref: str, *, family_exact: bool = True) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
     The same rule as the gate's software match: equal, or *product* as a whole
-    word of *ref* (``Windows`` in ``windows_10``, never ``win`` in ``windows``).
+    word of *ref* (``Nginx`` in ``nginx_plus``, never ``win`` in ``windows``).
+    A bare OS or vendor family (:data:`FAMILY_WORDS`) matches only itself (#2628):
+    a device whose OS family is ``Windows`` never runs ``Windows Server 2019`` by that word.
+    *family_exact* False lets a family reference name a product of that family (a CVE
+    naming only ``Windows`` reaches ``Windows 11``): a family-only match, never proven.
     """
     p, r = _needle(str(product or "")), _haystack(str(ref or ""))
     if not p or not r:
         return False
+    if family_exact and p in FAMILY_WORDS and p != r:
+        return False
     return contains_word(p, r)
+
+
+def platform_compatible(ref: str, os_family: str) -> bool:
+    """Whether software *ref* can run on a device of *os_family* (#2628).
+
+    A reference built for one platform (the CPE ``target_sw``, else one OS named in
+    its name: ``Office for Windows``, ``Windows Server``) never matches a device that
+    reports another OS family (macOS, Linux). Unknown on either side: compatible.
+    """
+    if not os_family:
+        return True
+    from app.services.ctem_fixed_version import platform_of_software
+
+    text = str(ref or "")
+    cpe = text if text.strip().lower().startswith("cpe:") else ""
+    built_for = platform_of_software("" if cpe else text, None, cpe or None)
+    device = platform_of_software(os_family, None, None)
+    return not built_for or not device or built_for == device
 
 
 class ProductIndex:
@@ -140,8 +235,11 @@ class ProductIndex:
     keeps every ``[a-z0-9]`` token of the needle a token of the haystack.
     """
 
-    def __init__(self, values: Iterable[Any]) -> None:
+    def __init__(self, values: Iterable[Any], *, values_are_refs: bool = False) -> None:
+        """*values_are_refs* True: the values are software references and :meth:`matching` reads
+        inventory products, so a family value (``Windows``) may name a product of it (#2628)."""
         self.values: list[str] = list(dict.fromkeys(str(v) for v in values if str(v or "").strip()))
+        self._values_are_refs = values_are_refs
         self._by_first: dict[str, list[int]] = {}
         self._by_token: dict[str, list[int]] = {}
         self._untokened: list[int] = []
@@ -170,8 +268,15 @@ class ProductIndex:
         return [
             self.values[i]
             for i in sorted(candidates)
-            if product_matches(self.values[i], text) or product_matches(text, self.values[i])
+            # #2628: an inventory label that is a bare family (a device's ``Windows``) names only
+            # itself; a family reference (a CVE naming only ``Windows``) may name a product of it.
+            if self._match(self.values[i], text)
         ]
+
+    def _match(self, value: str, text: str) -> bool:
+        if self._values_are_refs:
+            return product_matches(value, text, family_exact=False) or product_matches(text, value)
+        return product_matches(value, text) or product_matches(text, value, family_exact=False)
 
     def any_match(self, ref: Any) -> bool:
         """Whether one value matches *ref* in either direction."""
@@ -196,6 +301,10 @@ class Reacher:
     keys: set[str] = field(default_factory=set)
     #: product key -> product label (installed software, the asset's own list, the OS family).
     products: dict[str, str] = field(default_factory=dict)
+    #: #2628: the OS family the device reports (empty: unknown); software built for another never matches it.
+    os_family: str = ""
+    #: #2628: the product labels an installed software row reports with a version (a running version known).
+    versioned: set[str] = field(default_factory=set)
     #: (link, through kind ``asset`` or ``asset_group``, through name)
     links: list[tuple[Link, str, str]] = field(default_factory=list)
 
@@ -230,7 +339,14 @@ class PrimaryAssetIndex:
         wanted = {k for k in (keys or []) if k}
         out: list[tuple[Reacher, str]] = []
         for i, reacher in enumerate(self.reachers):
-            matched = next((ref for ref in software if ref and i in self._running(ref)), "")
+            matched = next(
+                (
+                    ref
+                    for ref in software
+                    if ref and i in self._running(ref) and platform_compatible(ref, reacher.os_family)
+                ),
+                "",
+            )
             if matched or wanted & reacher.keys:
                 out.append((reacher, matched))
         return out
@@ -239,7 +355,9 @@ class PrimaryAssetIndex:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
-        ``{primary_asset_key, software, asset, through, through_kind, source, roles, via}``.
+        ``{primary_asset_key, software, version_verified, asset, through, through_kind, source, roles, via}``.
+        ``version_verified`` holds over every asset the chain reaches (a group of many devices
+        included), not only the first one met: one versioned installed row is enough.
         """
         if not self.reachers:
             return []
@@ -248,10 +366,13 @@ class PrimaryAssetIndex:
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
+                    if not found[key]["version_verified"] and runs_versioned(reacher, matched):
+                        found[key]["version_verified"] = True
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
                     "software": matched,
+                    "version_verified": runs_versioned(reacher, matched),
                     "asset": reacher.name,
                     "through": through,
                     "through_kind": kind,
@@ -340,9 +461,36 @@ def member_primary_assets(
     return reached, inferred
 
 
-def _record_products(fields: dict[str, Any]) -> dict[str, str]:
-    """What a record says it runs: its own software list and the OS family a device reports."""
+def runs_versioned(reacher: Reacher, ref: str) -> bool:
+    """Whether *reacher* runs software *ref* from an installed row that reports its version (#2628).
+
+    A bare family reference (``Windows``) is never verified: it names no product to version.
+    """
+    if not ref or is_family_word(ref):
+        return False
+    return any(product_matches(label, ref) or product_matches(ref, label) for label in reacher.versioned)
+
+
+#: Versions an installed software row stores when the source reported none.
+_UNKNOWN_VERSIONS: frozenset[str] = frozenset({"", "unknown", "-", "*"})
+
+
+def _is_repository(category: Any, fields: dict[str, Any]) -> bool:
+    """A code repository record (#2628): it runs nothing but the dependencies its SBOM declares."""
+    return str(category or "").strip().lower() == "source_code" or (
+        str(fields.get("subcategory") or "").strip().lower() == "code_repository"
+    )
+
+
+def _record_products(fields: dict[str, Any], *, category: Any = "") -> dict[str, str]:
+    """What a record says it runs: its own software list and the OS family a device reports.
+
+    A code repository runs no product by its own list or a family word (#2628): only the
+    dependencies its SBOM declares (the installed software rows ``load_index`` reads).
+    """
     out: dict[str, str] = {}
+    if _is_repository(category, fields):
+        return out
     for item in fields.get("products") or []:
         label = str(item or "").strip()
         if label:
@@ -420,19 +568,21 @@ async def load_index(
     rec = OrganizationAssetRecord
     records = (
         await db.execute(
-            select(rec.id, rec.asset_id, rec.name, rec.external_id, rec.fields).where(
+            select(rec.id, rec.asset_id, rec.name, rec.external_id, rec.fields, rec.category).where(
                 rec.organization_id == organization_id, rec.id.in_(list(record_links))
             )
         )
     ).all()
     by_asset: dict[Any, Reacher] = {}
     asset_ids: list[uuid.UUID] = []
-    for record_id, asset_id, name, external_id, fields in records:
+    for record_id, asset_id, name, external_id, fields, category in records:
         if asset_id is not None and asset_id not in by_asset:
             asset_ids.append(asset_id)
         holder = by_asset.setdefault(asset_id or record_id, Reacher(name=str(name)))
         holder.keys |= {k for k in (_key(name), _key(external_id), _key((fields or {}).get("hostname"))) if k}
-        holder.products.update(_record_products(dict(fields or {})))
+        holder.products.update(_record_products(dict(fields or {}), category=category))
+        if not holder.os_family and not _is_repository(category, dict(fields or {})):
+            holder.os_family = str((fields or {}).get("os_family") or "").strip()
         for item, kind, through in record_links.get(record_id, []):
             entry = (item, kind, through or str(name))
             if entry not in holder.links:
@@ -441,13 +591,13 @@ async def load_index(
         soft = OrganizationAssetSoftware
         scope = [soft.organization_id == organization_id, soft.asset_id.in_(asset_ids)]
         if software is not None:
-            refs = ProductIndex(r for r in software if r)
+            refs = ProductIndex((r for r in software if r), values_are_refs=True)
             products = (await db.execute(select(soft.product_key, soft.product).where(*scope).distinct())).all()
             wanted = sorted({str(key) for key, product in products if product and refs.any_match(str(product))})
             scope.append(soft.product_key.in_(wanted))
         installed = (
             await db.execute(
-                select(soft.asset_id, soft.product_key, soft.product)
+                select(soft.asset_id, soft.product_key, soft.product, soft.version)
                 .where(*scope)
                 .distinct()
                 .limit(MAX_SOFTWARE_ROWS + 1)
@@ -455,10 +605,12 @@ async def load_index(
         ).all()
         if len(installed) > MAX_SOFTWARE_ROWS:
             index.truncated, installed = True, installed[:MAX_SOFTWARE_ROWS]
-        for asset_id, product_key, product in installed:
+        for asset_id, product_key, product, version in installed:
             owner = by_asset.get(asset_id)
             if owner is not None and product:
                 owner.products.setdefault(str(product_key or _key(product)), str(product))
+                if str(version or "").strip().lower() not in _UNKNOWN_VERSIONS:
+                    owner.versioned.add(str(product))
     index.reachers = [r for r in by_asset.values() if r.links]
     return index
 

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { renderWithProviders } from "@/testing/providers";
 import { CaseAttentionNow } from "./CaseAttentionNow";
+import { CaseLoopLine } from "./case-loop";
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -84,6 +85,22 @@ describe("CaseAttentionNow (#1176)", () => {
     expect(screen.getByTestId("ctem-case-created").textContent).not.toContain("Created");
     expect(screen.getByTestId("ctem-case-age").textContent).toBe("AgeToday");
     expect(screen.getByTestId("ctem-case-attention-why").textContent).toContain("Opened today");
+  });
+
+  // #2633: the header chip and the why line read the same countdown in the same words.
+  it.each([
+    ["2026-11-25T11:00:00Z", "2 d 23 h left"],
+    ["2026-11-23T11:00:00Z", "23 h left"],
+  ])("says the SLA due %s as %s in the chip and in the why line", (due, text) => {
+    const c = kase({ sla_due_at: due, severity: "P2" });
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseLoopLine c={c} now={NOW} />
+        <CaseAttentionNow c={c} now={NOW} onChanged={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-case-sla").textContent).toBe(text);
+    expect(screen.getByTestId("ctem-case-attention-why").textContent).toContain(text);
   });
 
   it("shows the dates alone on a resolved case: nothing to act on", () => {

@@ -325,7 +325,8 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
             _aggregate,
             "Count assets or software per value of one field (assets: category, subcategory, criticality, "
             "internet_facing, os_family, environment, owner, source; software: software_type, vendor, origin, "
-            "cpe_state), with the asset filters.",
+            "cpe_state), with the asset filters. source is multi-valued: one asset can be counted in several "
+            "buckets; total is the distinct asset count.",
             {
                 "entity": {"type": "string", "enum": ["assets", "software"]},
                 "group_by": {"type": "string", "description": "Field to count by."},

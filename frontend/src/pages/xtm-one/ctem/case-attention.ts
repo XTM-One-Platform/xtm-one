@@ -84,7 +84,7 @@ export type CaseAttentionReason =
   | { kind: "kev"; count: number; assets: number }
   | { kind: "primary_asset"; count: number }
   | { kind: "overdue" }
-  | { kind: "due_soon"; days: number }
+  | { kind: "due_soon"; due: string }
   | { kind: "no_owner" }
   | { kind: "age"; days: number };
 
@@ -140,7 +140,8 @@ export function caseAttention(c: AttentionInput, now: number, weights: CaseAtten
     }
   } else if (weights.dueSoon > 0 && !Number.isNaN(dueMs) && dueMs - now <= weights.dueSoonDays * DAY_MS) {
     score += weights.dueSoon;
-    reasons.push({ kind: "due_soon", days: Math.max(0, Math.ceil((dueMs - now) / DAY_MS)) });
+    // The view says it with the case countdown (case-loop.slaCountdown), the chip's words (#2633).
+    reasons.push({ kind: "due_soon", due: due as string });
   }
   if (!c.owner_user_id && weights.noOwner > 0) {
     score += weights.noOwner;

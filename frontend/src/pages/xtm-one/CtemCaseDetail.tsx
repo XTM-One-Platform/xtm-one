@@ -33,6 +33,7 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   CTEM_CASE_LIST_KEY,
   cachedCaseSummary,
+  ctemCaseMaxCvss,
   isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
@@ -55,6 +56,7 @@ import { CaseAuditTrail } from "./ctem/CaseAuditTrail";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
+import { primaryAssetsLine } from "./ctem/case-primary-assets";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
@@ -539,6 +541,7 @@ export default function CtemCaseDetail() {
   // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
   const aggregatesRestricted = kase.aggregates_restricted === true;
   const withoutDetails = kase.members_without_details ?? 0;
+  const maxCvss = ctemCaseMaxCvss(kase);
   const aggregatesSubtitle = aggregatesRestricted
     ? t_i18n("Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details", { count: withoutDetails })
     : t_i18n("On the issues you can see");
@@ -850,18 +853,21 @@ export default function CtemCaseDetail() {
         <StatCard
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
-          value={formatCount(intl.locale, kase.max_cvss)}
-          subtitle={aggregatesSubtitle}
+          value={formatCount(intl.locale, maxCvss.value)}
+          // The card agrees with the issues of the page; "-" always says why (#2630, UX round 1 on #2645, B1).
+          subtitle={
+            maxCvss.basis === "not_scored"
+              ? t_i18n("Not scored")
+              : maxCvss.basis === "facts_unread"
+                ? t_i18n("Unknown: CVE facts not readable for you")
+                : aggregatesSubtitle
+          }
         />
         <StatCard
           icon={AssetsGlyph}
           label={t_i18n("Assets")}
           value={formatCount(intl.locale, kase.asset_count)}
-          subtitle={
-            aggregatesRestricted || kase.primary_asset_count == null
-              ? aggregatesSubtitle
-              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.primary_asset_count })
-          }
+          subtitle={aggregatesRestricted ? aggregatesSubtitle : (primaryAssetsLine(kase, t_i18n) ?? aggregatesSubtitle)}
         />
       </div>
 
