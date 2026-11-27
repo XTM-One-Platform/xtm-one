@@ -322,6 +322,10 @@ def _ctem_case_opening_on(request, monkeypatch):
             return set()
 
         monkeypatch.setattr(ctem_case_opening, "read_paused_verticals", on_everywhere)
+    # #2570: the per-minute opening budget is off in the suite (a test opens as many cases as it
+    # seeds); a module that tests the budget sets ``TESTS_CASE_OPENING_BUDGET = True``.
+    if not getattr(request.module, "TESTS_CASE_OPENING_BUDGET", False):
+        monkeypatch.setenv("CTEM_CASE_OPEN_PER_MINUTE", "0")
     yield
 
 

@@ -5332,6 +5332,10 @@ class CoordinationRetention(BaseModel):
     workset_resolved_days: int = Field(ge=0, le=3650)
     #: Finished assignment runs (Operations > Executions); absent in a body = the stored window.
     assignment_run_days: int | None = Field(default=None, ge=0, le=3650)
+    #: CTEM signals discarded by the scope gate / on the watchlist, from their last sighting (#2581);
+    #: absent in a body = the stored window.
+    ctem_signal_discarded_days: int | None = Field(default=None, ge=0, le=3650)
+    ctem_signal_watchlist_days: int | None = Field(default=None, ge=0, le=3650)
 
 
 class ObservabilityConfigResponse(BaseModel):

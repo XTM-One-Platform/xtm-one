@@ -11,7 +11,8 @@ the convention of the trace and file retentions.
 Every window counts from the row's last update (``updated_at``), except the
 abandoned-open auto-cancel, which counts from the item's last activity, and the
 assignment run window, which counts from the run's completion (a run has no
-``updated_at``).
+``updated_at``), and the two CTEM signal windows, which count from the signal's
+last sighting (``last_seen_at``, #2581).
 """
 
 from __future__ import annotations
@@ -41,6 +42,11 @@ RETENTION_KEYS: dict[str, str] = {
     # Finished assignment runs (Operations > Executions), deleted N days after their
     # last activity (completed_at, else created_at): services/run_retention.py.
     "assignment_run_days": "assignment_run_retention_days",
+    # CTEM signals the scope gate discarded, deleted N days after their last sighting
+    # (``last_seen_at``), a person's dismissal and a signal in a case never: services/ctem_signal_retention.py.
+    "ctem_signal_discarded_days": "ctem_signal_discarded_retention_days",
+    # Watchlist CTEM signals, deleted N days after their last sighting (#2581).
+    "ctem_signal_watchlist_days": "ctem_signal_watchlist_retention_days",
 }
 
 

@@ -4810,6 +4810,19 @@ async def execute_assignment_run(
             )
             return
 
+        # ── A CTEM case event whose case is gone ─────────────────
+        # #2570: a purge deletes cases, not the deliveries their events queued: a
+        # "Supervise CTEM loop" run of a deleted case is skipped at start, never run
+        # against nothing (no model call, no charge).
+        if run.started_at is None and await _ctem_case_gone(db, run.trigger_context):
+            run.status = "skipped"
+            run.error = CTEM_CASE_GONE_ERROR
+            run.completed_at = datetime.now(UTC)
+            await db.commit()
+            await _release_run_work_item(run, agent, failed=False)
+            logger.info("Assignment run %s skipped: its CTEM case no longer exists", run_id)
+            return None
+
         # ── May agentic AI run here at all? ───────────────
         # Defence in depth behind the trigger-time gate: a run queued or
         # delayed before AI was switched off, or before the deployment dropped
@@ -12086,6 +12099,112 @@ async def _evict_oldest_queued_run(
     return str(oldest.id)
 
 
+#: The run error and the summarised dropped-event reason of a platform-event delivery past the queue limit (#2570).
+PLATFORM_EVENT_QUEUE_FULL_REASON = "skipped: queue full"
+
+#: A platform-event run about a CTEM case deleted since its event (#2570): skipped at start.
+CTEM_CASE_GONE_ERROR = "Skipped: the CTEM case this event is about no longer exists (purged or deleted)."
+
+
+async def _ctem_case_gone(db: AsyncSession, trigger_context: Any) -> bool:
+    """Whether *trigger_context* is a platform event about a CTEM case that no longer exists."""
+    if not isinstance(trigger_context, dict) or trigger_context.get("type") != "platform_event":
+        return False
+    if trigger_context.get("object_type") != "ctem_case":
+        return False
+    try:
+        case_id = _uuid.UUID(str(trigger_context.get("object_id")))
+    except (TypeError, ValueError):
+        return False
+    from app.models.ctem_case import CtemCase
+
+    found = (await db.execute(select(CtemCase.id).where(CtemCase.id == case_id))).scalar_one_or_none()
+    return found is None
+
+
+async def trim_platform_event_queues(db: AsyncSession) -> dict[Any, int]:
+    """Skip the queued CTEM platform-event deliveries past each assignment's queue limit (#2570).
+
+    Answers the skipped count per assignment. ``ctem_case.opened`` and ``ctem_case.stalled`` are
+    raised again by their source (``platform_events.RE_RAISED_EVENTS``: an unrun case is caught up
+    by ``ctem_case_routing.catch_up``, a case left waiting on nobody is raised stalled again), so
+    their delivery past ``ASSIGNMENT_QUEUE_MAX_DEPTH`` is dropped, never queued past it
+    (``platform_events._deliver``); the once-only CTEM events (SLA breach, resolution, reopening,
+    signals) are never trimmed. This trims the
+    backlogs queued before that bound (a platform restarted in a storm): per assignment, the oldest
+    deliveries up to the limit are kept in order and the rest are finalised ``skipped`` in one
+    statement, counted once on the assignment as "skipped: queue full" (summarised, never one
+    reason row each). Other queued deliveries (webhooks, integration events) are left as they are.
+    A grouped count answers first: nothing over the limit costs that one query. The caller commits.
+    """
+    from app.services.platform_events import CONTEXT_TYPE, is_re_raised_event
+
+    max_depth = _queue_max_depth()
+    over = (
+        (
+            await db.execute(
+                select(AssignmentRun.assignment_id)
+                .where(AssignmentRun.status == QUEUED_RUN_STATUS)
+                .group_by(AssignmentRun.assignment_id)
+                .having(func.count() > max_depth)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    trimmed: dict[Any, int] = {}
+    now = datetime.now(UTC)
+    for assignment_id in over:
+        rows = (
+            await db.execute(
+                select(AssignmentRun.id, AssignmentRun.trigger_context)
+                .where(AssignmentRun.assignment_id == assignment_id, AssignmentRun.status == QUEUED_RUN_STATUS)
+                .order_by(AssignmentRun.created_at, AssignmentRun.id)
+            )
+        ).all()
+        events = [
+            run_id
+            for run_id, ctx in rows
+            if isinstance(ctx, dict) and ctx.get("type") == CONTEXT_TYPE and is_re_raised_event(ctx.get("event"))
+        ]
+        others = len(rows) - len(events)
+        keep = max(0, max_depth - others)
+        excess = events[keep:]
+        if not excess:
+            continue
+        await db.execute(
+            update(AssignmentRun)
+            .where(AssignmentRun.id.in_(excess), AssignmentRun.status == QUEUED_RUN_STATUS)
+            .values(
+                status="skipped",
+                error=f"{QUEUE_DROP_ERROR_PREFIX} {PLATFORM_EVENT_QUEUE_FULL_REASON} ({len(rows)}/{max_depth}).",
+                completed_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        trimmed[assignment_id] = len(excess)
+    for assignment_id, count in trimmed.items():
+        logger.warning(
+            "Assignment %s: %d queued platform-event deliveries past the queue limit %d skipped (queue full)",
+            assignment_id,
+            count,
+            max_depth,
+        )
+    return trimmed
+
+
+async def record_queue_full(trimmed: dict[Any, int]) -> None:
+    """Count the skipped deliveries once per assignment under "skipped: queue full" (best effort)."""
+    from app.services.integration_event_filters import record_filter_reasons, record_filtered_events
+
+    for assignment_id, count in trimmed.items():
+        try:
+            await record_filtered_events(assignment_id, count)
+            await record_filter_reasons(assignment_id, {PLATFORM_EVENT_QUEUE_FULL_REASON: count})
+        except Exception as exc:  # a counter never blocks the drain
+            logger.debug("Could not count the queue-full skips of assignment %s: %r", assignment_id, exc)
+
+
 async def drain_assignment_queues(limit: int | None = None) -> int:
     """Promote queued deliveries into their assignments' free slots. Returns how many.
 
@@ -12121,6 +12240,18 @@ async def drain_assignment_queues(limit: int | None = None) -> int:
 
     batch = limit if limit is not None else int(settings.assignment_queue_drain_batch)
     batch = max(1, batch)
+
+    # #2570: the platform-event backlogs past the queue limit are trimmed first, so a platform
+    # restarted in a storm never starts hundreds of queued supervising runs one after another.
+    try:
+        async with async_session() as db:
+            trimmed = await trim_platform_event_queues(db)
+            if trimmed:
+                await db.commit()
+        if trimmed:
+            await record_queue_full(trimmed)
+    except Exception as exc:
+        logger.error("Could not trim the platform-event delivery queues: %s", format_exception_message(exc))
 
     async with async_session() as db:
         states = await _load_queue_states(db, only_integration_events=only_integration_events)
