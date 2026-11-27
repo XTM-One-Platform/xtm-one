@@ -9,10 +9,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { QueryClient } from "@tanstack/react-query";
 import { renderWithProviders } from "@/testing/providers";
-import { CTEM_CASE_LIST_KEY } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_CASE_LIST_KEY, ctemCasePollInterval } from "@/hooks/api/useCtemCasesApi";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false }));
+const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false, noCvss: false }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -87,7 +87,7 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
                   max_cvss: null,
                   max_epss: null,
                 }
-              : { restricted_count: 1, asset_count: 2, primary_asset_count: 1, kev_count: 1, max_cvss: 9.8, max_epss: 0.94 }),
+              : { restricted_count: 1, asset_count: 2, primary_asset_count: 1, kev_count: 1, max_cvss: state.noCvss ? null : 9.8, max_epss: 0.94 }),
             first_seen_at: null,
             details_unavailable: [],
             keys: [],
@@ -175,9 +175,47 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
     state.waitingGate = false;
   });
 
+  it("says a case whose visible issues carry no CVSS is not scored (#2630)", () => {
+    state.notFound = false;
+    state.noCvss = true;
+    page();
+    expect(screen.getByText("Not scored")).toBeInTheDocument();
+    state.noCvss = false;
+  });
+
+  it("keeps the scope subtitle when the case has a CVSS (#2630)", () => {
+    state.notFound = false;
+    page();
+    expect(screen.queryByText("Not scored")).not.toBeInTheDocument();
+  });
+
   it("answers a case the caller sees nothing of with the not-found page", () => {
     state.notFound = true;
     page();
     expect(screen.getByText("Case not found")).toBeInTheDocument();
+  });
+});
+
+describe("ctemCasePollInterval: the CVSS written after the creation shows without a reload (#2630)", () => {
+  const created = "2026-11-27T15:00:00Z";
+  const at = (seconds: number) => Date.parse(created) + seconds * 1000;
+
+  it("reads a fresh case without a CVSS again every 3 s", () => {
+    expect(ctemCasePollInterval({ max_cvss: null, created_at: created }, "success", at(2))).toBe(3000);
+  });
+
+  it("stops once the CVSS is written", () => {
+    expect(ctemCasePollInterval({ max_cvss: 8.8, created_at: created }, "success", at(5))).toBe(false);
+  });
+
+  it("stops two minutes after the creation: the case is then not scored", () => {
+    expect(ctemCasePollInterval({ max_cvss: null, created_at: created }, "success", at(121))).toBe(false);
+  });
+
+  it("never polls a refused read, a case without a creation time or with restricted aggregates", () => {
+    expect(ctemCasePollInterval({ max_cvss: null, created_at: created }, "error", at(2))).toBe(false);
+    expect(ctemCasePollInterval({ max_cvss: null, created_at: null }, "success", at(2))).toBe(false);
+    expect(ctemCasePollInterval({ max_cvss: null, created_at: created, aggregates_restricted: true }, "success", at(2))).toBe(false);
+    expect(ctemCasePollInterval(undefined, "pending", at(2))).toBe(false);
   });
 });

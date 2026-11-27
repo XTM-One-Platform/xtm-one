@@ -851,7 +851,8 @@ export default function CtemCaseDetail() {
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
           value={formatCount(intl.locale, kase.max_cvss)}
-          subtitle={aggregatesSubtitle}
+          // No visible issue carries a CVSS: "-" says why, never a blank figure (#2630).
+          subtitle={!aggregatesRestricted && kase.max_cvss == null ? t_i18n("Not scored") : aggregatesSubtitle}
         />
         <StatCard
           icon={AssetsGlyph}
