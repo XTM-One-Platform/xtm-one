@@ -258,10 +258,9 @@ Common rules:
   `c9160fleetoptin1` switched off the 12 rows main seeded on 5 and 6 Nov 2026.
   Seeding, profile drafting, ROI recording and trigger provisioning make no
   LLM call and create no run.
-- **Run-as and pre-existing members (#9188, #2650).** Switching a fleet
-  automation on takes an explicit run-as per module (`run_as_by_module`, asked
-  by the "Act in <module> as" field of the setup wizard; the API and the agent
-  tool refuse a module with no choice, nothing defaults to the caller); the switch, and a run-as change
+- **Run-as and pre-existing members (#9188).** Switching one of the 12 fleet
+  automations on with no run-as stores the administrator who switches it on as
+  `run_as_user_id` (an explicit run-as wins); the switch, and a run-as change
   on an enabled one, is refused (400, the provider named) when that user has
   no connected OpenCTI, OpenAEV or OpenCRQ integration the automation needs
   (`app/services/fleet_run_as.py`). Its OpenCTI and OpenAEV trigger
@@ -1270,7 +1269,15 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
   response - ...", "XTM One - CTEM loop - New relevant threats" and "...
   Threat activity flagged in a PIR"), per integration a Signals source is on
-  for, triggers and playbooks before their notifiers.
+  for, triggers and playbooks before their notifiers. The UI shows that action
+  only while `GET /api/v1/ctem-signals/sources` reports `legacy_pending > 0` on
+  an OpenCTI source (#2627): the objects the holders still hold in their state,
+  read from XTM One's database (`opencti_trigger_provisioning.legacy_pending`),
+  never from OpenCTI on page load; a removal that leaves nothing tombstones the
+  holders whose Signals source delivers, so the count drops at once. An object
+  created outside a holder is not counted: the dry run reads OpenCTI itself. Each
+  per-path object of a source (the PIR playbooks) carries `path` and
+  `path_label`, so two links of one kind on a row read apart.
 
 ### 8.2 Event enrichment
 
@@ -2246,7 +2253,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
 | `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
 | `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys). On a built-in fleet (#916) the body is the gates added to the seeded catalog, stored in `Fleet.customer_gates` (customer layer, never written by the seed, so kept across upgrades; read after the seeded gates, source `customer`, pinned like any gate); a seeded key is refused (422: pin it instead). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
-| `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; each automation acts in its modules as the user chosen for that module in `run_as_by_module` (`opencti` / `openaev` / `opencrq` to a user id; `run_as_user_id` covers the modules the map does not name), never the caller by default (#2650): a module nobody was chosen for refuses the enable (400 naming it, `unchosen` on a dry run, `modules` lists the choices the dialog asks); another user than the caller is an administrator's choice, from `GET /users/module-run-as?provider=`. All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing, its `runs_per_day` from its schedule and `event_driven`) for the setup dialog, plus `estimate` (#1538): the picked automations' scheduled runs a day, how many run once per event, the mean cost of one of their runs over 30 days (`llm_traces` joined on `assignment_runs`, null without a run) and a cost a day, an order of magnitude the dialog re-sums over the person's pick. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
+| `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; the seeded fleet automations run as `run_as_user_id` (the caller by default, another user an administrator's choice). All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing, its `runs_per_day` from its schedule and `event_driven`) for the setup dialog, plus `estimate` (#1538): the picked automations' scheduled runs a day, how many run once per event, the mean cost of one of their runs over 30 days (`llm_traces` joined on `assignment_runs`, null without a run) and a cost a day, an order of magnitude the dialog re-sums over the person's pick. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |
 | `POST /fleets/{id}/unset` | Back to not set up (#11060): every automation that is on switches off, and every off one (any stamp but `panic_stop`) is re-stamped `created_disabled`, so the fleet reads Not set up, 0 on, no Resume. Nothing deleted (ids, prompts, triggers, run history kept); an automation an emergency stop holds is left as it is and named (`held_by_stop` in the audit). Idempotent. Agent tool: `set_fleet_automations(action="unset")`, a dry-run count without `confirm=true`. Audit `fleet_unset` plus one `pause` row per assignment | as Enable | allowed |
@@ -2460,6 +2467,18 @@ and each STIX id is triaged once, #1832), `Weekly PIR answer` (Mondays 07:00),
 clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
 (`opencti:pir-desk:approval:<id>`) and never revokes.
+
+Unfinished work (#2659): a hunt package or detection set a triage run cannot
+finish is delegated again in the run; what still remains is one work item
+keyed `opencti:pir-desk:followup:<entity id>` owned by the orchestrator,
+taken by its `Follow-up due` work-item assignment (`FOLLOWUP_PREFIX`,
+`FOLLOWUP_DUE` in `agents/opencti_pir_desk.py`; it inherits the switch of
+`PIR match created` on upgrade), which resumes from the staged draft and
+files the result in the PIR case; a step a person must take is a
+`needs_human` item with its ask. The desk never creates an item with no
+owner and no ask. `create_work_item` warns an agent with no work-item inbox
+that creates such an item (`_NO_OWNER_NO_INBOX_WARNING`,
+`work_item_context.agent_has_work_item_inbox`).
 
 PIR criteria: today's PIRs carry sectors and regions; the personas use any
 other criteria type a PIR carries and never require one, so the fleet gets
