@@ -656,6 +656,29 @@ async def test_an_empty_pass_list_names_the_first_step_the_schedule_stops_at(mon
     assert (await surface.why_no_pass(object(), None)).startswith("no pass has completed yet")  # type: ignore[arg-type]
 
 
+@pytest.mark.asyncio
+async def test_the_no_pass_reason_is_a_code_the_screen_words(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2634, UX round 1 on #2654 (B1): the code beside the sentence, never a config key on screen."""
+    profiles: list[Any] = []
+
+    async def _current(_db: Any, _org: Any) -> Any:
+        return None, profiles[-1]
+
+    async def _unreadable(_db: Any, _profile: Any) -> Any:
+        return "the integration cannot be read"
+
+    monkeypatch.setattr(oc, "current_profile", _current)
+    monkeypatch.setattr(surface, "reader_for", _unreadable)
+    profiles.append(_profile())
+    assert (await surface.no_pass_reason(object(), None))[0] == "pass_off"  # type: ignore[arg-type]
+    profiles.append(_profile(attack_surface={"enabled": True}, owned_domains=[], address_ranges=[]))
+    assert (await surface.no_pass_reason(object(), None))[0] == "no_scope"  # type: ignore[arg-type]
+    profiles.append(_profile(attack_surface={"enabled": True}))
+    assert (await surface.no_pass_reason(object(), None))[0] == "no_provider"  # type: ignore[arg-type]
+    profiles.append(_profile(attack_surface={"enabled": True, "integration": "i-1"}))
+    assert await surface.no_pass_reason(object(), None) == ("provider_unreadable", "the integration cannot be read")  # type: ignore[arg-type]
+
+
 def test_a_repaired_signal_carries_its_dates() -> None:
     """#2331: the dry run names each signal with the dates an operator checks it against."""
     seen = datetime(2026, 11, 20, 8, 0, tzinfo=UTC)
