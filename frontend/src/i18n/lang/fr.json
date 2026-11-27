@@ -22112,6 +22112,13 @@
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "Le premier des {count, plural, one {# candidat} other {# candidats}} par date de création du compte.",
   "No owner was found: the current owner is kept.": "Aucun responsable trouvé : le responsable actuel est conservé.",
   "Set by a person.": "Défini par une personne.",
+  "The cases recompute reads a vulnerability on your inventory software": "Le recalcul des cas lit une vulnérabilité sur un logiciel de votre inventaire",
+  "The cases recompute reads a CVE finding on one of your assets": "Le recalcul des cas lit un résultat CVE sur l'un de vos actifs",
+  "Open the notifier in {platform}": "Ouvrir le notificateur dans {platform}",
+  "Open the triggers in {platform}": "Ouvrir les déclencheurs dans {platform}",
+  "Open the playbook in {platform}": "Ouvrir le playbook dans {platform}",
+  "The resync reads every source again, with the paths and sources that are on.": "La resynchronisation relit chaque source, avec les chemins et les sources activés.",
+  "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sans resynchronisation, le recalcul des cas est suspendu pendant un intervalle : la liste reste vide jusqu'à une resynchronisation ou un recalcul lancé à la main.",
   "Value (ROI) restarts from now": "La valeur (ROI) repart de maintenant",
   "Measured since {date} (reset)": "Mesurée depuis le {date} (réinitialisation)",
   "The person shown leads the case for the team, and every member of the team sees it as theirs.": "La personne affichée pilote le cas pour l'équipe, et chaque membre de l'équipe le voit comme le sien.",
@@ -22142,11 +22149,7 @@
   "Attack surface pass": "Passe de surface d'attaque",
   "Recorded by the GitLab asset sync": "Enregistré par la synchronisation des actifs GitLab",
   "Delivered by event only": "Transmis par événement uniquement",
-  "The cases recompute reads a vulnerability on your inventory software": "Le recalcul des cas lit une vulnérabilité sur un logiciel de votre inventaire",
-  "The cases recompute reads a CVE finding on one of your assets": "Le recalcul des cas lit un résultat CVE sur l'un de vos actifs",
-  "Open the notifier in {platform}": "Ouvrir le notificateur dans {platform}",
-  "Open the triggers in {platform}": "Ouvrir les déclencheurs dans {platform}",
-  "Open the playbook in {platform}": "Ouvrir le playbook dans {platform}",
-  "The resync reads every source again, with the paths and sources that are on.": "La resynchronisation relit chaque source, avec les chemins et les sources activés.",
-  "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sans resynchronisation, le recalcul des cas est suspendu pendant un intervalle : la liste reste vide jusqu'à une resynchronisation ou un recalcul lancé à la main."
+  "Notifier": "Notificateur",
+  "Triggers": "Déclencheurs",
+  "Playbook": "Playbook"
 }
