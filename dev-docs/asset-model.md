@@ -271,7 +271,9 @@ records several sources hold on one thing into one canonical thing; the store of
   different numeric ids (`cloud_resource_id`, ranked above) never merge on the path.
 - Fields: each field keeps every source's value; the value shown follows a per-field precedence of source classes
   (`DEFAULT_PRECEDENCE`: endpoint manager and EDR for OS and software, OpenCRQ for criticality, OpenAEV for
-  exposure), customisable; `unknown` never wins over a known value; local fields come from hand sources only.
+  exposure, except a `code_repository`, whose `internet_facing` and `status` come from its source control system
+  first, `SUBCATEGORY_PRECEDENCE`, #2703), customisable (an organization precedence wins over both); `unknown`
+  never wins over a known value; local fields come from hand sources only.
 - Software: one entry per vendor, product and version across sources, with first and last seen; an unknown
   version is `unknown`, never empty.
 - Endpoint sources (`organization_context_microsoft`): Microsoft Intune (Graph v1.0 `managedDevices`, and beta
