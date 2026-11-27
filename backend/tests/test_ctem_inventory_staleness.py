@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.services import ctem_inventory_staleness as staleness
 from app.services import ctem_signal_sources as sources
 from app.services import ctem_signals
@@ -74,6 +76,43 @@ def test_a_silent_path_6_says_why() -> None:
     failed = {**clean, "failed_syncs": 2, "withheld_sync_failed": 40}
     reason = ctem_signals.silent_reason(_path(), failed)
     assert reason["code"] == "upstream_sync_failed" and reason["evaluation"]["withheld_sync_failed"] == 40
+
+
+def test_an_inventory_past_the_cap_never_reads_nothing_past_threshold() -> None:
+    capped = {"at": NOW.isoformat(), "evaluated": 100, "truncated": 7, "failed_syncs": 0, "withheld_sync_failed": 0}
+    reason = ctem_signals.silent_reason(_path(), capped)
+    assert reason is not None
+    assert reason["code"] == "inventory_truncated" and reason["evaluation"]["truncated"] == 7
+
+
+async def test_a_failed_daily_pass_gives_its_slot_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import organization_context, organizations
+
+    released: list[bool] = []
+
+    async def _primary(_db: Any) -> Any:
+        return SimpleNamespace(id=uuid.uuid4())
+
+    async def _profile(_db: Any, _org: Any) -> Any:
+        return None, SimpleNamespace()
+
+    async def _boom(*_a: Any, **_k: Any) -> dict[str, Any]:
+        raise RuntimeError("database gone")
+
+    async def _due() -> bool:
+        return True
+
+    async def _release() -> None:
+        released.append(True)
+
+    monkeypatch.setattr(organizations, "get_primary", _primary)
+    monkeypatch.setattr(organization_context, "current_profile", _profile)
+    monkeypatch.setattr(staleness, "evaluate", _boom)
+    monkeypatch.setattr(staleness, "_due", _due)
+    monkeypatch.setattr(staleness, "release_pass_slot", _release)
+    with pytest.raises(RuntimeError):
+        await staleness.scheduled_pass(SimpleNamespace())  # type: ignore[arg-type]
+    assert released == [True]
 
 
 def test_a_path_with_signals_or_off_has_no_reason() -> None:

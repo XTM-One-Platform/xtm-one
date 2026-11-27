@@ -30,7 +30,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,10 @@ KIND = "pass"
 PATH = "stale_asset"
 #: The default age past which an asset unseen by its source is stale (the attack-surface default).
 DEFAULT_STALE_DAYS = 14
-#: Records one evaluation reads at most.
-MAX_RECORDS = 20000
+#: Records one evaluation reads at most; the rest is counted as ``truncated`` and said by the view.
+MAX_RECORDS = 100_000
+#: Records read per page (keyset on the record id, so every record is reached up to the cap).
+PAGE_SIZE = 5000
 
 _SLOT_KEY = "ctem:inventory-staleness:pass"
 _LAST_KEY = "ctem:inventory-staleness:last"
@@ -112,18 +114,34 @@ async def evaluate(
     stale_days = int(getattr(surface, "stale_after_days", DEFAULT_STALE_DAYS) or DEFAULT_STALE_DAYS)
     if is_excluded(parse_excluded(profile), PATH, PROVIDER, KIND):
         return {"at": at.isoformat(), "stale_after_days": stale_days, "recorded": 0, "skipped": "excluded"}
-    records = list(
-        (
-            await db.execute(
-                select(OrganizationAssetRecord)
-                .where(OrganizationAssetRecord.organization_id == organization_id)
-                .order_by(OrganizationAssetRecord.id)
-                .limit(MAX_RECORDS)
-            )
-        ).scalars()
-    )
     syncs = list((await db.execute(select(OrganizationContextSync))).scalars())
-    found, counts = findings(records, syncs, now=at, stale_days=stale_days)
+    found: list[tuple[Any, str, dict[str, Any]]] = []
+    counts = {"evaluated": 0, "unseen": 0, "orphaned": 0, "withheld_sync_failed": 0}
+    after: uuid.UUID | None = None
+    while counts["evaluated"] < MAX_RECORDS:
+        size = min(PAGE_SIZE, MAX_RECORDS - counts["evaluated"])
+        query = select(OrganizationAssetRecord).where(OrganizationAssetRecord.organization_id == organization_id)
+        if after is not None:
+            query = query.where(OrganizationAssetRecord.id > after)
+        page = list((await db.execute(query.order_by(OrganizationAssetRecord.id).limit(size))).scalars())
+        if not page:
+            break
+        page_found, page_counts = findings(page, syncs, now=at, stale_days=stale_days)
+        found.extend(page_found)
+        for key in counts:
+            counts[key] += page_counts[key]
+        after = page[-1].id
+        if len(page) < size:
+            break
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(OrganizationAssetRecord)
+            .where(OrganizationAssetRecord.organization_id == organization_id)
+        )
+    ).scalar_one()
+    counts["truncated"] = max(0, int(total or 0) - counts["evaluated"])
+    counts["failed_syncs"] = sum(1 for s in syncs if _failed(s))
     pending = ctem_case_loop.PendingEvents()
     recorded = 0
     for record, detail, evidence in found:
@@ -219,9 +237,15 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
     primary = await get_primary(db)
     if primary is None or not await _due():
         return None
-    _row, profile = await org_context.current_profile(db, primary.id)
-    result = await evaluate(db, organization_id=primary.id, profile=profile)
-    await db.commit()
+    try:
+        _row, profile = await org_context.current_profile(db, primary.id)
+        result = await evaluate(db, organization_id=primary.id, profile=profile)
+        await db.commit()
+    except Exception:
+        # The pass did not complete: give the slot back so the next tick evaluates again (as
+        # ctem_evidence_health.scheduled_pass does), instead of a day with no evaluation.
+        await release_pass_slot()
+        raise
     pending = result.pop("pending", None)
     if pending is not None:
         await ctem_case_loop.publish_pending(pending)

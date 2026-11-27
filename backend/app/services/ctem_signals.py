@@ -764,6 +764,7 @@ SILENT_REASONS: dict[str, str] = {
     "never_evaluated": "The inventory has not been evaluated yet; it is evaluated daily and after a purge",
     "no_asset_past_threshold": "No asset is past the threshold and every synced asset still has its sync",
     "upstream_sync_failed": "An inventory sync failed: the assets it owns are not judged stale until it reads again",
+    "inventory_truncated": "No evaluated asset is past the threshold, but the inventory is larger than one evaluation reads",
     "listener_never_fired": "No source of this path has sent an event yet",
 }
 
@@ -783,11 +784,13 @@ def silent_reason(row: dict[str, Any], evaluation: dict[str, Any] | None = None)
             code = "never_evaluated"
         elif int(evaluation.get("withheld_sync_failed") or 0) or int(evaluation.get("failed_syncs") or 0):
             code = "upstream_sync_failed"
+        elif int(evaluation.get("truncated") or 0):
+            code = "inventory_truncated"
         else:
             code = "no_asset_past_threshold"
         out: dict[str, Any] = {"code": code, "detail": SILENT_REASONS[code]}
         if evaluation:
-            keys = ("at", "evaluated", "stale_after_days", "failed_syncs", "withheld_sync_failed")
+            keys = ("at", "evaluated", "truncated", "stale_after_days", "failed_syncs", "withheld_sync_failed")
             out["evaluation"] = {k: evaluation[k] for k in keys if k in evaluation}
         return out
     if not any(s.get("last_signal_at") for s in row.get("sources") or []) and not row.get("last_signal_at"):
