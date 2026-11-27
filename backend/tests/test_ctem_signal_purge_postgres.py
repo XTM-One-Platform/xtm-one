@@ -131,7 +131,7 @@ async def test_the_job_deletes_signals_and_their_cases_with_no_orphan() -> None:
             "cases": 2,
             "signals": 3,
             "surface_hosts": 1,
-            "surface_hosts_rearmed": 0,
+            "surface_hosts_rearmed": 1,
         }
         session.expire_all()
         assert await session.scalar(select(func.count()).select_from(CtemSignal)) == 0
@@ -143,9 +143,11 @@ async def test_the_job_deletes_signals_and_their_cases_with_no_orphan() -> None:
         items = {i.correlation_key: i.status for i in (await session.execute(select(WorkItem))).scalars()}
         assert items[f"ctem:review:{world['opened']}"] == "cancelled"
         assert items[f"ctem:review:{world['legacy']}"] == "open"
-        # The baseline host stays; its raised key goes with the port it raised, so the next pass sees it again.
+        # The baseline host stays; its raised key goes with the port it raised, so the next pass sees it again,
+        # and leaves its re-arm mark, so a resync whose pass fails raises it from the baseline (#2634).
         host = (await session.execute(select(CtemSurfaceObservation))).scalar_one()
-        assert host.signalled == [] and host.ports == [] and host.ip == "203.0.113.20"
+        assert host.signalled == [surface.rearm_mark("surface_drift:attack_surface:dev.corp.example:port:22/tcp")]
+        assert host.ports == [] and host.ip == "203.0.113.20"
         audits = (await session.execute(select(AuditLog))).scalars().all()
         job = [a for a in audits if a.entity_type == "ctem_signal_purge"]
         assert len(job) == 1 and job[0].details["resync"] is False
@@ -212,3 +214,70 @@ async def test_after_a_purge_the_same_pass_raises_the_same_outside_signals_again
             session, organization_id=world["org"], profile=profile, reader=_Reader(), now=NOW
         )
         assert twice["counts"]["recorded"] == 0  # and the pass dedupes again from there
+
+
+async def test_a_purge_resync_whose_pass_fails_raises_the_held_drift_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2634: one undeclared host in the last committed pass, a purge with resync whose own pass
+    has not run yet: one attack-surface drift signal dated after the purge, before the routes replay."""
+
+    profile = oc.parse_profile({"owned_domains": ["corp.example"], "attack_surface": {"enabled": True}})
+
+    class _Reader:
+        provider = "shodan"
+
+        async def observe(self, domains: list[str], ranges: list[str]) -> list[surface.Observation]:
+            return [surface.Observation(host="dev.corp.example", ip="203.0.113.20", ports=[surface.Port(22)])]
+
+    async with _database() as sessions, sessions() as session:
+        world = await _world(session, signals=1)
+        held = (await session.execute(select(CtemSurfaceObservation))).scalar_one()
+        held.signalled = ["surface_drift:attack_surface:dev.corp.example:new_host"]
+        await session.commit()
+
+        async def _profile(db: Any, organization_id: Any) -> Any:
+            return None, profile
+
+        async def _primary(db: Any) -> Any:
+            return await db.get(Organization, world["org"])
+
+        async def _no_publish(_pending: Any) -> None:
+            return None
+
+        monkeypatch.setattr(oc, "current_profile", _profile)
+        monkeypatch.setattr("app.services.organizations.get_primary", _primary)
+        monkeypatch.setattr("app.services.ctem_case_loop.publish_pending", _no_publish)
+
+        admin = await session.get(User, world["admin"])
+        started = datetime.now(UTC)
+        status = purge.new_status(str(uuid.uuid4()), admin, resync=True)
+        seen_at_routes: list[int] = []
+
+        async def _routes(*, sessions: Any, actor_id: Any, progress: Any, windows: Any) -> dict[str, Any]:
+            # The routes replay (30 minutes on a large tenant) with the drift already back.
+            async with sessions() as db:
+                seen_at_routes.append(
+                    await db.scalar(
+                        select(func.count()).select_from(CtemSignal).where(CtemSignal.trigger_path == "surface_drift")
+                    )
+                )
+            return {"routes": {}}
+
+        done = await purge.run_job(status, world["admin"], sessions=sessions, resync=_routes)
+        assert done["state"] == "done", done["error"]
+        assert done["steps"]["resync"]["counts"]["held"]["surface_drift"] == 1
+        assert seen_at_routes == [1]
+        session.expire_all()
+        drift = (
+            (await session.execute(select(CtemSignal).where(CtemSignal.trigger_path == "surface_drift")))
+            .scalars()
+            .all()
+        )
+        assert [s.subject_ref for s in drift] == ["dev.corp.example"]
+        seen = drift[0].last_seen_at if drift[0].last_seen_at.tzinfo else drift[0].last_seen_at.replace(tzinfo=UTC)
+        assert seen >= started
+        host = (await session.execute(select(CtemSurfaceObservation))).scalar_one()
+        assert host.signalled == ["surface_drift:attack_surface:dev.corp.example:new_host"]
+
+        # The next pass that sees the host dedupes on the re-raised key: nothing twice.
+        again = await surface.run_pass(session, organization_id=world["org"], profile=profile, reader=_Reader())
+        assert again["counts"].get("surface_drift", 0) == 0

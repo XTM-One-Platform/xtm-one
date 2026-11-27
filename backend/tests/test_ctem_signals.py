@@ -843,6 +843,11 @@ def client(store, monkeypatch):
 
     monkeypatch.setattr(api_module, "get_primary", _primary)
 
+    async def _no_quiet(_db: Any, _org: Any, *, resync_running: bool = False) -> dict[str, Any]:
+        return {}  # the attack-surface reasons read the pass tables, out of this stub (#2634)
+
+    monkeypatch.setattr("app.services.ctem_attack_surface.quiet_reasons", _no_quiet)
+
     async def _db():
         yield _Db()
 

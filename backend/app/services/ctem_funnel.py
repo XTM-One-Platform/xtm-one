@@ -36,11 +36,12 @@ Layers, in order (the PR body carries the same table):
   available while the count cannot be read (no software inventory, OpenCTI
   unanswered).
 * ``policy``: that set narrowed by the saved prioritization policy, with the
-  scope gate's rules: CVSS and EPSS minimums (an unscored vulnerability passes,
-  KEV passes when ``kev_always_in``), product and asset-group exclusions, the
-  unscoped accepted risks on a CVE not expired, and the minimum primary asset
-  criticality. Not configured only when no policy was saved. Without a primary
-  asset link it narrows the exploitable layer (``basis``).
+  scope gate's rules: CVSS and EPSS minimums (an unscored vulnerability passes
+  only when ``missing_score`` is ``pass``, KEV passes when ``kev_always_in``),
+  product and asset-group exclusions, the unscoped accepted risks on a CVE not
+  expired, and the minimum primary asset criticality. Not configured only when
+  no policy was saved. Without a primary asset link it narrows the exploitable
+  layer (``basis``).
 * ``open_issues``: the CTEM Cases, filled by the UI from the Cases API.
 
 :func:`funnel_scope` is the pure part of the two organization layers: which
@@ -110,12 +111,12 @@ def policy_rules(policy: Any) -> list[str]:
     return rules
 
 
-def _score_filter(key: str, minimum: float, kev: bool) -> dict[str, Any]:
-    """*key* at least *minimum*, an unscored vulnerability kept (the gate's rule), KEV kept when *kev*."""
-    filters: list[dict[str, Any]] = [
-        {"key": [key], "values": [str(minimum)], "operator": "gte"},
-        {"key": [key], "values": [], "operator": "nil"},
-    ]
+def _score_filter(key: str, minimum: float, kev: bool, *, keep_unscored: bool) -> dict[str, Any]:
+    """*key* at least *minimum*, KEV kept when *kev*; an unscored vulnerability kept only when
+    *keep_unscored* (``missing_score`` ``pass``: the gate holds it under ``hold``)."""
+    filters: list[dict[str, Any]] = [{"key": [key], "values": [str(minimum)], "operator": "gte"}]
+    if keep_unscored:
+        filters.append({"key": [key], "values": [], "operator": "nil"})
     if kev:
         filters.append({"key": ["x_opencti_cisa_kev"], "values": ["true"]})
     return {"mode": "or", "filters": filters, "filterGroups": []}
@@ -212,10 +213,17 @@ def funnel_scope(
         if not any(x and (x == _norm(label) or x in _norm(label).split()) for x in excluded_products)
     ]
     groups: list[dict[str, Any]] = []
+    keep_unscored = policy.missing_score == "pass"
     if policy.cvss_min is not None:
-        groups.append(_score_filter("x_opencti_cvss_base_score", policy.cvss_min, policy.kev_always_in))
+        groups.append(
+            _score_filter(
+                "x_opencti_cvss_base_score", policy.cvss_min, policy.kev_always_in, keep_unscored=keep_unscored
+            )
+        )
     if policy.epss_min is not None:
-        groups.append(_score_filter("x_opencti_epss_score", policy.epss_min, policy.kev_always_in))
+        groups.append(
+            _score_filter("x_opencti_epss_score", policy.epss_min, policy.kev_always_in, keep_unscored=keep_unscored)
+        )
     accepted = sorted(
         {
             r.subject.strip().upper()

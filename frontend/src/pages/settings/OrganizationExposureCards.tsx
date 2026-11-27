@@ -993,6 +993,14 @@ export function OrganizationExposureCards({
               onCheckedChange={(kev_always_in) => patchPolicy({ kev_always_in })}
             />
             <SettingsSwitchField
+              id={`${fieldId}-missing_score`}
+              label={t_i18n("Hold signals with no score")}
+              helper={t_i18n("A vulnerability with no CVSS or EPSS to compare waits on the watchlist for validation.")}
+              info={t_i18n("On: when a minimum is set and no score is read, neither in the signal nor in OpenCTI, the signal is held on the watchlist. Off: it passes that minimum. Both record no score read. Read by the CTEM scope gate.")}
+              checked={(policy.missing_score ?? "hold") === "hold"}
+              onCheckedChange={(hold) => patchPolicy({ missing_score: hold ? "hold" : "pass" })}
+            />
+            <SettingsSwitchField
               id={`${fieldId}-internet_exposure_required`}
               label={t_i18n("Internet exposure required")}
               helper={t_i18n("Keep only findings on assets marked internet-facing. This drops the findings on user endpoints too.")}
@@ -1010,6 +1018,7 @@ export function OrganizationExposureCards({
               value={policy.min_primary_asset_criticality ? label(CRITICALITY_LABELS, policy.min_primary_asset_criticality) : ""}
             />
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />
+            <SettingsReadField label={t_i18n("Hold signals with no score")} value={(policy.missing_score ?? "hold") === "hold" ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />
           </SettingsReadGrid>
         )}

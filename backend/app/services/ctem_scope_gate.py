@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, link_basis
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, is_family_word, link_basis
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -111,6 +111,13 @@ class SignalFacts:
     threat_software: tuple[str, ...] = ()
     #: #2523: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
     threat_lookup: str = ""
+    #: #2631: the CVSS, EPSS and KEV OpenCTI holds on the vulnerabilities the signal names, read by the
+    #: store when the policy sets a score minimum and the evidence carries no score.
+    cve_cvss: float | None = None
+    cve_epss: float | None = None
+    cve_kev: bool = False
+    #: #2631: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
+    score_lookup: str = ""
 
 
 #: #2171: the evidence keys the gate reads; any other key is kept on the signal but never reconciled.
@@ -237,6 +244,64 @@ def _float(value: object) -> float | None:
         return None
 
 
+#: #2631: the evidence keys a score is read from, in order: the gate's own, the OpenCTI listener's
+#: (``x_opencti_`` prefix removed), the GitHub advisory listener's.
+CVSS_EVIDENCE_KEYS: tuple[str, ...] = ("cvss", "cvss_base_score", "cvss_score")
+EPSS_EVIDENCE_KEYS: tuple[str, ...] = ("epss", "epss_score")
+KEV_EVIDENCE_KEYS: tuple[str, ...] = ("kev", "cisa_kev")
+
+
+def _score(evidence: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    """The first number *evidence* holds under *keys* (a ``{"score": x}`` object read too)."""
+    for key in keys:
+        value = evidence.get(key)
+        if isinstance(value, dict):
+            value = value.get("score")
+        if isinstance(value, bool):
+            continue
+        number = _float(value)
+        if number is not None:
+            return number
+    return None
+
+
+def _kev(evidence: dict[str, Any]) -> bool:
+    """Whether *evidence* flags the vulnerability in CISA KEV (a ``"true"`` string read too)."""
+    for key in KEV_EVIDENCE_KEYS:
+        value = evidence.get(key)
+        if value is True or (isinstance(value, str) and value.strip().lower() == "true"):
+            return True
+    return False
+
+
+def signal_scores(facts: SignalFacts) -> dict[str, Any]:
+    """#2631: the CVSS, EPSS and KEV of a signal, each with where it was read.
+
+    The evidence first (any key of :data:`CVSS_EVIDENCE_KEYS` / :data:`EPSS_EVIDENCE_KEYS`),
+    then the vulnerability in OpenCTI (``facts.cve_*``, read by the store); ``None`` when
+    neither holds it, never a silent pass.
+    """
+    out: dict[str, Any] = {}
+    for name, keys, remote in (
+        ("cvss", CVSS_EVIDENCE_KEYS, facts.cve_cvss),
+        ("epss", EPSS_EVIDENCE_KEYS, facts.cve_epss),
+    ):
+        value = _score(facts.evidence, keys)
+        if value is not None:
+            out[name], out[f"{name}_source"] = value, "evidence"
+        elif remote is not None:
+            out[name], out[f"{name}_source"] = remote, "opencti"
+        else:
+            out[name], out[f"{name}_source"] = None, None
+    out["kev"] = _kev(facts.evidence) or facts.cve_kev
+    return out
+
+
+def scores_in_evidence(evidence: dict[str, Any]) -> bool:
+    """#2631: whether *evidence* carries both a CVSS and an EPSS (the store then reads nothing)."""
+    return _score(evidence, CVSS_EVIDENCE_KEYS) is not None and _score(evidence, EPSS_EVIDENCE_KEYS) is not None
+
+
 def _verdict(evidence: dict[str, Any]) -> str:
     return str(evidence.get("verdict") or "").strip().lower()
 
@@ -323,14 +388,57 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
 
 
 def _product_matches(product: str, ref: str) -> bool:
-    """A software product named in a software reference (a name, or a CPE's product part)."""
+    """A software product named in a software reference (a name, or a CPE's product part).
+
+    #2628: a bare OS or vendor family (``Windows``, ``Linux``) names only itself, never
+    ``Windows Server`` or ``Linux Kernel``.
+    """
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
         return False
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
+    if is_family_word(p) and p != r.replace("_", " "):
+        return False
     return contains_word(p, r)
+
+
+#: #2628: the paths whose subject is a vulnerability on software the organization may run.
+VERSION_PATHS: frozenset[str] = frozenset({"new_vulnerability"})
+
+
+def version_not_verified(facts: SignalFacts, resolution: Resolution) -> int:
+    """How many inventory assets an unproven CVE match reached, 0 when the match is proven (#2628).
+
+    A ``new_vulnerability`` signal resolved only through the inventory software index
+    (no asset key, no typed software row, no shipped product or repository, no proof)
+    names a product family at most: when no reached asset reports the product from an
+    installed row with a version, nobody verified the running version, so it goes to
+    ``to_validate``. A versioned installed row, a typed software row, an asset or
+    repository the signal names, or a proving verdict keeps today's path to a case.
+    """
+    if facts.trigger_path not in VERSION_PATHS or not resolution.primary_assets:
+        return 0
+    # A typed software row that is a bare family (``Windows``) proves no product either.
+    if (
+        resolution.assets
+        or resolution.groups
+        or resolution.named_primary_assets
+        or any(not is_family_word(p) for p in resolution.products)
+        or resolution.repositories
+        or resolution.domains
+        or resolution.hosted_domains
+    ):
+        return 0
+    if _verdict(facts.evidence) in PROVING_VERDICTS:
+        return 0
+    hits = resolution.primary_assets
+    if not all(str(hit.get("software") or "") for hit in hits):
+        return 0
+    if any(hit.get("version_verified") for hit in hits):
+        return 0
+    return max(1, sum(int(row.get("assets") or 0) for row in resolution.primary_asset_totals.values()))
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
@@ -563,7 +671,8 @@ def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, 
         facts.trigger_path in PROVING_PATHS
         or _verdict(facts.evidence) in PROVING_VERDICTS
         or any(r.verdict in PROVING_VERDICTS for r in related)
-        or bool(facts.evidence.get("kev"))
+        or _kev(facts.evidence)
+        or facts.cve_kev
     )
     if proven or len(lenses) >= 3:
         return "high", lenses, proven
@@ -811,6 +920,17 @@ def decide(
             params={"keys": len(resolution.keys), "software": len(resolution.software_refs)},
         )
 
+    unverified = version_not_verified(facts, resolution)
+    if unverified:
+        # #2628: a CVE reached only through inventory software whose running version nobody
+        # verified (no typed software row, no asset key) is a candidate, never a case.
+        return done(
+            "to_validate",
+            "version not verified: the CVE matched inventory software only, no running version proven",
+            code="version_not_verified",
+            params={"assets": unverified},
+        )
+
     # Scope criticality: assets, their primary assets, the risk scenarios holding them.
     sources: list[dict[str, str]] = []
     for asset in resolution.assets:
@@ -874,25 +994,52 @@ def decide(
             params={"owner": str(accepted["owner"]), "until": str(accepted["expires_on"])},
         )
 
-    # CVE-bearing signals: the score thresholds of the policy.
-    kev = bool(facts.evidence.get("kev"))
-    cvss, epss = _float(facts.evidence.get("cvss")), _float(facts.evidence.get("epss"))
+    # CVE-bearing signals: the score thresholds of the policy, read from the evidence first, then
+    # from the vulnerability in OpenCTI (#2631); a score read nowhere follows ``missing_score``.
+    scores = signal_scores(facts)
     if record["inputs"]["cves"] or facts.subject_kind == "vulnerability":
-        if kev and policy.kev_always_in:
+        record["reconcile"]["score_lookup"] = facts.score_lookup or (
+            LOOKUP_NOT_NEEDED if scores_in_evidence(facts.evidence) else LOOKUP_NOT_READ
+        )
+        if scores["kev"] and policy.kev_always_in:
             checks.append({"rule": "kev_always_in", "value": True, "passed": True})
         else:
-            for rule, value, minimum in (("cvss_min", cvss, policy.cvss_min), ("epss_min", epss, policy.epss_min)):
+            for rule, name, minimum in (("cvss_min", "cvss", policy.cvss_min), ("epss_min", "epss", policy.epss_min)):
                 if minimum is None:
                     continue
+                value = scores[name]
+                score = name.upper()
                 if value is None:
+                    hold_missing = policy.missing_score == "hold"
                     checks.append(
-                        {"rule": rule, "value": None, "threshold": minimum, "passed": True, "note": "not scored"}
+                        {
+                            "rule": rule,
+                            "value": None,
+                            "threshold": minimum,
+                            "passed": not hold_missing,
+                            "note": "no score read",
+                            "missing_score": policy.missing_score,
+                        }
                     )
+                    if hold_missing:
+                        return done(
+                            "watchlist",
+                            f"no score read: {score} held for validation (policy minimum {minimum})",
+                            code="score_missing",
+                            params={"score": score, "minimum": minimum},
+                        )
                     continue
                 passed = value >= minimum
-                checks.append({"rule": rule, "value": value, "threshold": minimum, "passed": passed})
+                checks.append(
+                    {
+                        "rule": rule,
+                        "value": value,
+                        "threshold": minimum,
+                        "passed": passed,
+                        "source": scores[f"{name}_source"],
+                    }
+                )
                 if not passed:
-                    score = rule.split("_")[0].upper()
                     return done(
                         "watchlist",
                         f"{score} {value} below the policy minimum {minimum}",

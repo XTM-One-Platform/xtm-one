@@ -3,6 +3,8 @@
 * ``manage_opencti_entity_setting``  - entity type settings (hidden, enforce
   references, attribute configuration) via ``entitySetting`` module
 * ``manage_opencti_vocabulary``      - open vocabulary CRUD
+* ``list_opencti_vocabulary``        - read one open vocabulary (no write), for
+  agents denied the CRUD tool that must still read e.g. ``pattern_type_ov``
 * ``manage_opencti_status_template`` - workflow status template CRUD
 * ``list_opencti_subtypes``          - read entity sub-types + their workflow
   Status ids (to set a status) and template ids (for ``workflow_id`` filters)
@@ -10,7 +12,12 @@
 * ``manage_opencti_retention_rule``  - data retention policy CRUD (+ check)
 * ``manage_opencti_exclusion_list``  - IoC exclusion list CRUD (file upload)
 
-All require SETTINGS_SET* capabilities. Not draft-gated.
+All require SETTINGS_SET* capabilities. Not draft-gated: OpenCTI drafts stage
+knowledge only, so a write of these tools always lands on the live platform.
+While the run holds an active draft (the ``opencti-draft-id`` header), every
+write action is refused with nothing sent (#2660): an agent staging knowledge
+for review must never change a platform setting behind that review. Reads
+stay available; outside a draft nothing changes.
 """
 
 from __future__ import annotations
@@ -104,6 +111,50 @@ _EXCLUSION_LIST_APPLIES: dict[str, frozenset[str]] = {
 }
 
 
+# The actions of each customization tool that only read. Any other action writes to
+# the live platform and is refused while the run holds an active draft (#2660).
+_READ_ACTIONS: dict[str, frozenset[str]] = {
+    "manage_opencti_entity_setting": frozenset({"list", "get_by_type"}),
+    "manage_opencti_vocabulary": frozenset({"list", "get"}),
+    "manage_opencti_status_template": frozenset({"list", "get"}),
+    "manage_opencti_decay_rule": frozenset({"list", "get"}),
+    "manage_opencti_retention_rule": frozenset({"list", "get", "check"}),
+    "manage_opencti_exclusion_list": frozenset({"list", "get"}),
+}
+
+#: The customization tools that write platform settings: the names a seeded agent
+#: that must never change a setting denies (``tool_deny_list``, #2660).
+CUSTOMIZATION_WRITE_TOOLS: tuple[str, ...] = tuple(_READ_ACTIONS)
+
+_DRAFT_HEADER = "opencti-draft-id"
+
+
+def _refuse_in_draft(headers: Any, tool: str, action: str) -> str | None:
+    """The refusal of a live settings write while the run holds a draft, else None.
+
+    OpenCTI drafts do not stage settings: a vocabulary, entity setting, status
+    template, decay, retention or exclusion change made during a draft is live at
+    once, outside the review the draft stands for. Unknown actions fall through to
+    the tool's own "Unknown action" answer.
+    """
+    reads = _READ_ACTIONS[tool]
+    draft_id = headers.get(_DRAFT_HEADER) if hasattr(headers, "get") else None
+    if not draft_id or action in reads or not action:
+        return None
+    known = {
+        "manage_opencti_entity_setting": {"patch", *_STATUS_ACTIONS},
+        "manage_opencti_retention_rule": {"create", "update", "delete"},
+    }.get(tool, {"create", "update", "delete"})
+    if action not in known:
+        return None
+    return (
+        f"Refused: `{tool}` action '{action}' writes a live OpenCTI platform setting, and "
+        f"settings are not staged in a draft (this run holds draft {draft_id}). Nothing was "
+        "written. Ask a person with the settings capability to make this change; read "
+        f"actions ({', '.join(sorted(reads))}) stay available."
+    )
+
+
 def _unless(value: object, default: object) -> object:
     """*value*, or None when it is the parameter's default (a default is not a field passed)."""
     return None if value == default else value
@@ -173,6 +224,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_entity_setting", action):
+            return in_draft
 
         if action in _STATUS_ACTIONS:
             return await _edit_type_status(
@@ -393,6 +446,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_vocabulary", action):
+            return in_draft
 
         if action == "list":
             query = (
@@ -531,6 +586,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_status_template", action):
+            return in_draft
 
         if action == "list":
             query = (
@@ -671,6 +728,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_decay_rule", action):
+            return in_draft
 
         if action == "list":
             query = (
@@ -849,6 +908,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_retention_rule", action):
+            return in_draft
 
         if action == "list":
             query = (
@@ -1031,6 +1092,8 @@ def register(
         )
         if refused:
             return refused
+        if in_draft := _refuse_in_draft(headers, "manage_opencti_exclusion_list", action):
+            return in_draft
 
         if action == "list":
             query = (
@@ -1150,8 +1213,13 @@ def register(
             f"Unknown action '{action}'. Valid actions: list, get, create, update, delete."
         )
 
+    async def list_opencti_vocabulary(category: str = "", search: str = "", limit: int = 50) -> str:
+        """Read open vocabulary entries, no write: the read path of an agent denied the CRUD tool."""
+        return await manage_opencti_vocabulary("list", category=category, search=search, limit=limit)
+
     executor.register("manage_opencti_entity_setting", manage_opencti_entity_setting)
     executor.register("manage_opencti_vocabulary", manage_opencti_vocabulary)
+    executor.register("list_opencti_vocabulary", list_opencti_vocabulary)
     executor.register("manage_opencti_status_template", manage_opencti_status_template)
     executor.register("list_opencti_subtypes", list_opencti_subtypes)
     executor.register("manage_opencti_decay_rule", manage_opencti_decay_rule)
@@ -1219,6 +1287,26 @@ def register(
                     "limit": {"type": "integer", "default": 50},
                 },
                 "required": ["action"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="list_opencti_vocabulary",
+            description=(
+                "Read OpenCTI open vocabulary entries, no write: the values a field may take on "
+                "this platform, e.g. category 'pattern_type_ov' for the indicator pattern types "
+                "(kql, spl, sigma...) before creating indicators. Optional search and limit."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Vocabulary category, e.g. pattern_type_ov, report_types_ov.",
+                    },
+                    "search": {"type": "string"},
+                    "limit": {"type": "integer", "default": 50},
+                },
             },
             source=_SOURCE,
         ),

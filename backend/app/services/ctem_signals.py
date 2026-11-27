@@ -766,8 +766,12 @@ def path_catalog(
     activity: dict[str, dict[str, Any]] | None = None,
     by_source: dict[str, dict[str, dict[str, Any]]] | None = None,
     webhooks: dict[str, list[dict[str, Any]]] | None = None,
+    quiet: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
+
+    With *quiet* (``ctem_attack_surface.quiet_reasons``), a path with no signal in 30 days carries
+    ``quiet_reason``: why its pass raised nothing, as a code and its data (#2634).
 
     With *counts* (:func:`counts_by_path`), each path also carries its signals
     by state and ``configured``: a listener feeds it or it holds a signal. A
@@ -815,5 +819,8 @@ def path_catalog(
             seen = activity.get(path) or {}
             row["count_30d"] = int(seen.get("count_30d") or 0)
             row["last_signal_at"] = seen.get("last_signal_at")
+            # Why a path with no signal raised nothing, when its pass says it (#2634).
+            if not row["count_30d"] and (quiet or {}).get(path):
+                row["quiet_reason"] = (quiet or {})[path]
         out.append(row)
     return out

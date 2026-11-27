@@ -253,9 +253,26 @@ def test_policy_scope_applies_exclusions_criticality_and_scores():
     assert policy["rules"] == ["cvss_min", "asset_group_exclusions", "accepted_risks", "min_primary_asset_criticality"]
     cvss, accepted = policy["filter_groups"]
     assert cvss["mode"] == "or" and {"key": ["x_opencti_cisa_kev"], "values": ["true"]} in cvss["filters"]
-    assert {"key": ["x_opencti_cvss_base_score"], "values": [], "operator": "nil"} in cvss["filters"]
+    # missing_score defaults to hold: the gate holds an unscored vulnerability, so the funnel drops it too.
+    assert {"key": ["x_opencti_cvss_base_score"], "values": [], "operator": "nil"} not in cvss["filters"]
     # Only the unscoped, unexpired CVE is left out by name.
     assert accepted["filters"][0] == {"key": ["name"], "values": ["CVE-2024-3094"], "operator": "not_eq"}
+
+
+def test_policy_scores_keep_unscored_vulnerabilities_only_when_missing_score_is_pass():
+    from app.services.ctem_funnel import funnel_scope
+
+    index = _index(_reacher("db-1", ["OpenSSL"], ("payments", "asset", "db-1")))
+    nil_cvss = {"key": ["x_opencti_cvss_base_score"], "values": [], "operator": "nil"}
+    nil_epss = {"key": ["x_opencti_epss_score"], "values": [], "operator": "nil"}
+    held = funnel_scope(profile=_profile(cvss_min=7.0, epss_min=0.1), index=index, stack=_STACK, today=_TODAY)["policy"]
+    cvss, epss = held["filter_groups"][:2]
+    assert nil_cvss not in cvss["filters"] and nil_epss not in epss["filters"]
+    passed = funnel_scope(
+        profile=_profile(cvss_min=7.0, epss_min=0.1, missing_score="pass"), index=index, stack=_STACK, today=_TODAY
+    )["policy"]
+    cvss, epss = passed["filter_groups"][:2]
+    assert nil_cvss in cvss["filters"] and nil_epss in epss["filters"]
 
 
 def test_policy_without_primary_assets_narrows_the_exploitable_layer():
