@@ -9,6 +9,7 @@ seed's own bindings kept. Refused on a custom fleet and during an emergency stop
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -276,6 +277,29 @@ async def test_before_records_the_fleet_as_it_stood_not_the_changes() -> None:
     assert outcome.before["open_gates"] == 2 and outcome.before["open_items"] == 5
     assert outcome.autonomy_level == SEEDED_FLEET_AUTONOMY_LEVEL
     assert fleet.autonomy_level == SEEDED_FLEET_AUTONOMY_LEVEL
+
+
+@pytest.mark.asyncio
+async def test_reset_restarts_the_fleet_value_and_audits_both_marks() -> None:
+    # #2580: the reset stamps value_measured_since; a second reset moves it, both marks audited.
+    previous = datetime(2026, 11, 20, 8, 0, tzinfo=UTC)
+    fleet, agent = _fleet(value_measured_since=previous), _agent()
+    outcome, _member = await _run(fleet, agent, [], dry_run=False)
+
+    assert outcome.changed
+    assert fleet.value_measured_since > previous
+    assert outcome.audit_details()["value_measured_since"] == {
+        "from": previous.isoformat(),
+        "to": fleet.value_measured_since.isoformat(),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_leaves_the_value_mark() -> None:
+    fleet, agent = _fleet(value_measured_since=None), _agent()
+    outcome, _member = await _run(fleet, agent, [], dry_run=True)
+    assert fleet.value_measured_since is None
+    assert outcome.value_measured_since_to is None
 
 
 @pytest.mark.asyncio
