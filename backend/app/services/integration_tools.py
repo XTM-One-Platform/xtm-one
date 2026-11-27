@@ -6918,8 +6918,10 @@ async def _build_integration_tools_inner(
                 _builder_kwargs: dict[str, Any] = {"refresh_fn": refresh_fn}
                 # Forward scope_headers to provider build_tools so providers
                 # can pick up request-scoped headers (e.g. opencti-draft-id).
+                # The run's own dict, even empty: a provider writes back into it
+                # the context its runs delegate with (an OpenCTI draft, #2688).
                 _ctx_scope_headers = context.get("scope_headers")
-                if _ctx_scope_headers:
+                if _ctx_scope_headers or (isinstance(_ctx_scope_headers, dict) and _declares(builder, "scope_headers")):
                     _builder_kwargs["scope_headers"] = _ctx_scope_headers
                 # Forward the autonomous (server-side, no interactive user) hint
                 # ONLY to providers that accept it — the OpenCTI builder uses it

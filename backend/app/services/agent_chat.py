@@ -2092,6 +2092,10 @@ async def run_agent_chat(
         Tuple of (response_text, new_agent_id or None).
         If new_agent_id is set, the caller should re-bind the conversation.
     """
+    # The turn's own scope dict, never its caller's: a provider writes into it
+    # the context the runs this turn delegates to inherit (the OpenCTI draft the
+    # turn works in, #2688), and every delegation path forwards this dict.
+    scope_headers = dict(scope_headers) if scope_headers else {}
     # The run's ledger (``run_ledger``): an early exit, before any model
     # call, reports this empty one; the turn's ``finally`` replaces it with the
     # calls its trace recorded, on every exit including a raise.

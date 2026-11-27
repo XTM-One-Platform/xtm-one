@@ -41,7 +41,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.core.module_versions import RegisteredVersionFn
-from app.integrations.http import RefreshableHeaders, parse_compound_token
+from app.integrations.http import parse_compound_token
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _format_entity, _format_relationship
@@ -52,6 +52,7 @@ from .capabilities import install_capability_gate
 from .connectors import register as register_connectors
 from .customization import register as register_customization
 from .data_sharing import register as register_data_sharing
+from .draft_scope import DRAFT_HEADER, DraftScopedHeaders
 from .health_reads import register as register_health_reads
 from .ids import install_short_id_guard
 from .ingestion import register as register_ingestion
@@ -75,6 +76,7 @@ def build_tools(
     *,
     platform_names_sink: Callable[[Any], None] | None = None,
     registered_version_fn: RegisteredVersionFn | None = None,
+    scope_headers: dict[str, str] | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenCTI integration tools.
@@ -82,6 +84,11 @@ def build_tools(
     ``token`` is ``base_url||api_token`` (compound format). ``registered_version_fn``
     (injected for an integration a registration owns) reads the version XTM One
     registered, named beside the live answer of ``get_opencti_platform_version``.
+
+    ``scope_headers`` is the run's scope (#2688): its ``opencti-draft-id`` is the
+    draft the build starts in, and the draft the run then activates, creates or
+    drops is written back to it, so the runs it delegates to (consult,
+    background task, transfer) start in the same draft.
     """
     base_url, api_token = parse_compound_token(token, 2)
     # ``parse_compound_token`` does not normalise - strip whitespace and the
@@ -100,20 +107,21 @@ def build_tools(
     # ``_graphql`` re-mints proactively (before expiry) and reactively (on an
     # auth-shaped GraphQL error). ``refresh_fn`` is None for a static API key, in
     # which case this behaves exactly like the plain dict it replaces.
-    headers = RefreshableHeaders(
+    # Forward the opencti-draft-id header when present in scope_headers so that
+    # all GraphQL calls are scoped to the correct draft context, and mirror the
+    # draft the run moves to back into that scope for its delegations (#2688).
+    run_scope: dict[str, str] | None = scope_headers if isinstance(scope_headers, dict) else None
+    draft_id: str = (run_scope or {}).get(DRAFT_HEADER, "")
+    headers = DraftScopedHeaders(
         {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         },
         refresh_fn=_kwargs.get("refresh_fn"),
+        run_scope=run_scope,
     )
-
-    # Forward the opencti-draft-id header when present in scope_headers so that
-    # all GraphQL calls are scoped to the correct draft context.
-    scope_headers: dict[str, str] = _kwargs.get("scope_headers") or {}
-    draft_id: str = scope_headers.get("opencti-draft-id", "")
     if draft_id:
-        headers["opencti-draft-id"] = draft_id
+        headers[DRAFT_HEADER] = draft_id
 
     # Autonomous = server-side run with no interactive user (e.g. an assignment).
     # The knowledge draft gate uses this to auto-provision a draft on the first

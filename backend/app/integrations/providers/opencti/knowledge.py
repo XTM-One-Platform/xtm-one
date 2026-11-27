@@ -83,6 +83,7 @@ from ._common import (
     format_bulk_outcome,
 )
 from .access import _refuse_unapplied
+from .draft_scope import not_found_message
 from .markings import resolve_markings
 from .workflow import (
     WORKFLOW_FILTER_KEY,
@@ -2025,7 +2026,7 @@ def register_knowledge(
         if err:
             return err
         if not entity:
-            return f"Entity '{entity_id}' not found."
+            return not_found_message(f"Entity '{entity_id}'", headers)
         return "\n".join([_format_entity(entity, base_url, full_text=True), *custom])
 
     # ── 3. Get relationship by ID ────────────────────────────────────
@@ -2038,7 +2039,7 @@ def register_knowledge(
         if err:
             return err
         if not rel:
-            return f"Relationship '{relationship_id}' not found."
+            return not_found_message(f"Relationship '{relationship_id}'", headers)
         return "\n".join([_format_relationship(rel, base_url, full_text=True), *custom])
 
     # ── 4. List STIX domain objects ───────────────────────────────────
@@ -3361,7 +3362,7 @@ def register_knowledge(
             return err
         sdo = data.get("stixDomainObject")
         if not sdo:
-            return f"Container {container_id} not found."
+            return not_found_message(f"Container {container_id}", headers)
         etype = sdo.get("entity_type", "Unknown")
         if etype not in container_types:
             return (
