@@ -1,3 +1,5 @@
+# ca-certificates: provides the CA bundle copied into the distroless final-minimal stage (see Dockerfile.sandbox.python).
+ca-certificates
 gcc
 libfreetype6
 libpng16-16

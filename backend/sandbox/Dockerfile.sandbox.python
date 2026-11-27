@@ -250,5 +250,8 @@ COPY --from=busybox /rootfs/bin/ /bin/
 COPY --from=python-runtime /rootfs/ /
 COPY --from=builder /opt/venv/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /opt/console-scripts /usr/local/bin
+# CA bundle for TLS verification: final-minimal is distroless with no package
+# manager, so copy the bundle built in the builder stage (see apt.sandbox.base.txt).
+COPY --from=builder /etc/ssl/certs/ /etc/ssl/certs/
 
 WORKDIR /workspace
