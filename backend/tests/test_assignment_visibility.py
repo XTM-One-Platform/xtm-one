@@ -531,6 +531,14 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "the agent owner's own personal rows the agent binds (user_id is the owner), "
         "read for the agent settings banner; lists nothing to a caller (#8824)"
     ),
+    ("services/integration_credentials.py", "lendable_integration_ids"): (
+        "the agent owner's own personal rows the agent binds (user_id is the owner), "
+        "what integration_lending='true' lends; lists nothing to a caller (#2719)"
+    ),
+    ("services/fleet_health_signals.py", "_lending_findings"): (
+        "which bound rows a shared member's owner could lend (personal, owned by the "
+        "agent's owner), a health finding's evidence ids; decides no visibility (#2719)"
+    ),
     ("services/fleets.py", "grant_fleet_health_advisory"): (
         "finds the platform-seeded fleet-health-advisory skill by its slug tag to bind it "
         "to a fleet orchestrator during the fleet seed; answers no row to a caller, never a caller tier (#11700)"
