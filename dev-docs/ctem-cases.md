@@ -317,6 +317,13 @@ same way.
   `max_cvss` and `max_epss` are `null` with `members_facts_unread` and
   `facts_reason` (`ctem_cases_view.FACTS_UNREAD_REASON`), never "0 KEV" or
   "no CVSS"; `aggregates_restricted` keeps its scope meaning.
+- primary assets of a member (#2563): a signal member carries the primary
+  assets its gate decision recorded; an OpenCTI or OpenAEV member reaches them
+  at each view build (`ctem_cases_source.with_primary_assets`, one
+  `ctem_primary_assets.load_index` read per build) through the product it runs
+  or the assets it was found on, with the same proven (manual, OpenCRQ link) /
+  inferred (rule link) split. No backfill: an open case counts them at the next
+  view build.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
