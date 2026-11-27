@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -58,6 +59,19 @@ PAGE = 200
 MAX_PER_ROUTE = 5000
 #: The longest window an administrator may set, in days.
 MAX_WINDOW_DAYS = 365
+#: Told of each entity a route reads (#2652): the purge job's live progress; set by :func:`resync`.
+_ON_READ: ContextVar[Callable[[], Awaitable[None]] | None] = ContextVar("ctem_resync_on_read", default=None)
+
+
+async def _tick() -> None:
+    """One entity read: tell the job's progress, when it listens; never raises."""
+    hook = _ON_READ.get()
+    if hook is None:
+        return
+    try:
+        await hook()
+    except Exception:
+        logger.info("CTEM resync: progress not written", exc_info=True)
 
 
 @dataclass(frozen=True)
@@ -404,6 +418,7 @@ async def resync_world(
                 if payload is None:
                     continue
                 out["read"] += 1
+                await _tick()
                 if await notify("opencti", "update", payload, verified=True):
                     out["recorded"] += 1
             if AUTH_REFUSED in out["errors"][seen:]:
@@ -489,6 +504,7 @@ async def resync_pir(
                 if payload is None:
                     continue
                 out["read"] += 1
+                await _tick()
                 if await notify("opencti", "update", payload, verified=True):
                     out["recorded"] += 1
     return out
@@ -528,6 +544,7 @@ async def resync_third_party(
                 if not node.get("id"):
                     continue
                 out["read"] += 1
+                await _tick()
                 data = {
                     "type": "report",
                     "id": node.get("standard_id") or node["id"],
@@ -620,6 +637,7 @@ async def resync_aikido(
             ):
                 continue
             out["read"] += 1
+            await _tick()
             payload = {"event_type": "issue.open.created", "payload": issue}
             if await notify("aikido", "issue_open_created", payload, verified=True):
                 out["recorded"] += 1
@@ -695,6 +713,7 @@ async def resync_github(
                         if not isinstance(alert, dict) or not _in_window(alert, since, ("created_at",)):
                             continue
                         out["read"] += 1
+                        await _tick()
                         payload = {"action": "reopened", "alert": alert, "repository": alert.get("repository") or {}}
                         if await notify("github", "dependabot_alert.reopened", payload, verified=True):
                             out["recorded"] += 1
@@ -824,6 +843,7 @@ async def resync_openaev_findings(
                 if payload is None:
                     continue
                 out["read"] += 1
+                await _tick()
                 if await notify("openaev", "finding_created", payload, verified=True):
                     out["recorded"] += 1
                 if out["read"] >= MAX_PER_ROUTE:
@@ -913,9 +933,31 @@ async def resync(
     actor_id: uuid.UUID,
     progress: Callable[[str, int], Awaitable[None]],
     windows: dict[str, int | None] | None = None,
+    on_read: Callable[[], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
-    """Step 3: every route with its window, then the passes; counts per route and per trigger path."""
+    """Step 3: every route with its window, then the passes; counts per route and per trigger path.
+
+    *on_read* is awaited for each entity a route reads (the job's live progress, #2652).
+    """
     windows = validate_windows(windows)
+    token = _ON_READ.set(on_read)
+    try:
+        return await _resync(sessions=sessions, actor_id=actor_id, progress=progress, windows=windows)
+    finally:
+        _ON_READ.reset(token)
+
+
+#: The progress reports one resync makes: each world route, the other listed routes, the passes.
+ROUTE_COUNT = sum(1 for w in WINDOWS if w.entity_type) + 5 + 3
+
+
+async def _resync(
+    *,
+    sessions: Any,
+    actor_id: uuid.UUID,
+    progress: Callable[[str, int], Awaitable[None]],
+    windows: dict[str, int | None],
+) -> dict[str, Any]:
     routes: dict[str, Any] = {}
     steps: tuple[tuple[str, Callable[..., Awaitable[Any]]], ...] = (
         ("world", resync_world),
