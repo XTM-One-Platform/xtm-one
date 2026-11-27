@@ -57,7 +57,11 @@ def ledger(monkeypatch):
     async def _ledger_facts(_db, **_kw):
         return _facts(), "EUR"
 
+    async def _fleet_supervisors(_db, _fleet_ids):
+        return {}
+
     monkeypatch.setattr(roi_ledger, "ledger_facts", _ledger_facts)
+    monkeypatch.setattr(roi_ledger, "fleet_supervisors", _fleet_supervisors)
 
 
 def _member() -> Viewer:
