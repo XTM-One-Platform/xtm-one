@@ -2135,6 +2135,17 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM evidence health pass error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM inventory evaluation (#2642): path 6 on the inventory as it stands, daily.
+        try:
+            from app.services import ctem_inventory_staleness
+            from app.services.ctem_signal_purge import intake_paused
+
+            inventory_counts = None if await intake_paused() else await ctem_inventory_staleness.scheduled_pass(db)
+            if inventory_counts:
+                logger.info("CTEM inventory evaluation: %s", inventory_counts)
+        except Exception as e:
+            logger.error("CTEM inventory evaluation error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM ticketing sync (#917): create the ticket of a mobilized case,
         # pull the ticket status (ServiceNow's inbound), push the case state.
         # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).

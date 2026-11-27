@@ -28,6 +28,7 @@ One row per router `app/main.py` registers (`File` is relative to `backend/app/a
 | `/api/v1/agents` (memory) | `v1/agent_memory.py` | Agent memory list + semantic search | Authenticated |
 | `/api/v1/agents/{agent_id}/a2a` | `v1/a2a_admin.py` | An agent's A2A exposure status (read-only) | Authenticated |
 | `/api/v1/agents/{agent_id}/a2a/partner-fleet-reads` | `v1/a2a_admin.py` | PUT: the partner fleet reads opt-in of the live exposure (#2202) | Authenticated |
+| `/api/v1/agents/{agent_id}/a2a/partner-owner-reads` | `v1/a2a_admin.py` | PUT: the partner owner reads opt-in of the live exposure (#2638), audited | Authenticated |
 | `/api/v1/skills`         | `v1/agent_skills.py`   | Agent skill CRUD, versions, packages (validate, import, export), refresh from URL, company-managed toggle | Authenticated (toggle: **Admin**) |
 | `/api/v1/prompts`        | `v1/prompts.py`        | Prompt CRUD, versions, export/import, company-managed toggle | Authenticated (toggle: **Admin**) |
 | `/api/v1/assignments`      | `v1/assignments.py`      | Assignment CRUD, manual trigger, runs, HITL respond/dismiss, follow-up, purge | Authenticated (`DELETE /runs/purge`, `POST /runs/cleanup-stale`: **Admin**) |

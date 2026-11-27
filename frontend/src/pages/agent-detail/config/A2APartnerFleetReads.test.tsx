@@ -80,4 +80,38 @@ describe("A2APartnerFleetReads", () => {
     expect(screen.getAllByText(reason)).toHaveLength(1);
     expect(screen.queryByText("Error")).toBeNull();
   });
+
+  it("shows the owner reads opt-in off by default, on when the exposure carries it", () => {
+    const { unmount } = renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />);
+    const name = "Partners read fleets and runs as the owner";
+    expect(screen.getByRole("switch", { name }).getAttribute("aria-checked")).toBe("false");
+    unmount();
+    renderWithProviders(
+      <A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true, partner_owner_reads: true }} />,
+    );
+    expect(screen.getByRole("switch", { name }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("switches the owner reads opt-in on its own route", async () => {
+    put.mockResolvedValue({ exposed: true, partner_owner_reads: true });
+    renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Partners read fleets and runs as the owner" }));
+
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith(`/agents/${AGENT}/a2a/partner-owner-reads`, { enabled: true }),
+    );
+  });
+
+  it("names the owner reads switch when it fails, never the fleet switch", async () => {
+    put.mockRejectedValue(new Error("404 Not Found: Agent not exposed"));
+    renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />, {
+      client: testQueryClient({ appMutationCache: true }),
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Partners read fleets and runs as the owner" }));
+
+    expect(await screen.findAllByText("Could not change the partner owner reads")).toHaveLength(1);
+    expect(screen.queryByText("Could not change the partner fleet reads")).toBeNull();
+  });
 });

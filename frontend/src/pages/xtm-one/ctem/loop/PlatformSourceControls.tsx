@@ -36,8 +36,8 @@ import {
   enableRefusalText,
   legacyCleanupCount,
   platformObjectLinks,
-  platformSourceReason,
   sharedFeeds,
+  sourceReasonLine,
 } from "./platform-sources";
 
 /** The platform's name on an Open in label. */
@@ -208,7 +208,8 @@ function PlatformSourceLine({
   const { toast } = useToast();
   const disable = useDisableCtemPlatformSource();
   const runAs = useRunAsLabel(source.run_as_user_id);
-  const reason = platformSourceReason(source, t_i18n);
+  // The reason ended by its full stop, then its fix in the reader's language (UX round 1 on #2653, B2).
+  const reason = sourceReasonLine(source, null, t_i18n);
   const toggle = (on: boolean) => {
     if (on) return onEnable(source);
     if (!source.id) return;

@@ -2243,7 +2243,7 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
             # is its own tasks' (``a2a.partner_runs``), never the run-as
             # identity's.
             partner = (
-                PartnerPrincipal(exposure_id=exposure.id, client_id=client_id)
+                PartnerPrincipal(exposure_id=exposure.id, client_id=client_id, task_id=task.id)
                 if client_id and getattr(exposure, "id", None)
                 else None
             )

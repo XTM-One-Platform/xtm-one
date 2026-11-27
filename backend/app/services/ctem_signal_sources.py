@@ -88,6 +88,11 @@ class BoundSources(set[tuple[str, str]]):
         self.not_set_up: set[tuple[str, str]] = set()
         #: Per provisioned source, the integrations on which it is in error (#2434, UX round 1 on #2442).
         self.error: dict[tuple[str, str], int] = {}
+        #: Per provisioned source in error, one entry per integration: its reason, last attempt and fix (#2637).
+        self.error_details: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        #: The provisioned sources switched off after a refused enable for a missing setting (#2637):
+        #: Not configured, never Error.
+        self.not_configured: set[tuple[str, str]] = set()
 
 
 def source_key(provider: str, kind: str, name: str = "") -> str:
@@ -142,6 +147,8 @@ PATH_CAPABILITIES: dict[str, tuple[str, ...]] = {
 }
 
 _ATTACK_SURFACE = tuple((p, "pass") for p in ATTACK_SURFACE_PROVIDERS)
+#: The inventory evaluation of path 6 (#2642): XTM One's own records, on wherever XTM One runs.
+INVENTORY_PASS: tuple[str, str] = ("xtm_one", "pass")
 
 #: The sources of each path. Keep in step with ``ctem_signal_listeners.LISTENERS``
 #: (``test_ctem_signal_sources.py`` fails on a listener with no source row).
@@ -198,6 +205,8 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
             Source(p, k, "The attack-surface pass sees a name resolve to nothing or a host unseen")
             for p, k in _ATTACK_SURFACE
         ),
+        # #2642: the inventory as it stands, daily and at the resync of a purge (ctem_inventory_staleness).
+        Source("xtm_one", "pass", "The inventory evaluation finds an asset unseen past the threshold or no longer synced"),
     ),
     "surface_drift": (
         *(Source(p, k, "The attack-surface pass sees an undeclared host or a new port") for p, k in _ATTACK_SURFACE),
@@ -308,6 +317,8 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
     excluded = (getattr(bound, "excluded", None) or {}).get(path, set())
     not_set_up = getattr(bound, "not_set_up", None) or set()
     errors = getattr(bound, "error", None) or {}
+    details = getattr(bound, "error_details", None) or {}
+    not_configured = getattr(bound, "not_configured", None) or set()
     out: list[dict[str, Any]] = []
     for s in PATH_SOURCES.get(path, ()):
         pair = (s.provider, s.kind)
@@ -327,6 +338,10 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
                 "not_set_up": pair not in known and pair in not_set_up,
                 # The integrations on which this provisioned source is in error (#2434).
                 "error_count": int(errors.get(pair, 0)),
+                # Per integration in error: its reason, last attempt and fix (#2637).
+                "errors": list(details.get(pair, [])),
+                # Switched off after a refused enable for a missing setting: Not configured, never Error (#2637).
+                "not_configured": pair not in known and pair in not_set_up and pair in not_configured,
                 "excluded": own in excluded,
                 # Bound before the exclusion: an excluded source of a connected provider still reads connected.
                 "available": pair in known,
@@ -488,6 +503,8 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     connected = _connected_ids([(r[0], r[1]) for r in rows])
     bound = BoundSources((p, "listener") for p in connected)
     bound.update(reader_pairs(connected))
+    # #2642: the inventory evaluation reads XTM One's own records: no integration, always on.
+    bound.add(INVENTORY_PASS)
 
     primary = await get_primary(db)
     if primary is not None:
@@ -517,7 +534,14 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     for pair in PROVISIONED_PAIRS:
         bound.discard(pair)
     turned_off: set[tuple[str, str]] = set()
-    provisioned = await provisioned_pairs(db, connected, errors=bound.error, turned_off=turned_off)
+    provisioned = await provisioned_pairs(
+        db,
+        connected,
+        errors=bound.error,
+        turned_off=turned_off,
+        details=bound.error_details,
+        not_configured=bound.not_configured,
+    )
     bound.update(provisioned)
     # A source an administrator switched off reads Off, as its switch does (#2436, Sam 26 Nov 2026).
     bound.off |= {pair for pair in turned_off if pair not in bound and pair not in bound.error}
@@ -557,6 +581,8 @@ async def provisioned_pairs(
     *,
     errors: dict[tuple[str, str], int] | None = None,
     turned_off: set[tuple[str, str]] | None = None,
+    details: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
+    not_configured: set[tuple[str, str]] | None = None,
 ) -> set[tuple[str, str]]:
     """The provisioned sources on the caller's connected integrations: platform sources, then the
     assignments that still hold a provisioned trigger until the migration moves them (#2434).
@@ -565,10 +591,15 @@ async def provisioned_pairs(
     reads ``error`` (``ctem_platform_sources.status_of``: enabled and not provisioned, or a refused enable).
     *turned_off*, when given, receives the sources whose platform source exists switched off. An
     integration with a platform source row is read from that row alone: an assignment trigger left on
-    it never makes a source switched off read on (#2436, Sam 26 Nov 2026)."""
+    it never makes a source switched off read on (#2436, Sam 26 Nov 2026).
+
+    *details*, when given, receives per source in error one entry per integration: its reason, reason
+    code, last attempt and fix (``ctem_platform_sources.error_detail``, #2637). A source switched off
+    after a refused enable for a missing setting (``CONFIGURATION_CODES``) is never an error: it goes
+    to *not_configured* when given, and reads Not configured (#2637)."""
     from app.models.assignment import Assignment
     from app.models.ctem_signal_source import CtemSignalSource
-    from app.services.ctem_platform_sources import is_connected, status_of
+    from app.services.ctem_platform_sources import error_detail, is_connected, status_of
     from app.services.openaev_trigger_provisioning import STATE_KEY as OPENAEV_STATE_KEY
     from app.services.opencti_trigger_provisioning import STATE_KEY as OPENCTI_STATE_KEY
 
@@ -591,12 +622,20 @@ async def provisioned_pairs(
         if str(integration_id) not in connected.get(provider, set()):
             continue
         owned.add((provider, kind, str(integration_id)))
-        status = status_of(SimpleNamespace(enabled=enabled, state=state))[0]
+        status, reason = status_of(SimpleNamespace(enabled=enabled, state=state))
         if enabled and is_connected(state):
             out.add((provider, kind))
+        elif status == "not_configured":
+            # Switched off for a missing setting: Not configured, never Error (#2637).
+            if not_configured is not None:
+                not_configured.add((provider, kind))
         elif status == "error":
             if errors is not None:
                 errors[(provider, kind)] = errors.get((provider, kind), 0) + 1
+            if details is not None:
+                details.setdefault((provider, kind), []).append(
+                    error_detail(str(integration_id), reason, state, enabled=bool(enabled))
+                )
         elif not enabled and turned_off is not None:
             turned_off.add((provider, kind))
     configs = (

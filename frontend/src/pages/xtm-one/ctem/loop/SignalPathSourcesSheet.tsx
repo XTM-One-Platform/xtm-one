@@ -26,7 +26,7 @@
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
@@ -61,7 +61,7 @@ import {
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
 import { PlatformSourceControls, PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
-import { isProvisioned, platformSourceReason } from "./platform-sources";
+import { isProvisioned, platformSourceFixRoute, sourceErrorLines, sourceReasonLine } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
 import { WebhookSourceDialog } from "./WebhookSourceDialog";
 import {
@@ -210,6 +210,7 @@ function SourceConfig({
       {source.kind === "listener" && !provisioned && state !== "not_connected" && (
         <p className="content-compact text-default-secondary">{t_i18n("A live listener runs while its integration is connected.")}</p>
       )}
+      {provisioned && state === "error" && <SourceFixLinks source={source} platformSources={platformSources} />}
       {provisioned && state !== "not_connected" && (
         <PlatformSourceControls source={source} platformSources={platformSources} isAdmin={isAdmin} onEnable={onEnable} />
       )}
@@ -258,7 +259,7 @@ interface SourceTableRow {
 }
 
 /** The sort order of the states: what needs a look first. */
-const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, off: 2, not_set_up: 3, excluded: 4, not_connected: 5 };
+const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, off: 2, not_configured: 3, not_set_up: 3, excluded: 4, not_connected: 5 };
 
 function stateLabel(state: SourceState): string {
   return sourceStateIcon(state)?.label ?? "Not connected";
@@ -279,21 +280,70 @@ function runAsUsers(source: CtemSignalPathSource, platform: readonly CtemPlatfor
   return [...new Set(ownLines(source, platform).filter((s) => s.enabled && s.run_as_user_id).map((s) => s.run_as_user_id as string))].join(",");
 }
 
-/** The status of a row: the one state word of the path list (A4), with the reason of an error in its tooltip. */
+/**
+ * The reason lines of a row, one per integration and named (UX round 1 on #2653, B1): each reason ends with its
+ * full stop, then its fix in the reader's language and the last attempt (B2). An error reads the path answer
+ * (#2637), so a reader without the platform list reads why too; a Not configured row its platform lines.
+ */
+function useReasonLines(row: SourceTableRow, platformSources: readonly CtemPlatformSource[]): string[] {
+  const { t_i18n, intl } = useFormatter();
+  const formatTime = (iso: string) => intl.formatDate(iso, { dateStyle: "medium", timeStyle: "short" });
+  const own = ownLines(row.source, platformSources);
+  const names = new Map(own.map((s) => [s.integration_id, s.integration_name]));
+  if (row.source.last_error) return [row.source.last_error];
+  const fromPath = row.state === "error" ? sourceErrorLines(row.source, names, t_i18n, formatTime) : [];
+  if (fromPath.length > 0) return fromPath;
+  return own.map((s) => sourceReasonLine(s, s.integration_name, t_i18n)).filter(Boolean);
+}
+
+/** The status of a row: the one state word of the path list (A4), with its reasons in its tooltip, one line each. */
 function SourceStatus({ row, platformSources }: { row: SourceTableRow; platformSources: readonly CtemPlatformSource[] }) {
   const { t_i18n } = useFormatter();
   const icon = sourceStateIcon(row.state);
-  const reasons = ownLines(row.source, platformSources)
-    .map((s) => platformSourceReason(s, t_i18n))
-    .filter(Boolean);
-  const reason = row.source.last_error ?? (reasons.length > 0 ? reasons.join(" ") : null);
+  const lines = useReasonLines(row, platformSources);
+  // A one-word status wraps rather than being cut (UX round 1 on #2653, B3).
   const word = (
     <span className="flex min-w-0 items-center gap-1" data-testid="ctem-path-source-state">
       {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden />}
-      <span className="truncate">{t_i18n(stateLabel(row.state))}</span>
+      <span className="min-w-0 break-words">{t_i18n(stateLabel(row.state))}</span>
     </span>
   );
-  return reason ? <Tip content={reason}>{word}</Tip> : word;
+  if (lines.length === 0) return word;
+  const content = (
+    <span className="flex flex-col gap-1" data-testid="ctem-path-source-reasons">
+      {lines.map((line) => (
+        <span key={line}>{line}</span>
+      ))}
+    </span>
+  );
+  return <Tip content={content}>{word}</Tip>;
+}
+
+/**
+ * The fix of each integration in error, in the opened row (UX round 1 on #2653, B2): a real action, the page
+ * where it is done; a fix done on this page (its switch, Set up) is the row's own control and gets no link.
+ */
+function SourceFixLinks({ source, platformSources }: { source: CtemSignalPathSource; platformSources: readonly CtemPlatformSource[] }) {
+  const { t_i18n } = useFormatter();
+  const names = new Map(ownLines(source, platformSources).map((s) => [s.integration_id, s.integration_name]));
+  const fixes = (source.errors ?? [])
+    .map((e) => ({ e, route: platformSourceFixRoute(e) }))
+    .filter((f): f is { e: NonNullable<CtemSignalPathSource["errors"]>[number]; route: string } => Boolean(f.route));
+  if (fixes.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1 content-compact" data-testid="ctem-path-source-fixes">
+      {fixes.map(({ e, route }) => (
+        <li key={e.integration_id} className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 text-default-secondary">
+            {sourceReasonLine(e, names.get(e.integration_id), t_i18n)}
+          </span>
+          <Link to={route} className="shrink-0 text-accent underline-offset-2 hover:underline" data-testid="ctem-path-source-fix">
+            {t_i18n("Fix it")}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** The side panel of one trigger path's sources; `path` null closes it. */
@@ -415,7 +465,8 @@ export function SignalPathSourcesSheet({
     {
       key: "status",
       header: "Status",
-      width: 120,
+      // Room for the longest state word in en/fr/es/ja; a longer one wraps, never cut (UX round 1 on #2653, B3).
+      width: 160,
       sortValue: (row) => STATE_RANK[row.state],
       csv: (row) => t_i18n(stateLabel(row.state)),
       cell: (row) => <SourceStatus row={row} platformSources={platformSources} />,

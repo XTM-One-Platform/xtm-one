@@ -6,7 +6,13 @@
  * icon of each path and lens. Pure, so the status derivation is unit-tested.
  */
 import type { IconName } from "@filigran/design-system";
-import type { CtemSignalPath, CtemSignalPathSource, CtemSignalPathStatus } from "@/hooks/api/useCtemSignalsApi";
+import type {
+  CtemSignalPath,
+  CtemSignalPathSilentReason,
+  CtemSignalPathSource,
+  CtemSignalPathStatus,
+  CtemSilentReasonCode,
+} from "@/hooks/api/useCtemSignalsApi";
 import type { SignalSourcesSettings } from "@/lib/organization-profile";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
@@ -44,6 +50,26 @@ function pathErrorCount(path: Pick<CtemSignalPath, "sources">): number {
 }
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** Why a path that is on records nothing, in plain words (#2642): the code the API answers, never its English detail. @i18n-keys */
+const SILENT_REASON_LABEL = {
+  never_evaluated: "The inventory has not been evaluated yet: it is evaluated daily and after a purge",
+  no_asset_past_threshold: "No asset is past the threshold and every synced asset still has its sync",
+  upstream_sync_failed: "An inventory sync failed: its assets are not judged stale until it reads again",
+  listener_never_fired: "No source of this path has sent an event yet",
+  inventory_truncated: "No checked asset is past the threshold, but the inventory is larger than one evaluation reads",
+} as const satisfies Record<CtemSilentReasonCode, string>;
+
+/** The sentence a silent path's info mark shows: its reason, then its last evaluation when there is one (#2642). */
+export function silentReasonText(reason: CtemSignalPathSilentReason, t_i18n: Translate, formatDate: (iso: string) => string): string {
+  // A code this screen does not know yet reads a translated sentence, never the API's English detail.
+  const label = SILENT_REASON_LABEL[reason.code];
+  const sentence = label ? t_i18n(label) : t_i18n("This path records no signal yet");
+  const at = reason.evaluation?.at;
+  if (!at) return sentence;
+  const evaluated = reason.evaluation?.evaluated ?? 0;
+  return `${sentence}. ${t_i18n("Last evaluated {date}: {count, plural, one {# asset} other {# assets}} checked", { date: formatDate(at), count: evaluated })}`;
+}
 
 /** A path's status in words; an error says how many sources are in error ("1 source in error"). */
 export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">, t_i18n: Translate): string {
@@ -91,7 +117,7 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-export type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
+export type SourceState = "error" | "bound" | "excluded" | "off" | "not_configured" | "not_set_up" | "not_connected";
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
   // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
@@ -101,6 +127,8 @@ export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet
   if (source.off) return "off";
   // A webhook source is never "not connected": it has its own receiver, off until switched on (#2506).
   if (source.kind === "webhook") return "off";
+  // Switched off for a missing setting: Not configured, never Error (#2637).
+  if (source.not_configured && connected.has(source.provider)) return "not_configured";
   return connected.has(source.provider) ? "not_set_up" : "not_connected";
 }
 
@@ -215,13 +243,14 @@ export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignal
  * The status icon and word of one source (#2436, Sam 26 Nov 2026): on, off, not used here, not set up or error, so
  * a path's row alone tells what runs; the side panel says the same word. A source not connected here has none:
  * its greyed logo says it. The icon is decorative, the word travels in the tooltip and beside it. Its words are catalog keys
- * already (On, Off, Not used here, Not set up, Error).
+ * already (On, Off, Not used here, Not set up, Not configured, Error).
  */
 const SOURCE_STATE_ICON = {
   bound: { icon: "circle-check", className: "text-feedback-success-primary", label: "On" },
   off: { icon: "circle-x", className: "text-default-secondary", label: "Off" },
   excluded: { icon: "circle-x", className: "text-default-secondary", label: "Not used here" },
   not_set_up: { icon: "circle-alert", className: "text-default-secondary", label: "Not set up" },
+  not_configured: { icon: "circle-alert", className: "text-default-secondary", label: "Not configured" },
   error: { icon: "circle-alert", className: "text-feedback-error-primary", label: "Error" },
 } as const satisfies Record<Exclude<SourceState, "not_connected">, { icon: IconName; className: string; label: string }>;
 

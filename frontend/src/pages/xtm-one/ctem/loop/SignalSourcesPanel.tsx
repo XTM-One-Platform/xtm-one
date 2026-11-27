@@ -42,6 +42,7 @@ import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { PlatformSourceEnableDialog } from "./PlatformSourceControls";
+import { quietReasonText } from "./quiet-reason";
 import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
 import { isProvisioned } from "./platform-sources";
 import { signalsHref } from "./signals-route";
@@ -62,6 +63,7 @@ import {
   sourceDisplayState,
   sourceKindText,
   sourceState,
+  silentReasonText,
   sourceStateIcon,
   splitSources,
 } from "./signal-sources";
@@ -246,12 +248,42 @@ function MoreSources({
   );
 }
 
+/** The info mark beside a 0 count: why the path records nothing, in the DS tooltip (#2642). */
+function SilentReasonMark({ text }: { text: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={text}>
+      <span
+        tabIndex={tabIndex}
+        role="img"
+        aria-label={text}
+        className="inline-flex shrink-0 items-center rounded-sm text-default-secondary"
+        data-testid="ctem-signal-sources-silent-reason"
+      >
+        <Icon name="info" size={16} aria-hidden />
+      </span>
+    </Tip>
+  );
+}
+
 /** The 30-day count with its per-state tooltip; no tab stop of its own inside a row that opens (#1445). */
 function CountCell({ tip, title, label }: { tip: string; title: string; label: string }) {
   const tabIndex = useTriggerTabIndex();
   return (
     <Tip content={tip}>
       <span className="tabular-nums" tabIndex={tabIndex} title={title} data-testid="ctem-signal-sources-30d">
+        {label}
+      </span>
+    </Tip>
+  );
+}
+
+/** The empty Last signal cell with why its pass raised nothing; a keyboard stop like its sibling cells (UX round 1 on #2654, B3). */
+function QuietReasonCell({ reason, label }: { reason: string; label: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={reason}>
+      <span className="rounded-sm text-default-secondary" tabIndex={tabIndex} data-testid="ctem-signal-sources-quiet-reason">
         {label}
       </span>
     </Tip>
@@ -437,7 +469,16 @@ export function SignalSourcesPanel() {
           .map((s) => `${t_i18n(SIGNAL_STATE_LABEL[s])} ${exactCount(path.counts?.[s] ?? 0)}`)
           .join(", ");
         const n30 = path.count_30d ?? 0;
-        return <CountCell tip={byState} title={exactCount(n30)} label={count(n30)} />;
+        const cell = <CountCell tip={byState} title={exactCount(n30)} label={count(n30)} />;
+        // A path that is on with 0 signals says why beside its count (#2642).
+        if (!path.silent_reason) return cell;
+        const why = silentReasonText(path.silent_reason, t_i18n, (iso) => formatShortDateTimeIntl(intl, iso));
+        return (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            <SilentReasonMark text={why} />
+            {cell}
+          </span>
+        );
       },
     },
     {
@@ -447,7 +488,17 @@ export function SignalSourcesPanel() {
       hideable: true,
       width: 152,
       sortValue: (path) => path.last_signal_at ?? "",
-      cell: (path) => <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>,
+      cell: (path) => {
+        // Why an empty outside path raised nothing (#2634): the reason its pass gives, worded here, on the empty cell.
+        const reason = !path.last_signal_at
+          ? quietReasonText(path.quiet_reason, t_i18n, (iso) => formatShortDateTimeIntl(intl, iso))
+          : undefined;
+        return reason ? (
+          <QuietReasonCell reason={reason} label={lastSignal(path)} />
+        ) : (
+          <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>
+        );
+      },
     },
     {
       key: "action",

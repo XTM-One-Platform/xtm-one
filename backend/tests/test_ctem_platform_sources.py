@@ -63,6 +63,28 @@ def test_a_source_never_switched_on_reads_off():
     assert sources.status_of(row) == ("off", None)
 
 
+def test_a_source_refused_for_a_missing_setting_reads_not_configured_never_error():
+    """#2637: nothing failed, a setting is missing: Not configured, with the reason and its fix."""
+    for reason in (
+        "no run-as user: switch it on again as an administrator",
+        "organization context: domains not filled (Settings > Organization); the source is not provisioned without them",
+    ):
+        row = SimpleNamespace(enabled=False, state={"status": "error", "error": reason})
+        assert sources.status_of(row) == ("not_configured", reason)
+    # A refusal of the source platform, or a deactivated run-as, stays an error.
+    row = SimpleNamespace(enabled=False, state={"status": "error", "error": "the run-as user is deactivated"})
+    assert sources.status_of(row)[0] == "error"
+
+
+def test_every_reason_names_its_fix():
+    """#2637: a source in error always says what fixes it, and when it was last tried."""
+    for code in (*sources.CONFIGURATION_CODES, "provider_error", "no_token", "run_as_inactive"):
+        assert sources.FIX_ACTIONS[code]["action"] and sources.FIX_ACTIONS[code]["route"].startswith("/")
+    detail = sources.error_detail("i-1", "boom", {"checked_at": "2026-11-27T15:00:00+00:00"}, enabled=True)
+    assert detail["reason_code"] == "provider_error" and detail["last_attempt_at"] == "2026-11-27T15:00:00+00:00"
+    assert detail["fix"] == sources.FIX_ACTIONS["provider_error"]["action"]
+
+
 async def test_enable_with_a_run_as_provisions_and_reads_connected(openaev):
     db = FakeDb()
     row = await sources.enable(

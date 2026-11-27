@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from app.a2a import partner_fleet
+from app.a2a import partner_fleet, partner_owner_reads
 from app.a2a.partner_scope import PartnerPrincipal, partner_task_scope
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -66,8 +66,12 @@ def opted_in(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def _home(_p: PartnerPrincipal) -> uuid.UUID | None:
         return state["home"] if state["on"] else None
 
+    async def _no_owner_reads(_p: PartnerPrincipal) -> uuid.UUID | None:
+        return None  # the #2638 opt-in stays off here: the #2202 scope alone
+
     monkeypatch.setattr(partner_fleet, "partner_opted_in", _opted)
     monkeypatch.setattr(partner_fleet, "partner_home_fleet_id", _home)
+    monkeypatch.setattr(partner_owner_reads, "partner_owner_id", _no_owner_reads)
     return state
 
 

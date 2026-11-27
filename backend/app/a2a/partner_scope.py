@@ -63,13 +63,18 @@ RUNNERS_WITHHELD_REASON = "an external A2A partner's task never drives an enroll
 @dataclass(frozen=True)
 class PartnerPrincipal:
     """The partner a task answers: the exposure it reached and the OAuth client it
-    authenticated as. Task reads are already scoped to this pair."""
+    authenticated as. Task reads are already scoped to this pair. *task_id* names
+    the partner task, for the audit row of each read the opt-in lends (#2638)."""
 
     exposure_id: uuid.UUID
     client_id: str
+    task_id: uuid.UUID | None = None
 
     def as_payload(self) -> dict[str, str]:
-        return {"exposure_id": str(self.exposure_id), "client_id": self.client_id}
+        payload = {"exposure_id": str(self.exposure_id), "client_id": self.client_id}
+        if self.task_id is not None:
+            payload["task_id"] = str(self.task_id)
+        return payload
 
 
 _PARTNER_TASK: ContextVar[bool] = ContextVar("a2a_partner_task", default=False)
@@ -147,7 +152,11 @@ def queued_partner_principal(payload: Any) -> PartnerPrincipal | None:
         return None
     if not isinstance(client_id, str) or not client_id:
         return None
-    return PartnerPrincipal(exposure_id=exposure_id, client_id=client_id)
+    try:
+        task_id = uuid.UUID(str(value["task_id"])) if value.get("task_id") else None
+    except ValueError:
+        task_id = None
+    return PartnerPrincipal(exposure_id=exposure_id, client_id=client_id, task_id=task_id)
 
 
 def queued_partner_task(payload: Any) -> bool:

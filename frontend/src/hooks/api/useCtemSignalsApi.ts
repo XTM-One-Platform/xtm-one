@@ -167,6 +167,10 @@ export interface CtemSignalPathSource {
   not_set_up?: boolean;
   /** The integrations on which this source XTM One provisions is in error (#2434). */
   error_count?: number;
+  /** Per integration in error: its reason, last attempt and fix (#2637). */
+  errors?: CtemSourceErrorDetail[];
+  /** Switched off after a refused enable for a missing setting: Not configured, never Error (#2637). */
+  not_configured?: boolean;
   /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
   excluded?: boolean;
   /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
@@ -205,9 +209,40 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** No signal in 30 days: why its pass raised nothing, when the attack-surface pass says it (#2634). */
+  quiet_reason?: CtemSignalQuietReason;
   /** Its sources on, and its sources that are or could be on here (#2506). */
   sources_enabled?: number;
   sources_available?: number;
+  /** Why a path that is on recorded no signal in 30 days (#2642); absent when it did or is not on. */
+  silent_reason?: CtemSignalPathSilentReason | null;
+}
+
+/** The codes `silent_reason` answers on `GET /ctem-signals/paths` (#2642). */
+export type CtemSilentReasonCode = "never_evaluated" | "no_asset_past_threshold" | "upstream_sync_failed" | "listener_never_fired" | "inventory_truncated";
+
+/** Why a path that is on records nothing, with the last inventory evaluation of path 6 when there is one (#2642). */
+export interface CtemSignalPathSilentReason {
+  code: CtemSilentReasonCode;
+  detail: string;
+  evaluation?: {
+    at?: string;
+    evaluated?: number;
+    stale_after_days?: number;
+    failed_syncs?: number;
+    withheld_sync_failed?: number;
+  };
+}
+
+/** Why an outside path raised nothing (#2634): a code the screen words (quiet-reason.ts) and its data. */
+export interface CtemSignalQuietReason {
+  code: string;
+  /** The last pass, ISO 8601. */
+  at?: string | null;
+  count?: number;
+  scopes?: string[];
+  /** Scopes the provider answered nothing for, on a pass that still read hosts. */
+  empty_scopes?: string[];
 }
 
 /** A generic signed webhook source of one trigger path (#2506, dev-docs/ctem-signals.md 4ter). */
@@ -289,8 +324,23 @@ export function useTestCtemWebhookSource() {
   });
 }
 
-/** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
-export type CtemPlatformSourceStatus = "off" | "connected" | "error";
+/** One source in error on one integration (#2637): its reason, last attempt and the fix. */
+interface CtemSourceErrorDetail {
+  integration_id: string;
+  enabled: boolean;
+  reason: string | null;
+  reason_code: CtemPlatformSourceReasonCode | null;
+  reason_params: Record<string, string>;
+  last_attempt_at: string | null;
+  fix: string;
+  fix_route: string;
+}
+
+/**
+ * A source XTM One provisions in its platform: off, connected, in error with its reason (#2434), or not
+ * configured: switched off for a missing setting, never an error (#2637).
+ */
+export type CtemPlatformSourceStatus = "off" | "connected" | "error" | "not_configured";
 
 /** Why a platform source cannot run, as data: the UI renders the code, never the English `reason` (#2434). */
 export type CtemPlatformSourceReasonCode =
@@ -321,6 +371,9 @@ export interface CtemPlatformSource {
   reason_code: CtemPlatformSourceReasonCode | null;
   reason_params: Record<string, string>;
   checked_at: string | null;
+  /** What fixes the reason and where (#2637); `null` when there is no reason. */
+  fix?: string | null;
+  fix_route?: string | null;
   /** The objects it holds in its platform (#2583 point 2), for the Open in links. */
   objects?: CtemPlatformSourceObject[];
   /** The platform's web UI host, `null` when the integration stores none. */
