@@ -3,7 +3,7 @@
 // partial pick, missing-module notice, count on Confirm, nothing enabled on open),
 // plus the steps a fleet walks and the client-side resume.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { FleetEnableResult } from "@/hooks/api/useFleetApi";
@@ -45,6 +45,12 @@ vi.mock("./FleetAutonomyStrip", () => ({ FleetAutonomyStrip: () => <div data-tes
 vi.mock("./FleetCapabilitySlotsCard", () => ({ FleetCapabilitySlotsCard: () => <div data-testid="slots-card" /> }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "u1", email: "ana@example.com", full_name: "Ana" }, isAdmin: false }),
+}));
+vi.mock("@/hooks/api/useAuthApi", () => ({
+  useModuleRunAsCandidates: () => ({
+    data: [{ id: "u1", name: "Ana", email: "ana@example.com", is_self: true, selectable: true, reason: null }],
+    isError: false,
+  }),
 }));
 
 const plan = (over: Partial<FleetEnableResult> = {}): FleetEnableResult => ({
@@ -119,19 +125,17 @@ describe("FleetSetupWizard", () => {
     expect(readWizardProgress("f1")).toMatchObject({ step: "autonomy", skippedIntegrations: true });
   });
 
-  it("shows the run-as user tied to its helper line", () => {
+  it("asks who XTM One acts as in each module, the caller by default, and sends the choice (#2650)", async () => {
+    api.plan = plan({ modules: ["opencti", "openaev"], unchosen: [] });
     open("automations");
-    const runAs = screen.getByRole("textbox", { name: "Run as" });
-    expect(runAs).toHaveValue("You (Ana)");
-    expect(runAs).toHaveAccessibleDescription("Its automations use this user's connected modules, model and memory.");
+    const field = screen.getByTestId("fleet-setup-run-as");
+    expect(within(field).getAllByText("Act in OpenCTI as").length).toBeGreaterThan(0);
+    expect(within(field).getAllByText("Act in OpenAEV as").length).toBeGreaterThan(0);
     expect(screen.getByText("Daily exposure review")).toBeInTheDocument();
-  });
-
-  it("enables in one call on Confirm, as the caller", async () => {
-    open("review");
+    next();
     fireEvent.click(screen.getByRole("button", { name: "Enable 2 automations" }));
     await waitFor(() => expect(api.mutateAsync).toHaveBeenCalledTimes(1));
-    expect(api.mutateAsync).toHaveBeenCalledWith({ runAs: null, assignmentIds: undefined });
+    expect(api.mutateAsync).toHaveBeenCalledWith({ runAsByModule: { opencti: "u1", openaev: "u1" }, assignmentIds: undefined });
     expect(await screen.findByTestId("fleet-setup-done")).toBeInTheDocument();
     expect(readWizardProgress("f1")).toBeNull();
   });
@@ -146,7 +150,16 @@ describe("FleetSetupWizard", () => {
     next();
     fireEvent.click(screen.getByRole("button", { name: "Enable 1 automation" }));
     await waitFor(() => expect(api.mutateAsync).toHaveBeenCalledTimes(1));
-    expect(api.mutateAsync).toHaveBeenCalledWith({ runAs: null, assignmentIds: ["a1"] });
+    expect(api.mutateAsync).toHaveBeenCalledWith({ runAsByModule: {}, assignmentIds: ["a1"] });
+  });
+
+  it("keeps Enable off while a module has nobody chosen (#2650)", () => {
+    api.plan = plan({ modules: ["opencti"], unchosen: ["opencti"] });
+    open("review");
+    expect(screen.getByRole("button", { name: "Enable 2 automations" })).toBeDisabled();
+    expect(screen.getByTestId("fleet-setup-review-unchosen")).toHaveTextContent("Nobody chosen for OpenCTI");
+    fireEvent.click(screen.getByRole("button", { name: "Choose who XTM One acts as" }));
+    expect(screen.getByTestId("fleet-setup-automations")).toHaveTextContent("Choose who XTM One acts as in OpenCTI.");
   });
 
   it("shows the expected runs a day and cost of the pick, and follows the pick (#1538)", () => {

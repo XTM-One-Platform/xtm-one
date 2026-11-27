@@ -32,9 +32,11 @@ interface OrganizationSharedContextNoticeProps {
   elevation?: ComponentProps<typeof Alert>["elevation"];
   /** Outbound (#1982 S4): XTM One is the source and the platform is written, so the text says what a push does. */
   direction?: "inbound" | "outbound";
+  /** A module sync (#2650): it runs as the user picked in its run-as field, not as whoever sets it up. */
+  runsAsPicked?: boolean;
 }
 
-export function OrganizationSharedContextNotice({ kind = "source", actor, className, elevation, direction = "inbound" }: OrganizationSharedContextNoticeProps) {
+export function OrganizationSharedContextNotice({ kind = "source", actor, className, elevation, direction = "inbound", runsAsPicked = false }: OrganizationSharedContextNoticeProps) {
   const { t_i18n } = useFormatter();
   if (direction === "outbound") {
     const runsAs = !actor
@@ -52,9 +54,13 @@ export function OrganizationSharedContextNotice({ kind = "source", actor, classN
         description={
           <span className="block space-y-1">
             <span className="block">
-              {t_i18n(
-                "XTM One rows are written to the target platform with the permissions of the person who sets up this sync. Who can see them there follows that platform's own access rules, not XTM One's.",
-              )}
+              {runsAsPicked
+                ? t_i18n(
+                    "XTM One rows are written to the target platform with the permissions of the user this sync runs as. Who can see them there follows that platform's own access rules, not XTM One's.",
+                  )
+                : t_i18n(
+                    "XTM One rows are written to the target platform with the permissions of the person who sets up this sync. Who can see them there follows that platform's own access rules, not XTM One's.",
+                  )}
             </span>
             {runsAs && (
               <span className="block font-medium" data-testid="org-shared-context.actor">
@@ -68,9 +74,13 @@ export function OrganizationSharedContextNotice({ kind = "source", actor, classN
   }
   const visibility = t_i18n("Once imported, the organization context is visible to every user and every agent of this XTM One platform.");
   const scope = t_i18n("This applies to the organization context only. Agent integrations, dashboards and every other feature keep each user's own permissions.");
-  const permissions = t_i18n(
-    "Data is read from the source platform with the permissions of the person who sets up this import or sync. The source platform's access rules, including organization segregation and markings, are not carried over.",
-  );
+  const permissions = runsAsPicked
+    ? t_i18n(
+        "Data is read from the source platform with the permissions of the user this sync runs as. The source platform's access rules, including organization segregation and markings, are not carried over.",
+      )
+    : t_i18n(
+        "Data is read from the source platform with the permissions of the person who sets up this import or sync. The source platform's access rules, including organization segregation and markings, are not carried over.",
+      );
   const who = !actor
     ? null
     : actor.mode === "reads"

@@ -1186,7 +1186,9 @@ def build_fleet_tools(
 
     # ── set_fleet_automations ─────────────────────────────────────────
 
-    async def _set_fleet_automations(fleet_id: str, action: str = "", confirm: object = False) -> str:
+    async def _set_fleet_automations(
+        fleet_id: str, action: str = "", confirm: object = False, run_as: object = None
+    ) -> str:
         from app.services.fleet_control import (
             fleet_control_audit_details,
             pausable_count,
@@ -1249,12 +1251,27 @@ def build_fleet_tools(
 
         async def _enable(db: AsyncSession, user: User, fleet: Fleet) -> str:
             # Enable fleet of the setup dialog: every automation off and not held by an emergency stop,
-            # the seeded fleet automations run as the caller (as POST /fleets/{id}/enable by default).
+            # the seeded fleet automations acting in each module as the user chosen for it (#2650).
             from app.services.fleet_control import enable_fleet, plan_fleet_enable
+            from app.services.module_run_as import RunAsRefusedError, missing_choice_refusal, resolve
 
-            plan = await plan_fleet_enable(db, fleet, run_as_user_id=user.id)
+            by_module: dict[str, uuid.UUID] = {}
+            choices = run_as if isinstance(run_as, dict) else {}
+            for module, raw in choices.items():
+                who = user.id if str(raw or "").strip().lower() == "me" else raw
+                try:
+                    by_module[str(module)] = await resolve(db, actor=user, raw=who, providers=[str(module)])
+                except RunAsRefusedError as exc:
+                    return f"Not applied: run_as for {module}: {exc}"
+            plan = await plan_fleet_enable(db, fleet, run_as_user_id=None, run_as_by_module=by_module)
             if not plan.changed:
                 return f"Fleet **{fleet.name}**: every automation is already on, or held by an emergency stop."
+            if plan.unchosen:
+                return (
+                    f"Not applied. {missing_choice_refusal(plan.unchosen)} Ask the user who XTM One acts as "
+                    f"in each ({', '.join(plan.unchosen)}), then call again with run_as mapping each "
+                    "module to me or a user id."
+                )
             names = ", ".join(item.name for item in plan.selected)
             if not confirmed:
                 missing = (
@@ -1264,10 +1281,10 @@ def build_fleet_tools(
                 )
                 return (
                     f"Not applied. Enable fleet would switch on {plan.changed} automation(s) of fleet "
-                    f"**{fleet.name}**, running as you: {names}.{missing} Show this to the user and call again "
-                    "with confirm=true only once they agree."
+                    f"**{fleet.name}**, acting in each module as chosen: {names}.{missing} Show this to the user "
+                    "and call again with confirm=true only once they agree."
                 )
-            outcome = await enable_fleet(db, fleet, actor=user, run_as_user_id=user.id)
+            outcome = await enable_fleet(db, fleet, actor=user, run_as_user_id=None, run_as_by_module=by_module)
             await _audit(
                 db,
                 user,
@@ -1275,7 +1292,7 @@ def build_fleet_tools(
                 "fleet_enable",
                 f"Enabled {outcome.changed} automation(s) of fleet '{fleet.name}'",
                 **fleet_control_audit_details(outcome, fleet.id),
-                run_as_user_id=str(user.id),
+                run_as_by_module={m: str(u) for m, u in by_module.items()},
             )
             await db.flush()
             state = await _automation_state(db, user, fleet)
@@ -2436,6 +2453,10 @@ def build_fleet_tools(
                     "fleet_id": fleet_ref,
                     "action": {"type": "string", "enum": ["pause", "resume", "unset", "enable"]},
                     "confirm": {"type": "boolean", "default": False},
+                    "run_as": {
+                        "type": "object",
+                        "description": "enable: who to act as per module, keyed by the module's provider: me or a user id.",
+                    },
                 },
                 "required": ["fleet_id", "action"],
             },

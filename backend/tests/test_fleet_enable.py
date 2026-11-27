@@ -284,8 +284,56 @@ async def test_average_run_cost_reads_nothing_for_an_empty_pick():
 @pytest.mark.asyncio
 async def test_only_an_admin_picks_another_run_as_user():
     user = _actor(admin=False)
-    assert await fleets_api._enable_run_as(SimpleNamespace(), user, None) == user.id
+    # Nothing defaults to the caller any more (#2650): no choice is no run-as.
+    assert await fleets_api._enable_run_as(SimpleNamespace(), user, None) is None
     assert await fleets_api._enable_run_as(SimpleNamespace(), user, str(user.id)) == user.id
     with pytest.raises(HTTPException) as refused:
         await fleets_api._enable_run_as(SimpleNamespace(), user, str(uuid.uuid4()))
     assert refused.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_enable_without_a_module_choice_is_refused_naming_the_module():
+    """#2650: no silent default to the caller; the 400 names the module to choose for."""
+    seeded = _assignment("Seeded", enabled=False, reason="created_disabled")
+    with (
+        patch.object(fleet_control, "_fleet_automation_rows", AsyncMock(return_value=[(seeded, _agent())])),
+        patch("app.services.panic.platform_stop_open", AsyncMock(return_value=False)),
+        patch("app.services.fleet_run_as.is_fleet_automation", lambda agent, a: a is seeded),
+        patch("app.services.fleet_run_as.missing_providers", AsyncMock(return_value=[])),
+        pytest.raises(FleetActionRefusedError) as refused,
+    ):
+        await fleet_control.enable_fleet(SimpleNamespace(), _fleet(), actor=_actor(), run_as_user_id=None)
+    assert refused.value.status_code == 400 and "OpenCTI" in str(refused.value)
+    assert seeded.run_as_user_id is None and seeded.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_each_automation_runs_as_the_user_chosen_for_its_module():
+    cti = _assignment("CTI", enabled=False, reason="created_disabled")
+    aev = _assignment("AEV", enabled=False, reason="created_disabled")
+    aev.trigger_config = {"provider": "openaev"}
+    cti_user, aev_user = uuid.uuid4(), uuid.uuid4()
+    with (
+        patch.object(
+            fleet_control,
+            "_fleet_automation_rows",
+            AsyncMock(return_value=[(cti, _agent()), (aev, _agent())]),
+        ),
+        patch("app.services.panic.platform_stop_open", AsyncMock(return_value=False)),
+        patch("app.services.assignment_pause._log_transition", AsyncMock()),
+        patch("app.services.fleet_run_as.is_fleet_automation", lambda agent, a: True),
+        patch("app.services.fleet_run_as.missing_providers", AsyncMock(return_value=[])),
+    ):
+        plan = await fleet_control.plan_fleet_enable(
+            SimpleNamespace(), _fleet(), run_as_user_id=None, run_as_by_module={"opencti": cti_user}
+        )
+        assert plan.modules == ["opencti", "openaev"] and plan.unchosen == ["openaev"] and not plan.ready
+        await fleet_control.enable_fleet(
+            SimpleNamespace(),
+            _fleet(),
+            actor=_actor(),
+            run_as_user_id=None,
+            run_as_by_module={"opencti": cti_user, "openaev": aev_user},
+        )
+    assert cti.run_as_user_id == cti_user and aev.run_as_user_id == aev_user

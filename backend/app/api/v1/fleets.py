@@ -3301,10 +3301,11 @@ ENABLE_RUN_AS_ADMIN_ONLY = "Only an administrator can pick another user for the 
 ENABLE_RUN_AS_UNKNOWN = "run_as_user_id does not reference an active user"
 
 
-async def _enable_run_as(db: AsyncSession, user: User, raw: str | None) -> uuid.UUID:
-    """The run-as of Enable fleet: the caller by default; another active user, an administrator's choice."""
+async def _enable_run_as(db: AsyncSession, user: User, raw: str | None) -> uuid.UUID | None:
+    """A run-as of Enable fleet, checked: None when not given (never the caller by default, #2650);
+    the caller, or another active user as an administrator's choice."""
     if not raw:
-        return user.id
+        return None
     run_as = parse_uuid(raw, label="run_as_user_id")
     if run_as == user.id:
         return run_as
@@ -3334,14 +3335,27 @@ async def enable_fleet_automations(
     off (422), when nothing is off or during an emergency stop (409). ``dry_run`` answers
     the plan, writes nothing."""
     fleet = await _controllable_fleet(db, user, fleet_id, "enable the automations of")
+    from app.services.module_run_as import MODULES
+
     run_as = await _enable_run_as(db, user, body.run_as_user_id)
+    by_module: dict[str, uuid.UUID] = {}
+    for module, raw in (body.run_as_by_module or {}).items():
+        if module not in MODULES:
+            raise HTTPException(
+                status_code=422, detail=f"run_as_by_module: {module} is not opencti, openaev or opencrq"
+            )
+        chosen = await _enable_run_as(db, user, raw)
+        if chosen is not None:
+            by_module[module] = chosen
     picked = (
         None
         if body.assignment_ids is None
         else [parse_uuid(raw, label="assignment_ids") for raw in dict.fromkeys(body.assignment_ids)]
     )
     try:
-        plan = await plan_fleet_enable(db, fleet, run_as_user_id=run_as, assignment_ids=picked)
+        plan = await plan_fleet_enable(
+            db, fleet, run_as_user_id=run_as, assignment_ids=picked, run_as_by_module=by_module
+        )
     except FleetActionRefusedError as exc:
         raise _refused(exc) from None
     changed = plan.changed
@@ -3359,7 +3373,13 @@ async def enable_fleet_automations(
     if not body.dry_run:
         try:
             outcome = await enable_fleet(
-                db, fleet, actor=user, run_as_user_id=run_as, assignment_ids=picked, request=request
+                db,
+                fleet,
+                actor=user,
+                run_as_user_id=run_as,
+                assignment_ids=picked,
+                request=request,
+                run_as_by_module=by_module,
             )
         except FleetActionRefusedError as exc:
             raise _refused(exc) from None
@@ -3374,7 +3394,8 @@ async def enable_fleet_automations(
             summary=f"Enabled {outcome.changed} automation(s) of fleet '{fleet.name}'",
             details={
                 **fleet_control_audit_details(outcome, fleet.id),
-                "run_as_user_id": str(run_as),
+                "run_as_user_id": str(run_as) if run_as else None,
+                "run_as_by_module": {m: str(u) for m, u in by_module.items()},
                 "partial": picked is not None and outcome.changed < len(plan.items),
             },
             request=request,
@@ -3388,7 +3409,10 @@ async def enable_fleet_automations(
     return FleetEnableResponse(
         fleet_id=str(fleet.id),
         dry_run=body.dry_run,
-        run_as_user_id=str(run_as),
+        run_as_user_id=str(run_as) if run_as else None,
+        run_as_by_module={m: str(u) for m, u in by_module.items()},
+        modules=plan.modules,
+        unchosen=plan.unchosen,
         changed=changed,
         ready=plan.ready,
         missing=plan.missing,

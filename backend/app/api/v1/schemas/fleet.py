@@ -681,13 +681,17 @@ class FleetControlResponse(BaseModel):
 class FleetEnableRequest(BaseModel):
     """Enable fleet (#9769 S4b): switch on every automation of the fleet that is off.
 
-    ``run_as_user_id`` is the user the seeded fleet automations run as (the
-    caller when absent; another user is an administrator's choice).
+    Who the seeded fleet automations act as in each module (#2650): ``run_as_by_module``
+    maps ``opencti`` / ``openaev`` / ``opencrq`` to a user id, ``run_as_user_id`` is used
+    for every module the map does not name. Nothing defaults to the caller: a module
+    with no choice refuses the enable (400 naming it; a dry run reports it in
+    ``unchosen``). Another user than the caller is an administrator's choice.
     ``dry_run`` answers the plan for the setup dialog without writing.
     ``assignment_ids`` picks some of the automations that are off (partial
     enable, #9173 S5); absent, every one is picked."""
 
     run_as_user_id: str | None = None
+    run_as_by_module: dict[str, str] | None = None
     dry_run: bool = False
     assignment_ids: list[str] | None = Field(default=None, max_length=500)
 
@@ -728,7 +732,14 @@ class FleetEnableResponse(BaseModel):
 
     fleet_id: str
     dry_run: bool
-    run_as_user_id: str
+    #: The run-as passed for every module the map does not name; None when none was.
+    run_as_user_id: str | None = None
+    #: The user chosen per module (#2650).
+    run_as_by_module: dict[str, str] = {}
+    #: The modules the selected automations act in: one "Act in <module> as" choice each.
+    modules: list[str] = []
+    #: Of ``modules``, those nobody was chosen for yet: Enable is refused until each is.
+    unchosen: list[str] = []
     #: The automations switched on (or, on a dry run, that would be).
     changed: int
     #: False when nothing is picked or a picked automation misses a module: the dialog's Confirm stays disabled.

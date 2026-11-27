@@ -12,6 +12,11 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), postForm: vi.fn() },
 }));
+vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
+  // #2650: the "Act in <module> as" field of a module sync; the caller, picked by default.
+  useModuleRunAsCandidates: () => ({ data: [{ id: "me", name: "Ana", email: "ana@example.com", is_self: true, selectable: true, reason: null }], isError: false }),
+}));
 
 const get = vi.mocked(api.get);
 const post = vi.mocked(api.post);
@@ -336,7 +341,9 @@ describe("OrganizationImportDialog (#11780)", () => {
     await screen.findByRole("button", { name: "Import 1 row" });
     await waitFor(() => expect(screen.getByTestId("org-shared-context.actor").textContent).toBe("Reads as me.admin@example.com"));
     fireEvent.click(screen.getByRole("switch", { name: "Keep in sync" }));
-    expect(screen.getByTestId("org-shared-context.actor").textContent).toBe("Runs as me.admin@example.com");
+    // #2650: a sync of a module asks who it acts as there instead of naming the importer.
+    expect(screen.queryByTestId("org-shared-context.actor")).toBeNull();
+    expect(screen.getAllByText("Act in OpenCTI as").length).toBeGreaterThan(0);
   });
 
   it("reports a platform that fails, never its text, and saves nothing", async () => {

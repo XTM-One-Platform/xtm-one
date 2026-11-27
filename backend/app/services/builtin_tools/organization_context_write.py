@@ -533,6 +533,7 @@ def build_organization_context_write_tools(
             },
             "enabled": sync.enabled,
             "paused_reason": sync.paused_reason,
+            "run_as_user_id": str(sync.owner_user_id) if getattr(sync, "owner_user_id", None) else None,
             "next_run_at": sync.next_run_at,
             "last_run_at": sync.last_run_at,
             "last_result": sync.last_result,
@@ -565,11 +566,13 @@ def build_organization_context_write_tools(
         weekday: int = 0,
         timezone: str = "UTC",
         direction: str = "inbound",
+        run_as: str = "",
     ) -> str:
         import json
 
         from app.core.database import async_session
         from app.models.organization_context import OrganizationContextSync
+        from app.services import module_run_as
         from app.services import organization_context_sync as osync
         from app.services.audit import log_audit
 
@@ -582,10 +585,18 @@ def build_organization_context_write_tools(
                     return REFUSAL
                 if section == osync.ALL_SECTIONS and await osync.global_sync_exists(db):
                     return "Not saved: a Sync all schedule exists already; an administrator edits it in Settings."
+                owner_id = person.id
+                if module_run_as.is_module(source):
+                    # #2650: a module sync reads as the user the person chose, never the caller by default.
+                    who = person.id if str(run_as or "").strip().lower() == "me" else run_as
+                    try:
+                        owner_id = await module_run_as.resolve(db, actor=person, raw=who, providers=[source])
+                    except module_run_as.RunAsRefusedError as exc:
+                        return f"Not saved: {exc} Ask the user, then pass run_as (me or a user id)."
                 sync = OrganizationContextSync()
                 osync.define(
                     sync,
-                    owner_id=person.id,
+                    owner_id=owner_id,
                     section=section,
                     source=source,
                     filters=filters,
@@ -633,6 +644,7 @@ def build_organization_context_write_tools(
         weekday: int | None = None,
         timezone: str | None = None,
         enabled: bool | None = None,
+        run_as: str | None = None,
     ) -> str:
         """Change a stored sync: only the fields passed change, every other stored value is kept."""
         import json
@@ -664,7 +676,7 @@ def build_organization_context_write_tools(
             }.items()
             if value is not None
         }
-        if not passed:
+        if not passed and not run_as:
             return "Not saved: pass at least one field to change."
         try:
             async with async_session() as db:
@@ -678,9 +690,21 @@ def build_organization_context_write_tools(
                 def _kept(name: str, stored: Any) -> Any:
                     return passed.get(name, stored)
 
+                from app.services import module_run_as
+
+                owner_id = person.id
+                if module_run_as.is_module(sync.source):
+                    # #2650: the stored run-as is kept unless run_as names another user.
+                    owner_id = sync.owner_user_id
+                    if run_as or owner_id is None:
+                        who = person.id if str(run_as or "").strip().lower() == "me" else run_as
+                        try:
+                            owner_id = await module_run_as.resolve(db, actor=person, raw=who, providers=[sync.source])
+                        except module_run_as.RunAsRefusedError as exc:
+                            return f"Not saved: {exc} Ask the user, then pass run_as (me or a user id)."
                 osync.define(
                     sync,
-                    owner_id=person.id,
+                    owner_id=owner_id,
                     section=sync.section,
                     source=sync.source or "",
                     filters=_kept("filters", sync.filters),
@@ -1050,6 +1074,7 @@ def build_organization_context_write_tools(
                         "description": "Drop rows gone from the source (default true).",
                     },
                     "direction": {"type": "string", "enum": ["inbound", "outbound"]},
+                    "run_as": {"type": "string", "description": "Module source: who to act as, me or a user id."},
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
                     "minute": {"type": "integer"},
@@ -1080,6 +1105,7 @@ def build_organization_context_write_tools(
                     "weekday": {"type": "integer"},
                     "timezone": {"type": "string"},
                     "enabled": {"type": "boolean"},
+                    "run_as": {"type": "string", "description": "Module source: who to act as, me or a user id."},
                 },
                 "required": ["sync_id"],
             },

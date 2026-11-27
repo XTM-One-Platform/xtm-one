@@ -57,6 +57,7 @@ import { SOURCED_SECTION_LABELS, sourceSectionHref, type ChipSource, type Source
 import { useScheduleLabel } from "@/lib/organization-sync-schedule";
 import { formatCount } from "@/lib/number-format";
 import { formatTimeAgo } from "@/lib/relative-time";
+import { isRunAsModule } from "@/components/module-run-as/ModuleRunAsField";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { bodyOf, DIRECTION_LABELS, directionOf, stateOf, SYNC_SECTION_LABELS, SyncEditDialog, type SyncState } from "./OrganizationSyncEditDialog";
 
@@ -452,6 +453,23 @@ export function OrganizationSourcesSyncs({
       csv: (row) => (row.sync && row.sync.section !== "all" ? directionOf(row.sync) : ""),
     },
     {
+      // #2650: who a module sync acts as in OpenCTI, OpenAEV or OpenCRQ; changed from Edit.
+      key: "run_as",
+      header: "Runs as",
+      hideable: true,
+      hideBelow: "6xl",
+      cell: (row) =>
+        row.sync && isRunAsModule(row.sync.source) ? (
+          row.sync.run_as_name ? (
+            <TruncatedText text={row.sync.run_as_name} className="max-w-[10rem]" />
+          ) : (
+            <span className="text-feedback-warning-primary light:text-feedback-warning-tertiary">{t_i18n("Not set")}</span>
+          )
+        ) : null,
+      sortValue: (row) => row.sync?.run_as_name ?? "",
+      csv: (row) => row.sync?.run_as_name ?? "",
+    },
+    {
       key: "filters",
       header: "Filters",
       hideable: true,
@@ -645,9 +663,10 @@ export function OrganizationSourcesSyncs({
         open={editing !== null}
         saving={update.isPending}
         onClose={() => setEditing(null)}
-        onSave={(schedule, enabled, direction, filters) => {
+        onSave={(schedule, enabled, direction, filters, runAs) => {
           const done = { onSuccess: () => setEditing(null), onError: reportFailure(t_i18n("The sync could not be saved")) };
-          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction, ...(filters ? { filters } : {}) }) }, done);
+          if (editing)
+            update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction, ...(filters ? { filters } : {}), ...(runAs ? { run_as_user_id: runAs } : {}) }) }, done);
         }}
       />
       <DeleteRowsDialog row={deleting} name={deleting ? nameOf(deleting) : ""} onClose={() => setDeleting(null)} />

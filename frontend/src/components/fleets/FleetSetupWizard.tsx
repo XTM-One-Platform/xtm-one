@@ -24,8 +24,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *    skippable ("I will do it later"); dropped for a fleet without slots.
  * 3. Autonomy: the level choice (`FleetAutonomyStrip` compact). The setup
  *    adds no human decision.
- * 4. Run as and automations: the plan (`dry_run`, nothing written) for the
- *    chosen user, one row per automation that is off. A row that misses a
+ * 4. Run as and automations: one "Act in <module> as" choice per module the
+ *    picked automations act in (#2650: the caller by default, an
+ *    administrator may pick another user), then the plan (`dry_run`, nothing
+ *    written), one row per automation that is off. A row that misses a
  *    module starts unpicked with "Needs <module>": the backend refuses a pick
  *    that misses one, so it never blocks the others.
  * 5. Review and enable: what switches on and what is still missing; Confirm
@@ -34,23 +36,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Opening the wizard never enables anything. After Confirm, the end screen
  * says what runs and what is missing, with a link to the Members screen.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { isRunAsModule, ModuleRunAsField, RUN_AS_MODULE_NAME } from "@/components/module-run-as/ModuleRunAsField";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Badge } from "@/components/ui/badge";
+import { formatList } from "@/lib/format-list";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { userSelectOption } from "@/components/ui/entity-select-options";
 import { DashboardNotice, NoticeAction } from "@/components/ui/dashboard-notice";
-import { Input } from "@/components/ui/input";
 import { SelectionBox } from "@/components/ui/list-control-bar";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { StepBar } from "@/components/ui/step-bar";
 import { useToast } from "@/components/ui/toast";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
-import { useUsers } from "@/hooks/api/useAuthApi";
 import {
   useFleet,
   useFleetCapabilitySlots,
@@ -90,10 +89,6 @@ import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { FleetModuleMark } from "./FleetModuleMark";
 import { FleetTriggerList } from "./FleetTriggerList";
 
-/** The run-as select's value for "the caller": the API reads `null` as the caller. */
-const SELF_VALUE = "__self__";
-const RUN_AS_ID = "fleet-setup-run-as";
-
 export function FleetSetupWizard({
   fleetId,
   fleetName,
@@ -117,11 +112,11 @@ export function FleetSetupWizard({
   const fleet = useFleet(open ? fleetId : null);
   const slots = useFleetCapabilitySlots(fleetId, open);
   const documentation = useFleetDocumentation(fleetId, open);
-  const [runAs, setRunAs] = useState<string | null>(null);
+  // #2650: who XTM One acts as in each module the picked automations need; the caller by default, asked per module.
+  const [runAsByModule, setRunAsByModule] = useState<Record<string, string>>({});
   // The rows left out (unchecked): the ones that miss a module once the plan is read.
   const [left, setLeft] = useState<ReadonlySet<string> | null>(null);
-  const { data: users } = useUsers(open && isAdmin);
-  const plan = useFleetEnablePlan(fleetId, runAs, open);
+  const plan = useFleetEnablePlan(fleetId, runAsByModule, open);
   const enable = useFleetEnable(fleetId);
   const aiOff = useAiActionDisabled();
   const [current, setCurrent] = useState<WizardStepKey | null>(null);
@@ -136,7 +131,7 @@ export function FleetSetupWizard({
   useEffect(() => {
     if (!open) {
       setCurrent(null);
-      setRunAs(null);
+      setRunAsByModule({});
       setLeft(null);
       setEnabledCount(null);
       return;
@@ -150,11 +145,15 @@ export function FleetSetupWizard({
 
   const items = useMemo(() => plan.data?.items ?? [], [plan.data]);
   // A new plan (run-as changed) resets the pick to "every row that can run".
-  useEffect(() => setLeft(null), [runAs]);
+  useEffect(() => setLeft(null), [runAsByModule]);
+  const modules = useMemo(() => (plan.data?.modules ?? []).filter(isRunAsModule), [plan.data]);
+  const unchosen = plan.data?.unchosen ?? [];
+  const unchosenModules = unchosen.filter(isRunAsModule).map((module) => RUN_AS_MODULE_NAME[module]);
+  const chooseRunAs = useCallback((module: string, userId: string) => setRunAsByModule((prev) => (prev[module] === userId ? prev : { ...prev, [module]: userId })), []);
   const leftOut = useMemo(() => left ?? initiallyLeftOut(items), [left, items]);
   const pick = useMemo(() => pickedPlan(items, leftOut), [items, leftOut]);
   const count = pick.picked.length;
-  const ready = count > 0 && pick.missing.length === 0;
+  const ready = count > 0 && pick.missing.length === 0 && unchosen.length === 0;
   // The expected runs a day and cost of the pick (#1538): an order of magnitude, read from the plan.
   const load = useMemo(() => pickedLoad(pick.picked, plan.data?.estimate), [pick.picked, plan.data]);
 
@@ -187,7 +186,7 @@ export function FleetSetupWizard({
 
   const confirm = async () => {
     try {
-      const result = await enable.mutateAsync({ runAs, assignmentIds: pick.assignmentIds });
+      const result = await enable.mutateAsync({ runAsByModule, assignmentIds: pick.assignmentIds });
       writeWizardProgress(fleetId, null);
       setEnabledCount(result.changed);
       toast({
@@ -249,7 +248,6 @@ export function FleetSetupWizard({
   const blocked = items.filter((item) => item.missing.length > 0);
   const modulesOf = (item: FleetEnableItem) => item.missing.map(providerName).join(", ");
   const membersPath = fleetViewPath(fleetId, "members");
-  const selfLabel = user ? t_i18n("You ({user})", { user: user.full_name?.trim() || user.email }) : t_i18n("You");
 
   if (open && enabledCount !== null) {
     return (
@@ -337,28 +335,22 @@ export function FleetSetupWizard({
 
           {step === "automations" && (
             <div className="space-y-4" data-testid="fleet-setup-automations">
-              <SettingsField
-                id={RUN_AS_ID}
-                label={t_i18n("Run as")}
-                helper={t_i18n("Its automations use this user's connected modules, model and memory.")}
-                info={t_i18n("The user the fleet's automations run as: they use this user's connected modules, model and memory. Example: a service account with OpenCTI and OpenAEV connected. Read every time an automation runs. Left on you, they run as you; only an administrator picks another user.")}
-              >
-                {isAdmin ? (
-                  <SearchableSelect
-                    id={RUN_AS_ID}
-                    aria-label={t_i18n("Run as")}
-                    aria-describedby={settingsFieldHintId(RUN_AS_ID)}
-                    options={(users ?? []).filter((u) => u.id !== user?.id).map((u) => userSelectOption(u))}
-                    pinned={[{ value: SELF_VALUE, label: selfLabel }]}
-                    value={runAs ?? SELF_VALUE}
-                    onValueChange={(value) => setRunAs(value === SELF_VALUE ? null : value)}
-                    disabled={enable.isPending}
-                    placeholder={t_i18n("Search users...")}
-                  />
-                ) : (
-                  <Input id={RUN_AS_ID} aria-label={t_i18n("Run as")} aria-describedby={settingsFieldHintId(RUN_AS_ID)} value={selfLabel} readOnly />
-                )}
-              </SettingsField>
+              {modules.length > 0 && (
+                <div className="space-y-3" data-testid="fleet-setup-run-as">
+                  {modules.map((module) => (
+                    <ModuleRunAsField
+                      key={module}
+                      module={module}
+                      value={runAsByModule[module] ?? ""}
+                      onChange={(userId) => chooseRunAs(module, userId)}
+                      active={open}
+                      disabled={enable.isPending}
+                      helper={t_i18n("The fleet's automations act in {module} with this user's connection.", { module: RUN_AS_MODULE_NAME[module] })}
+                      error={unchosen.includes(module) ? t_i18n("Choose who XTM One acts as in {module}.", { module: RUN_AS_MODULE_NAME[module] }) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
               <div className="space-y-1.5" data-testid="fleet-enable-plan" aria-live="polite">
                 <div className="flex items-center gap-2">
                   {items.length > 1 && (
@@ -406,7 +398,7 @@ export function FleetSetupWizard({
                     <DashboardNotice
                       variant="warning"
                       title={
-                        runAs
+                        Object.values(runAsByModule).some((id) => id !== user?.id)
                           ? t_i18n("{count, plural, one {This user has not connected {modules}. Connect it in Integrations, or run as another user.} other {This user has not connected {modules}. Connect them in Integrations, or run as another user.}}", { count: pick.missing.length, modules: pick.missing.map(providerName).join(", ") })
                           : t_i18n("{count, plural, one {You have not connected {modules}. Connect it in Integrations, or run as another user.} other {You have not connected {modules}. Connect them in Integrations, or run as another user.}}", { count: pick.missing.length, modules: pick.missing.map(providerName).join(", ") })
                       }
@@ -448,6 +440,20 @@ export function FleetSetupWizard({
                   <Badge variant="warning">{t_i18n("{count, plural, one {# stays off} other {# stay off}}", { count: blocked.length })}</Badge>
                 )}
               </li>
+              {unchosenModules.length > 0 && (
+                <li className="flex flex-wrap items-center gap-2" role="alert" data-testid="fleet-setup-review-unchosen">
+                  <span className="w-40 shrink-0 font-medium">{t_i18n("Acts as")}</span>
+                  <span className="text-feedback-error-primary">{t_i18n("Nobody chosen for {modules}", { modules: formatList(unchosenModules, intl.locale) })}</span>
+                  <button
+                    type="button"
+                    className="rounded-sm text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                    onClick={() => moveTo("automations")}
+                    data-testid="fleet-setup-review-unchosen-fix"
+                  >
+                    {t_i18n("Choose who XTM One acts as")}
+                  </button>
+                </li>
+              )}
               {hasSlots && (
                 <li className="flex flex-wrap items-center gap-2" data-testid="fleet-setup-review-slots">
                   <span className="w-40 shrink-0 font-medium">{t_i18n("Integrations")}</span>

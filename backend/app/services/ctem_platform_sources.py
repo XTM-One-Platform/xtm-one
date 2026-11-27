@@ -604,6 +604,9 @@ async def get_or_create(db: Any, provider: str, kind: str, integration_id: uuid.
     return row
 
 
+_LEFTOVER_KEYS = ("notifier_id", "trigger_ids", "playbook_id")
+
+
 async def enable(
     db: Any,
     *,
@@ -616,7 +619,12 @@ async def enable(
     """Enable one source as *run_as_user_id* and provision it at once; raises :class:`SourceRefusedError` with the reason.
 
     A refused enable stays off and leaves no object behind in the source platform.
-    The caller commits.
+    Enabling a source that runs as another user is the "Change" of its Runs as
+    (#2650): its objects are first removed as the user who made them, then made
+    again as *run_as_user_id*. When the old identity cannot remove them (deactivated,
+    or its module connection lost: the usual reason to change), the change goes on as
+    the new user, which repairs the held objects it can reach; the ids it replaced stay
+    under ``leftover`` for a later removal. The caller commits.
     """
     from app.models.integration import Integration
 
@@ -627,8 +635,16 @@ async def enable(
         raise SourceRefusedError(f"no {PROVISIONED[(provider, kind)].label} integration {integration_id}")
     now = now or datetime.now(UTC)
     row = await get_or_create(db, provider, kind, integration_id)
+    held_before: dict[str, Any] = {}
+    if row.enabled and row.run_as_user_id is not None and row.run_as_user_id != run_as_user_id:
+        held_before = dict(row.state or {})
+        await disable(db, row, now=now)
+        if (row.state or {}).get("status") != "error":
+            held_before = {}
+        # A failed removal keeps the held ids: the new identity reconciles from them.
     row.run_as_user_id = run_as_user_id
     state = await _reconcile(db, row, now)
+    replaced = {k: held_before[k] for k in _LEFTOVER_KEYS if held_before.get(k) and held_before.get(k) != state.get(k)}
     if not is_connected(state):
         reason = state.get("error") or "not provisioned"
         row.state = state
@@ -636,11 +652,11 @@ async def enable(
         row.enabled = False
         row.state = {"status": "error", "error": reason, "checked_at": now.isoformat()}
         if leftover:
-            row.state["leftover"] = {
-                k: state.get(k) for k in ("notifier_id", "trigger_ids", "playbook_id") if state.get(k)
-            }
+            row.state["leftover"] = {k: state.get(k) for k in _LEFTOVER_KEYS if state.get(k)}
         raise SourceRefusedError(reason)
     row.enabled = True
+    if replaced:
+        state["leftover"] = replaced
     row.state = state
     return row
 

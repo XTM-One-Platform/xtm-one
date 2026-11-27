@@ -110,6 +110,29 @@ async def test_disable_deprovisions(openaev):
     assert sources.status_of(row) == ("off", None)
 
 
+async def test_changing_the_run_as_goes_on_when_the_old_identity_cannot_remove(openaev, monkeypatch):
+    """#2650 review: the old run-as is gone (the usual reason to change): the new user takes over."""
+    db = FakeDb()
+    old = uuid.uuid4()
+    row = await sources.enable(
+        db, provider="openaev", kind="listener", integration_id=INTEGRATION, run_as_user_id=RUN_AS, now=NOW
+    )
+    row.run_as_user_id = old
+
+    async def connection(_db, integration_id, user_id):
+        if user_id != RUN_AS:
+            return "the run-as user is deactivated or no longer exists: pick another run-as"
+        return openaev, str(integration_id), "s3cret"
+
+    monkeypatch.setattr(oaev, "integration_connection", connection)
+    row = await sources.enable(
+        db, provider="openaev", kind="listener", integration_id=INTEGRATION, run_as_user_id=RUN_AS, now=NOW
+    )
+    assert row.enabled is True and row.run_as_user_id == RUN_AS
+    assert sources.status_of(row) == ("connected", None)
+    assert len(openaev.notifiers) == 1, "never two sets: the new identity repairs the held objects"
+
+
 async def test_enable_is_refused_with_the_exact_reason_and_leaves_nothing(openaev):
     db = FakeDb()
     with pytest.raises(sources.SourceRefusedError, match="deactivated"):

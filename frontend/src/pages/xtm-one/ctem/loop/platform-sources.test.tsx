@@ -22,6 +22,13 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: state.admin }) })
 vi.mock("@/hooks/api/useIntegrationApi", () => ({ useIntegrations: () => ({ data: [] }) }));
 vi.mock("@/hooks/api/useAuthApi", () => ({
   useUsers: () => ({ data: [{ id: "u-1", email: "soc@acme.example", full_name: "SOC lead", is_active: true }] }),
+  useModuleRunAsCandidates: () => ({
+    data: [
+      { id: "u-1", name: "SOC lead", email: "soc@acme.example", is_self: false, selectable: true, reason: null },
+      { id: "u-2", name: "Intern", email: "intern@acme.example", is_self: false, selectable: false, reason: "no_integration" },
+    ],
+    isError: false,
+  }),
 }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
@@ -131,7 +138,7 @@ describe("the path panel (#2434)", () => {
     fireEvent.click(screen.getByTestId("ctem-platform-source-enable-submit"));
     expect(state.enabled).toEqual([{ provider: "openaev", kind: "listener", integration_id: "i-oaev", run_as_user_id: "u-1" }]);
     expect(screen.getByTestId("ctem-platform-source-refusal").textContent).toContain("no connected OpenAEV integration");
-    expect(screen.getByLabelText("Run as").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByLabelText("Act in OpenAEV as").getAttribute("aria-invalid")).toBe("true");
   });
 
   it("marks Run as required and explains it in an info bubble (UX round 1 on #2442, B2)", () => {
@@ -184,6 +191,16 @@ describe("the path panel (#2434)", () => {
     expect(screen.queryByTestId("ctem-path-source-set-up")).toBeNull();
     fireEvent.click(screen.getByTestId("ctem-platform-source-switch"));
     expect(state.disabled).toEqual(["s-1"]);
+  });
+
+  it("asks who XTM One acts as in the module, and an enabled source can change it (#2650)", () => {
+    state.sources = [source({ id: "s-1", enabled: true, run_as_user_id: "u-1", status: "connected" })];
+    open();
+    fireEvent.click(screen.getByTestId("ctem-platform-source-run-as-change"));
+    const dialog = screen.getByTestId("ctem-platform-source-enable");
+    expect(within(dialog).getAllByText("Act in OpenAEV as").length).toBeGreaterThan(0);
+    fireEvent.click(within(dialog).getByTestId("ctem-platform-source-enable-submit"));
+    expect(state.enabled).toEqual([{ provider: "openaev", kind: "listener", integration_id: "i-oaev", run_as_user_id: "u-1" }]);
   });
 
   it("an error reads its reason in words", () => {

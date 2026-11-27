@@ -15,6 +15,11 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), postForm: vi.fn() },
 }));
+vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
+  // #2650: the "Act in <module> as" field of a module sync; the caller, picked by default.
+  useModuleRunAsCandidates: () => ({ data: [{ id: "me", name: "Ana", email: "ana@example.com", is_self: true, selectable: true, reason: null }], isError: false }),
+}));
 
 const get = vi.mocked(api.get);
 const post = vi.mocked(api.post);
@@ -70,7 +75,8 @@ describe("SyncEditDialog, filters (#1982 S4)", () => {
     expect(screen.getByTestId("org-sync-edit-change.leave").textContent).toContain("old-db");
     expect(onSave).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Save the change" }));
-    expect(onSave).toHaveBeenCalledWith(expect.anything(), true, "outbound", { search: "prod" });
+    // #2650: a module sync is saved with who it acts as there, the caller by default.
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), true, "outbound", { search: "prod" }, "me");
   });
 
   it("asks for a new preview after another edit", async () => {
@@ -90,7 +96,7 @@ describe("SyncEditDialog, filters (#1982 S4)", () => {
     await screen.findByTestId("org-sync-edit-filters");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(post).not.toHaveBeenCalled();
-    expect(onSave).toHaveBeenCalledWith(expect.anything(), true, "outbound", undefined);
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), true, "outbound", undefined, "me");
   });
 
   it("keeps the outbound filters usable after the platform's own values could not be read inbound", async () => {

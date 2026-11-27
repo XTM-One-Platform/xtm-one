@@ -288,6 +288,7 @@ async def test_update_sync_changes_only_the_fields_passed_and_keeps_the_rest(mon
     from app.services import audit
 
     stored = _stored_sync()
+    run_as = stored.owner_user_id
     session = _SyncSession(stored=stored)
     audits: list = []
 
@@ -310,8 +311,8 @@ async def test_update_sync_changes_only_the_fields_passed_and_keeps_the_rest(mon
     assert (stored.section, stored.source, stored.direction) == ("assets", "opencti", "inbound")
     assert (stored.frequency, stored.hour, stored.minute, stored.weekday) == ("weekly", 7, 15, 2)
     assert stored.timezone == "Europe/Paris" and stored.enabled is True
-    # Saved again by the administrator the turn acts for: a paused sync resumes with that token.
-    assert stored.owner_user_id == uuid.UUID(_ADMIN_ID)
+    # #2650: a module sync keeps the user it runs as; saving it again never moves it to the saving admin.
+    assert stored.owner_user_id == run_as
     assert stored.paused_reason == "" and stored.next_run_at is not None
     assert session.committed and not session.added
     assert audits[0]["action"] == "update"
@@ -364,11 +365,12 @@ async def test_create_sync_saves_the_rest_definition_owned_by_the_administrator(
     import json
 
     from app.core import database
-    from app.services import audit
+    from app.services import audit, module_run_as
     from app.services import organization_context_sync as osync
 
     session = _SyncSession()
     audits: list = []
+    chosen: list = []
 
     async def _log_audit(db, **kwargs):
         audits.append(kwargs)
@@ -376,15 +378,40 @@ async def test_create_sync_saves_the_rest_definition_owned_by_the_administrator(
     async def _no_global(_db):
         return False
 
+    async def _resolve(_db, *, actor, raw, providers):
+        chosen.append((raw, providers))
+        return uuid.UUID(str(raw))
+
     monkeypatch.setattr(database, "async_session", lambda: session)
     monkeypatch.setattr(audit, "log_audit", _log_audit)
     monkeypatch.setattr(osync, "global_sync_exists", _no_global)
+    monkeypatch.setattr(module_run_as, "resolve", _resolve)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True, agent_name="Ops")
+    handler = executor.handler(module.ORGANIZATION_CREATE_SYNC_TOOL)
+    # #2650: a module sync without run_as is refused, nothing written.
+    _resolve_missing = module_run_as.RunAsRefusedError(400, module_run_as.missing_choice_refusal(["opencti"]))
+
+    async def _refuse(_db, *, actor, raw, providers):
+        if raw in (None, ""):
+            raise _resolve_missing
+        return await _resolve(_db, actor=actor, raw=raw, providers=providers)
+
+    monkeypatch.setattr(module_run_as, "resolve", _refuse)
+    refused = await handler(section="assets", source="opencti")
+    assert refused.startswith("Not saved: Choose who XTM One acts as in")
+    assert not session.added and not session.committed
     answer = json.loads(
-        await executor.handler(module.ORGANIZATION_CREATE_SYNC_TOOL)(
-            section="assets", source="opencti", frequency="weekly", hour=7, weekday=2, timezone="Europe/Paris"
+        await handler(
+            section="assets",
+            source="opencti",
+            frequency="weekly",
+            hour=7,
+            weekday=2,
+            timezone="Europe/Paris",
+            run_as="me",
         )
     )
+    assert chosen == [(uuid.UUID(_ADMIN_ID), ["opencti"])]
     assert answer["saved"] is True
     assert answer["notice"] == module.SHARED_CONTEXT_NOTICE
     row = session.added[0]
@@ -399,12 +426,17 @@ async def test_create_sync_saves_the_rest_definition_owned_by_the_administrator(
 @pytest.mark.asyncio
 async def test_create_sync_refuses_what_the_scheduler_could_not_run(monkeypatch):
     from app.core import database
+    from app.services import module_run_as
+
+    async def _resolve(_db, *, actor, raw, providers):
+        return uuid.UUID(str(raw))
 
     session = _SyncSession()
     monkeypatch.setattr(database, "async_session", lambda: session)
+    monkeypatch.setattr(module_run_as, "resolve", _resolve)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
     answer = await executor.handler(module.ORGANIZATION_CREATE_SYNC_TOOL)(
-        section="assets", source="opencti", timezone="Mars/Olympus"
+        section="assets", source="opencti", timezone="Mars/Olympus", run_as="me"
     )
     assert answer.startswith("Not saved: unknown time zone")
     assert not session.committed and not session.added

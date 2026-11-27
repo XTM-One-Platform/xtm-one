@@ -274,6 +274,10 @@ class FleetEnableItem:
     runs_per_day: float = 0.0
     #: It runs once per event (event, platform event, webhook, work item): its daily count is not known ahead.
     event_driven: bool = False
+    #: The user it acts as in its modules (#2650): the choice of its first module; None while not chosen.
+    run_as: uuid.UUID | None = None
+    #: Of ``providers``, the modules nobody was chosen for yet: Enable is refused until each is (#2650).
+    unchosen: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -285,8 +289,10 @@ class FleetEnablePlan:
     partial enable is refused only for a module a picked automation needs.
     """
 
-    run_as_user_id: uuid.UUID
+    run_as_user_id: uuid.UUID | None
     items: tuple[FleetEnableItem, ...]
+    #: The user chosen per module (#2650); a module absent here takes ``run_as_user_id``.
+    run_as_by_module: tuple[tuple[str, uuid.UUID], ...] = ()
 
     @property
     def selected(self) -> tuple[FleetEnableItem, ...]:
@@ -299,7 +305,23 @@ class FleetEnablePlan:
     @property
     def ready(self) -> bool:
         picked = self.selected
-        return bool(picked) and not any(item.missing for item in picked)
+        return bool(picked) and not any(item.missing or item.unchosen for item in picked)
+
+    @property
+    def unchosen(self) -> list[str]:
+        """Every module some selected automation acts in with nobody chosen for it (#2650)."""
+        seen = {p for item in self.selected for p in item.unchosen}
+        from app.services.fleet_run_as import MODULE_PROVIDERS
+
+        return [p for p in MODULE_PROVIDERS if p in seen]
+
+    @property
+    def modules(self) -> list[str]:
+        """Every module the selected automations act in: one "Act in <module> as" choice each."""
+        seen = {p for item in self.selected for p in item.providers}
+        from app.services.fleet_run_as import MODULE_PROVIDERS
+
+        return [p for p in MODULE_PROVIDERS if p in seen]
 
     @property
     def missing(self) -> list[str]:
@@ -421,13 +443,17 @@ def check_enable_selection(rows: list[_AutomationRow], assignment_ids: list[uuid
 async def _enable_plan(
     db: AsyncSession,
     rows: list[_AutomationRow],
-    run_as_user_id: uuid.UUID,
+    run_as_user_id: uuid.UUID | None,
     assignment_ids: list[uuid.UUID] | None = None,
+    run_as_by_module: dict[str, uuid.UUID] | None = None,
 ) -> tuple[FleetEnablePlan, list[_AutomationRow]]:
     """The plan over *rows* and the ``(assignment, agent)`` pairs this call would switch on.
 
     *assignment_ids* ``None`` picks every automation that is off; a list picks
-    those (checked first with :func:`check_enable_selection`).
+    those (checked first with :func:`check_enable_selection`). An automation
+    acts in each of its modules as the user chosen for that module in
+    *run_as_by_module*, else *run_as_user_id*; a module with neither is
+    ``unchosen`` and refuses the enable (#2650: never the caller by default).
     """
     from app.services.fleet_run_as import is_fleet_automation, missing_providers, required_providers
 
@@ -435,15 +461,22 @@ async def _enable_plan(
     picked = None if assignment_ids is None else set(assignment_ids)
     candidates = [(a, agent) for a, agent in rows if _enableable(a)]
     targets = [(a, agent) for a, agent in candidates if picked is None or a.id in picked]
-    cache: dict[tuple[str, ...], list[str]] = {}
+    chosen = {p: u for p, u in (run_as_by_module or {}).items() if u is not None}
+    cache: dict[tuple[tuple[str, ...], uuid.UUID], list[str]] = {}
     items: list[FleetEnableItem] = []
     for assignment, agent in candidates:
         # Only a seeded fleet automation runs as the picked user (#9188); any
         # other assignment keeps its own identity, as the per-automation switch does.
         providers = tuple(required_providers(agent, assignment)) if is_fleet_automation(agent, assignment) else ()
-        if providers and providers not in cache:
-            cache[providers] = await missing_providers(db, run_as_user_id, list(providers))
-        missing = cache.get(providers, []) if providers else []
+        # One assignment runs as one user: the choice of its first module, which must hold
+        # every module it acts in (an automation over two modules needs both connected).
+        unchosen = [p for p in providers if (chosen.get(p) or run_as_user_id) is None]
+        run_as = next((chosen.get(p) or run_as_user_id for p in providers if (chosen.get(p) or run_as_user_id)), None)
+        missing: list[str] = []
+        if providers and run_as is not None:
+            if (providers, run_as) not in cache:
+                cache[(providers, run_as)] = await missing_providers(db, run_as, list(providers))
+            missing = [p for p in cache[(providers, run_as)] if p not in unchosen]
         items.append(
             FleetEnableItem(
                 id=assignment.id,
@@ -453,21 +486,27 @@ async def _enable_plan(
                 selected=picked is None or assignment.id in picked,
                 runs_per_day=scheduled_runs_per_day([assignment]),
                 event_driven=str(getattr(assignment, "trigger_type", "") or "") in EVENT_TRIGGERS,
+                run_as=run_as if providers else run_as_user_id,
+                unchosen=tuple(unchosen),
             )
         )
-    return FleetEnablePlan(run_as_user_id=run_as_user_id, items=tuple(items)), targets
+    plan = FleetEnablePlan(
+        run_as_user_id=run_as_user_id, items=tuple(items), run_as_by_module=tuple(sorted(chosen.items()))
+    )
+    return plan, targets
 
 
 async def plan_fleet_enable(
     db: AsyncSession,
     fleet: Fleet,
     *,
-    run_as_user_id: uuid.UUID,
+    run_as_user_id: uuid.UUID | None,
     assignment_ids: list[uuid.UUID] | None = None,
+    run_as_by_module: dict[str, uuid.UUID] | None = None,
 ) -> FleetEnablePlan:
-    """What Enable fleet would switch on now, as *run_as_user_id* (a dry run, nothing locked or written)."""
+    """What Enable fleet would switch on now, as the users chosen (a dry run, nothing locked or written)."""
     rows = await _fleet_automation_rows(db, fleet, lock=False)
-    plan, _targets = await _enable_plan(db, rows, run_as_user_id, assignment_ids)
+    plan, _targets = await _enable_plan(db, rows, run_as_user_id, assignment_ids, run_as_by_module)
     return plan
 
 
@@ -486,9 +525,10 @@ async def enable_fleet(
     fleet: Fleet,
     *,
     actor: User,
-    run_as_user_id: uuid.UUID,
+    run_as_user_id: uuid.UUID | None,
     assignment_ids: list[uuid.UUID] | None = None,
     request: Request | None = None,
+    run_as_by_module: dict[str, uuid.UUID] | None = None,
 ) -> FleetControlOutcome:
     """Switch on the automations of *fleet* that are off, seeded fleet automations as *run_as_user_id*.
 
@@ -496,11 +536,12 @@ async def enable_fleet(
     #9173 S5); ``None`` picks every one. All or nothing over the pick: refused
     (409) during a platform emergency stop, (409) when nothing is off, (422)
     for an empty pick or an id that is not an automation of the fleet that is
-    off, (400) when the run-as user misses a module a picked automation
-    needs, before anything is written. Each switch clears its pause stamp,
+    off, (400) when nobody was chosen for a module a picked automation acts
+    in (#2650) or the chosen user misses it, before anything is written. Each switch clears its pause stamp,
     anchors its schedule at now (no catch-up run) and writes its resume audit row.
     """
     from app.services.fleet_run_as import is_fleet_automation, missing_refusal
+    from app.services.module_run_as import missing_choice_refusal
     from app.services.panic import platform_stop_open
 
     if await platform_stop_open(db):
@@ -508,13 +549,16 @@ async def enable_fleet(
     rows = await _fleet_automation_rows(db, fleet, lock=True)
     if not any(_enableable(a) for a, _agent in rows):
         raise FleetActionRefusedError(409, ENABLE_NOTHING_TO_ENABLE)
-    plan, targets = await _enable_plan(db, rows, run_as_user_id, assignment_ids)
+    plan, targets = await _enable_plan(db, rows, run_as_user_id, assignment_ids, run_as_by_module)
     if not targets:
         raise FleetActionRefusedError(409, ENABLE_NOTHING_TO_ENABLE)
+    if plan.unchosen:
+        raise FleetActionRefusedError(400, missing_choice_refusal(plan.unchosen))
     if plan.missing:
         raise FleetActionRefusedError(400, missing_refusal(plan.missing))
     from app.services.fleets import is_fleet_health_answered, is_fleet_health_check, is_fleet_past_due_listener
 
+    run_as_of = {item.id: item.run_as for item in plan.items}
     for assignment, agent in targets:
         # The weekly health check (#11700), its answer listener (#1406) and the overdue
         # items listener (#1662) read the fleet as the person who enabled it, never as
@@ -524,8 +568,11 @@ async def enable_fleet(
             or is_fleet_health_answered(assignment)
             or is_fleet_past_due_listener(assignment)
         )
-        if is_fleet_automation(agent, assignment) or (seeded_health and assignment.run_as_user_id is None):
-            assignment.run_as_user_id = run_as_user_id
+        if is_fleet_automation(agent, assignment):
+            # The user chosen for its module (#2650); an automation in no module: the caller's choice, else the caller.
+            assignment.run_as_user_id = run_as_of.get(assignment.id) or run_as_user_id or actor.id
+        elif seeded_health and assignment.run_as_user_id is None:
+            assignment.run_as_user_id = run_as_user_id or actor.id
         await resume_assignment(
             db, assignment=assignment, user=actor, request=request, note=f"Fleet '{fleet.name}' enabled"
         )

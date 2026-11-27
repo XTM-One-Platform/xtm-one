@@ -219,15 +219,17 @@ async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_an_owner_no_longer_admin_pauses_without_reading(monkeypatch, stubs):
+async def test_a_module_sync_whose_run_as_user_is_gone_pauses_without_reading(monkeypatch, stubs):
+    # #2650: a module sync reads as the user chosen for the module, who needs no admin
+    # role; one no longer active pauses it with "choose who this runs as", never a fallback.
     async def never(*_a, **_k):
-        raise AssertionError("read without an administrator")
+        raise AssertionError("read without its run-as user")
 
     monkeypatch.setattr(imp, "_read_openaev", never)
     sync = _sync()
-    owner = SimpleNamespace(id=uuid.uuid4(), email="x@example.com", is_active=True, is_admin=False)
+    owner = SimpleNamespace(id=uuid.uuid4(), email="x@example.com", is_active=False, is_admin=False)
     result = await osync.run_sync(_Db(owner), sync, trigger="schedule")
-    assert "no longer an administrator" in sync.paused_reason and result["error"] == sync.paused_reason
+    assert "Choose who this sync runs as" in sync.paused_reason and result["error"] == sync.paused_reason
 
 
 @pytest.mark.asyncio

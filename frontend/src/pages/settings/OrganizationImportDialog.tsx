@@ -20,6 +20,7 @@
 import { useState, type ElementType, type KeyboardEvent } from "react";
 import { Icon, Spinner, type IconName } from "@filigran/design-system";
 
+import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
 import { Button } from "@/components/ui/button";
 import { CompactFigure } from "@/components/ui/compact-figure";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -431,6 +432,8 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
   // "Import once" (off) or "Import and keep in sync" (on, #11913) with its schedule.
   const [keepSync, setKeepSync] = useState(false);
   const [schedule, setSchedule] = useState<SyncSchedule>(defaultSchedule);
+  // #2650: who a sync of OpenCTI, OpenAEV or OpenCRQ acts as in the module; the caller by default.
+  const [runAs, setRunAs] = useState("");
 
   const platform = IMPORT_SOURCE_NAMES[source ?? ""] ?? source ?? "";
   const sectionEntry = sources.data?.sections.find((entry) => entry.section === section);
@@ -460,6 +463,7 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
       setResult(null);
       setKeepSync(false);
       setSchedule(defaultSchedule());
+      setRunAs("");
       preview.reset();
       outboundPreview.reset();
       apply.reset();
@@ -500,7 +504,17 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
   const saveSync = (imported: boolean) => {
     const { section: syncSection, source: syncSource, filters: syncFilters, batch_type } = body();
     createSync.mutate(
-      { section: syncSection, source: syncSource, filters: syncFilters, batch_type, remove_gone: outbound ? false : removeGone, direction, ...schedule, enabled: true },
+      {
+        section: syncSection,
+        source: syncSource,
+        filters: syncFilters,
+        batch_type,
+        remove_gone: outbound ? false : removeGone,
+        direction,
+        ...schedule,
+        enabled: true,
+        ...(isRunAsModule(syncSource) ? { run_as_user_id: runAs } : {}),
+      },
       {
         onSuccess: () => {
           toast({ title: imported ? t_i18n("Profile saved and kept in sync") : t_i18n("Sync saved"), variant: "success" });
@@ -847,9 +861,10 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
           onCheckedChange={setKeepSync}
         >
           {keepSync && <SyncScheduleFields idPrefix="org-import-sync" value={schedule} onChange={setSchedule} />}
+          {keepSync && isRunAsModule(source) && <ModuleRunAsField module={source} value={runAs} onChange={setRunAs} active={open} disabled={createSync.isPending} />}
         </SettingsSwitchField>
       )}
-      {plan && !plan.error && <OrganizationSharedContextNotice elevation={1} actor={{ mode: keepSync ? "runs" : "reads", who: meLabel }} />}
+      {plan && !plan.error && !(keepSync && isRunAsModule(source)) && <OrganizationSharedContextNotice elevation={1} actor={{ mode: keepSync ? "runs" : "reads", who: meLabel }} />}
       {apply.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The import was not saved. Preview again, then import.")}</p>}
       {createSync.isError && (
         <p className="content-compact text-feedback-error-primary" data-testid="org-import.sync-error">
@@ -902,7 +917,11 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
           <SettingsField id="org-import-sync" label={t_i18n("Schedule")} helper={t_i18n("The sync runs on this schedule, with these filters.")}>
             <SyncScheduleFields idPrefix="org-import-sync" value={schedule} onChange={setSchedule} direction="outbound" />
           </SettingsField>
-          <OrganizationSharedContextNotice elevation={1} direction="outbound" actor={{ mode: "runs", who: meLabel }} />
+          {isRunAsModule(source) ? (
+            <ModuleRunAsField module={source} value={runAs} onChange={setRunAs} active={open} disabled={createSync.isPending} />
+          ) : (
+            <OrganizationSharedContextNotice elevation={1} direction="outbound" actor={{ mode: "runs", who: meLabel }} />
+          )}
         </>
       )}
       {createSync.isError && (
@@ -914,6 +933,8 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
   );
 
   const content = { section: sectionStep, source: sourceStep, filters: filtersStep, mapping: mappingStep, preview: outbound ? outboundPreviewStep : previewStep }[step];
+  // A sync of a module saves only once somebody is chosen to act as there (#2650).
+  const runAsMissing = isRunAsModule(source) && !runAs;
   const importCount = (plan?.counts.new ?? 0) + (plan?.counts.updated ?? 0) + (removeGone ? goneCount : 0);
 
   return (
@@ -945,7 +966,7 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
           {step === "preview" && outbound ? (
             <Button
               onClick={() => saveSync(false)}
-              disabled={!pushed || Boolean(pushed.error) || createSync.isPending}
+              disabled={!pushed || Boolean(pushed.error) || createSync.isPending || runAsMissing}
               aria-busy={createSync.isPending || undefined}
             >
               {createSync.isPending && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}
@@ -954,7 +975,7 @@ export function OrganizationImportDialog({ open, onOpenChange, sections: offered
           ) : step === "preview" ? (
             <Button
               onClick={runImport}
-              disabled={!plan || Boolean(plan.error) || (importCount === 0 && !keepSync) || apply.isPending || createSync.isPending}
+              disabled={!plan || Boolean(plan.error) || (importCount === 0 && !keepSync) || apply.isPending || createSync.isPending || (keepSync && runAsMissing)}
               aria-busy={apply.isPending || createSync.isPending || undefined}
             >
               {(apply.isPending || createSync.isPending) && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}

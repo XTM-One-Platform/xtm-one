@@ -440,6 +440,31 @@ export function useUsersCount(query: UserTableQuery) {
   });
 }
 
+/** The modules XTM One acts in per user (#2650). */
+export type RunAsModule = "opencti" | "openaev" | "opencrq";
+
+/** One user of the "Act in <module> as" choice (`GET /users/module-run-as`, #2650). */
+export interface ModuleRunAsCandidate {
+  id: string;
+  name: string;
+  email: string;
+  is_self: boolean;
+  /** False: listed disabled, `reason` says why (`no_integration`). */
+  selectable: boolean;
+  reason: string | null;
+}
+
+/** Who XTM One may act as in a module: the caller first; an administrator sees every active user. */
+export function useModuleRunAsCandidates(provider: RunAsModule | null, enabled = true) {
+  return useQuery<ModuleRunAsCandidate[]>({
+    queryKey: ["users", "module-run-as", provider],
+    queryFn: () => api.get(`/users/module-run-as?provider=${provider}`),
+    enabled: enabled && provider !== null,
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useUsers(enabled = true) {
   return useQuery<UserListItem[]>({
     queryKey: ["users"],
