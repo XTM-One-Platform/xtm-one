@@ -384,6 +384,7 @@ async def resync_world(
                 if AUTH_REFUSED not in out["errors"]:
                     out["errors"].append(AUTH_REFUSED)
                 continue
+            seen = len(out["errors"])
             async for node in _pages(gql, _QUERY, variables, "stixCoreObjects", out):
                 payload = delivery(node)
                 if payload is None:
@@ -391,7 +392,7 @@ async def resync_world(
                 out["read"] += 1
                 if await notify("opencti", "update", payload, verified=True):
                     out["recorded"] += 1
-            if AUTH_REFUSED in out["errors"]:
+            if AUTH_REFUSED in out["errors"][seen:]:
                 refused.add(index)
     return routes
 
