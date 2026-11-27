@@ -122,7 +122,12 @@ NOT_PIR_SOURCE_TYPES: tuple[str, ...] = ("Vulnerability", "Report")
 #: (``listenPirEventsUtils.stixIdOfLinkedEntity``), how a Vulnerability or a Report reaches a PIR.
 PIR_FLAGGED = "flagged"
 PIR_LINKED = "linked"
-PIR_RELATIONS = (PIR_FLAGGED, PIR_LINKED)
+#: ``contained`` (#2583 point 3): a report whose ``object_refs`` hold an entity flagged in the PIRs.
+#: OpenCTI's PIR playbook never reads a container, so it is a live trigger scoped to the flagged ids.
+PIR_CONTAINED = "contained"
+PIR_RELATIONS = (PIR_FLAGGED, PIR_LINKED, PIR_CONTAINED)
+#: The entity types a ``contained`` trigger listens to: containers.
+CONTAINER_TYPES: tuple[str, ...] = ("Report",)
 #: OpenCTI's playbook components (``modules/playbook/components``).
 PIR_ENTRY_COMPONENT = "PLAYBOOK_DATA_STREAM_PIR"
 NOTIFIER_COMPONENT = "PLAYBOOK_NOTIFIER_COMPONENT"
@@ -247,6 +252,16 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         raise ProvisionSpecError(
             "provision.pir_relation linked is read by the PIR playbook only: set mode pir_playbook"
         )
+    if pir_relation == PIR_CONTAINED:
+        if mode != TRIGGER_MODE or "pir_ids" not in context_fields:
+            raise ProvisionSpecError(
+                "provision.pir_relation contained is a live trigger on the profile PIRs: "
+                "leave mode unset and name pir_ids in organization_context"
+            )
+        if not entity_types or set(entity_types) - set(CONTAINER_TYPES):
+            raise ProvisionSpecError(
+                f"provision.pir_relation contained listens to containers only: entity_types {list(CONTAINER_TYPES)}"
+            )
     if "pir_ids" in context_fields and pir_relation == PIR_FLAGGED:
         refusal = pir_source_refusal(entity_types)
         if refusal is not None:
@@ -548,7 +563,7 @@ def trigger_filters(
         filters.extend(vuln_signals)
     elif vuln_signals:
         groups.append({"mode": "or", "filters": vuln_signals, "filterGroups": []})
-    if spec.get("pir_ids"):
+    if spec.get("pir_ids") and spec.get("pir_relation") != PIR_CONTAINED:
         # OpenCTI's composite PIR filter (stix-testers ``testPirScore``): an
         # entity flagged in one of these PIRs with at least the score. One
         # filter per minimum score (#2435), any of them matching.
@@ -684,6 +699,50 @@ async def _resolve_sector_ids(gql: Gql, sectors: list[str]) -> tuple[list[str], 
         else:
             missing.append(sector)
     return ids, missing
+
+
+#: The flagged entities a report-containment trigger scopes to, at most (#2583 point 3).
+MAX_CONTAINED_IDS = 500
+
+
+async def pir_flagged_ids(gql: Gql, pir_ids: list[str], limit: int = MAX_CONTAINED_IDS) -> list[str]:
+    """The ids (internal and standard) of the entities flagged in *pir_ids*, highest score first.
+
+    #2583 point 3: OpenCTI flags no Report in a PIR and its playbook's ``create_rel`` reads only a
+    new relationship, never a container's ``object_refs``; a report containing a flagged entity is
+    caught by a live trigger scoped to these ids (``objects``), read again at every recheck.
+    """
+    found: list[str] = []
+    query = (
+        "query XtmPirFlagged($pirId: ID!, $first: Int, $filters: FilterGroup) {"
+        " stixDomainObjects(pirId: $pirId, first: $first, orderBy: refreshed_at, orderMode: desc,"
+        " filters: $filters) { edges { node { id standard_id } } } }"
+    )
+    for pir_id in sorted(set(pir_ids)):
+        scope = {
+            "mode": "and",
+            "filters": [
+                {
+                    "key": "regardingOf",
+                    "operator": "eq",
+                    "mode": "and",
+                    "values": [
+                        {"key": "id", "values": [pir_id], "operator": "eq", "mode": "or"},
+                        {"key": "relationship_type", "values": ["in-pir"], "operator": "eq", "mode": "or"},
+                    ],
+                }
+            ],
+            "filterGroups": [],
+        }
+        data, err = await gql(query, {"pirId": pir_id, "first": limit, "filters": scope})
+        if err:
+            raise RuntimeError(err)
+        for edge in (data.get("stixDomainObjects") or {}).get("edges") or []:
+            node = edge.get("node") or {}
+            for value in (node.get("id"), node.get("standard_id")):
+                if isinstance(value, str) and value and value not in found:
+                    found.append(value)
+    return found[: 2 * limit]
 
 
 async def _standard_ids(gql: Gql, internal_ids: list[str]) -> dict[str, str]:
@@ -1217,6 +1276,18 @@ async def reconcile(
             }
         organization_ids: list[str] = []
         receiver: list[dict[str, Any]] = []
+        contained: list[str] = []
+        if spec.get("pir_relation") == PIR_CONTAINED:
+            # #2583 point 3: a report holding an entity flagged in the PIRs (its object_refs).
+            contained = await pir_flagged_ids(gql, list(spec.get("pir_ids") or []))
+            if not contained:
+                return {
+                    **state,
+                    "status": "error",
+                    "error": "no entity is flagged in the PIRs yet: no report can contain one; rechecked at every pass",
+                    "checked_at": stamp,
+                }
+            organization_ids = contained
         if spec.get("organizations", PRIMARY_SCOPE) != PRIMARY_SCOPE:
             organization_ids, receiver, missing_org_sectors = await _organization_scope(gql, spec)
             if missing_org_sectors:
@@ -1292,6 +1363,8 @@ async def reconcile(
     }
     if receiver:
         provisioned["organizations"] = receiver
+    if contained:
+        provisioned["contained_ids"] = str(len(contained))
     return provisioned
 
 

@@ -69,7 +69,7 @@ def test_every_assignment_is_admin_opt_in_and_off():
 
 
 def test_the_trigger_listens_to_pir_matches_on_four_entity_types():
-    event = next(a for a in m1.PIR_DESK_ASSIGNMENTS if a["trigger_type"] == "integration_event")
+    event = next(a for a in m1.PIR_DESK_ASSIGNMENTS if a["name"] == "PIR match created")
     spec = read_provision_spec(event["trigger_config"])
     assert spec is not None
     # Threat activity is the CTEM loop's PIR trigger (#1832): one owner per entity type.

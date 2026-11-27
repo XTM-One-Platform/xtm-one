@@ -76,9 +76,12 @@ def test_the_new_vulnerability_playbook_is_linked_and_the_threat_one_flagged() -
 
 
 def test_every_seeded_opencti_pir_spec_is_valid() -> None:
-    """The seeded PIR desk trigger reads reports and vulnerabilities through linked relationships."""
+    """The seeded PIR desk triggers read reports and vulnerabilities through a linked relationship
+    or, for a report, through containment (a live trigger scoped to the flagged entities)."""
     for assignment in PIR_DESK_ASSIGNMENTS:
         config = assignment.get("trigger_config") or {}
         spec = prov.read_provision_spec(config)
         if spec and spec["entity_types"] and set(spec["entity_types"]) & set(prov.NOT_PIR_SOURCE_TYPES):
-            assert spec["mode"] == prov.PIR_PLAYBOOK_MODE and spec["pir_relation"] == prov.PIR_LINKED
+            linked = spec["mode"] == prov.PIR_PLAYBOOK_MODE and spec["pir_relation"] == prov.PIR_LINKED
+            contained = spec["mode"] == prov.TRIGGER_MODE and spec["pir_relation"] == prov.PIR_CONTAINED
+            assert linked or contained, assignment["name"]
