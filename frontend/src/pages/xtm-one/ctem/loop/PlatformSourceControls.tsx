@@ -34,7 +34,7 @@ import {
   PLATFORM_SOURCE_STATUS_LABEL,
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
-  holdsLegacyCleanup,
+  legacyCleanupCount,
   platformObjectLinks,
   platformSourceReason,
   sharedFeeds,
@@ -46,7 +46,8 @@ const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "Op
 /**
  * One labelled button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
  * Objects that open the same page (several triggers in one list) share one button. The kind is written on the
- * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592).
+ * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592); two links
+ * of one kind (the PIR playbooks of each path) also carry the path they serve (#2627).
  */
 function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const { t_i18n } = useFormatter();
@@ -54,15 +55,19 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const links = platformObjectLinks(source).filter((link) => !seen.has(link.href) && seen.add(link.href));
   if (links.length === 0) return null;
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+  const perKind = links.reduce<Record<string, number>>((n, link) => ({ ...n, [link.kind]: (n[link.kind] ?? 0) + 1 }), {});
   return (
-    <span className="flex shrink-0 items-center" data-testid="ctem-platform-source-objects">
+    <span className="flex min-w-0 shrink items-center" data-testid="ctem-platform-source-objects">
       {links.map((link) => {
-        const label = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        const path = perKind[link.kind] > 1 && link.pathLabel ? t_i18n(link.pathLabel) : null;
+        const open = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        const kind = t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind]);
+        const label = path ? t_i18n("{label}: {value}", { label: open, value: path }) : open;
         return (
           <Tip key={link.href} content={label}>
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost" size="sm" className="min-w-0">
               <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
-                {t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind])}
+                <span className="truncate">{path ? t_i18n("{label}: {value}", { label: kind, value: path }) : kind}</span>
                 <Icon name="external-link" size={16} aria-hidden />
               </a>
             </Button>
@@ -328,7 +333,7 @@ function LegacyReportLine({ report, names, dryRun }: { report: CtemLegacyOpencti
  * Admin "Remove legacy OpenCTI objects" (#2583 point 4): the dialog lists first (dry run) what the former
  * Threat response holders left in OpenCTI, per integration a Signals source is on for; Remove deletes them.
  */
-function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<string, string> }) {
+function LegacyOpenctiCleanup({ pending, integrationNames }: { pending: number; integrationNames: Record<string, string> }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const run = useRemoveLegacyOpenctiObjects();
@@ -336,6 +341,10 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
   const [removed, setRemoved] = useState(false);
   const report = run.data?.integrations ?? [];
   const found = report.reduce((n, r) => n + (r.objects?.length ?? 0), 0);
+  // Nothing left to remove (#2627): no destructive action, the dialog only closes.
+  const nothingLeft = removed || (!run.isPending && run.data !== undefined && found === 0);
+  // XTM One holds no legacy object any more: the action hides, once its dialog is closed.
+  if (pending === 0 && !open) return null;
   const start = () => {
     setOpen(true);
     setRemoved(false);
@@ -355,7 +364,7 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
   return (
     <>
       <Button variant="ghost" size="sm" className="self-start" onClick={start} data-testid="ctem-legacy-cleanup">
-        {t_i18n("Remove legacy OpenCTI objects")}
+        {t_i18n("Remove legacy OpenCTI objects ({count})", { count: pending })}
       </Button>
       <Dialog open={open} onOpenChange={(next) => !next && !run.isPending && setOpen(false)}>
         <DialogContent size="md" data-testid="ctem-legacy-cleanup-dialog">
@@ -382,9 +391,9 @@ function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<s
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={run.isPending}>
-              {removed ? t_i18n("Close") : t_i18n("Cancel")}
+              {nothingLeft ? t_i18n("Close") : t_i18n("Cancel")}
             </Button>
-            {!removed && (
+            {!nothingLeft && (
               <Button variant="destructive" onClick={remove} disabled={run.isPending || found === 0} data-testid="ctem-legacy-cleanup-confirm">
                 {t_i18n("Remove {count, plural, one {# object} other {# objects}}", { count: found })}
               </Button>
@@ -422,8 +431,11 @@ export function PlatformSourceControls({
           ))}
         </ul>
       )}
-      {isAdmin && holdsLegacyCleanup(source, own) && (
-        <LegacyOpenctiCleanup integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))} />
+      {isAdmin && source.provider === "opencti" && source.kind === "listener" && (
+        <LegacyOpenctiCleanup
+          pending={legacyCleanupCount(source, own)}
+          integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))}
+        />
       )}
     </div>
   );

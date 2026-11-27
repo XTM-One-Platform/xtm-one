@@ -18,10 +18,20 @@ def test_lists_notifier_triggers_and_playbook_once_in_order() -> None:
         {"kind": "notifier", "id": "n1"},
         {"kind": "trigger", "id": "t1"},
         {"kind": "trigger", "id": "t2"},
-        {"kind": "playbook", "id": "p1"},
-        {"kind": "notifier", "id": "n2"},
-        {"kind": "playbook", "id": "p2"},
+        {"kind": "playbook", "id": "p1", "path": "a", "path_label": "a"},
+        {"kind": "notifier", "id": "n2", "path": "b", "path_label": "b"},
+        {"kind": "playbook", "id": "p2", "path": "b", "path_label": "b"},
     ]
+
+
+def test_per_path_objects_carry_their_path_label() -> None:
+    """#2627: the two PIR playbooks of one row read apart by the path each serves."""
+    state = {"paths": {"relevant_threat": {"playbook_id": "p2"}, "new_vulnerability": {"playbook_id": "p1"}}}
+    labels = {o["id"]: o["path_label"] for o in provisioned_objects(state)}
+    assert labels == {
+        "p1": "New vulnerability on a running version",
+        "p2": "Relevant new threat or actor",
+    }
 
 
 def test_list_of_trigger_ids_and_single_trigger_id() -> None:

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemPlatformSource } from "@/hooks/api/useCtemSignalsApi";
 import { PlatformSourceControls } from "./PlatformSourceControls";
-import { holdsLegacyCleanup, sharedFeeds } from "./platform-sources";
+import { legacyCleanupCount, sharedFeeds } from "./platform-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -71,24 +71,35 @@ describe("Blast radius of a shared source (#2583 point 6)", () => {
   });
 });
 
-describe("Remove legacy OpenCTI objects (#2583 point 4)", () => {
-  it("shows on the OpenCTI live listener once a source is on, for an administrator only", () => {
-    expect(holdsLegacyCleanup({ provider: "opencti", kind: "listener" }, [{ enabled: true }])).toBe(true);
-    expect(holdsLegacyCleanup({ provider: "opencti", kind: "listener" }, [{ enabled: false }])).toBe(false);
-    expect(holdsLegacyCleanup({ provider: "opencti", kind: "pir_playbook" }, [{ enabled: true }])).toBe(false);
-    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener()]} isAdmin={false} onEnable={() => {}} />);
+describe("Remove legacy OpenCTI objects (#2583 point 4, #2627)", () => {
+  it("counts what XTM One still holds on the OpenCTI live listener, once a source is on", () => {
+    expect(legacyCleanupCount({ provider: "opencti", kind: "listener" }, [{ enabled: true, legacy_pending: 3 }, { enabled: true, legacy_pending: 1 }])).toBe(4);
+    expect(legacyCleanupCount({ provider: "opencti", kind: "listener" }, [{ enabled: false, legacy_pending: 3 }])).toBe(0);
+    expect(legacyCleanupCount({ provider: "opencti", kind: "pir_playbook" }, [{ enabled: true, legacy_pending: 3 }])).toBe(0);
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener({ legacy_pending: 2 })]} isAdmin={false} onEnable={() => {}} />);
     expect(screen.queryByTestId("ctem-legacy-cleanup")).toBeNull();
+  });
+
+  it("hides the action when nothing is pending", () => {
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener({ legacy_pending: 0 })]} isAdmin onEnable={() => {}} />);
+    expect(screen.queryByTestId("ctem-legacy-cleanup")).toBeNull();
+  });
+
+  it("shows the action with its count when objects are pending", () => {
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener({ legacy_pending: 3 })]} isAdmin onEnable={() => {}} />);
+    expect(screen.getByTestId("ctem-legacy-cleanup")).toHaveTextContent("Remove legacy OpenCTI objects (3)");
   });
 
   it("lists first with a dry run, then removes on confirm", async () => {
     const objects = [{ kind: "triggersKnowledge", id: "x1", name: "XTM One - Threat response - New relevant threats" }];
     post.mockResolvedValueOnce({ dry_run: true, integrations: [{ integration_id: "i1", objects, removed: 0, errors: [] }] });
     post.mockResolvedValueOnce({ dry_run: false, integrations: [{ integration_id: "i1", objects, removed: 1, errors: [] }] });
-    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener()]} isAdmin onEnable={() => {}} />);
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener({ legacy_pending: 1 })]} isAdmin onEnable={() => {}} />);
     fireEvent.click(screen.getByTestId("ctem-legacy-cleanup"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/ctem-signals/sources/legacy-opencti-objects?dry_run=true", {}));
     const dialog = await screen.findByTestId("ctem-legacy-cleanup-dialog");
     expect(await within(dialog).findByText("1 object would be removed:")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("ctem-legacy-cleanup-confirm")).toHaveTextContent("Remove 1 object");
     expect(within(dialog).getByText("OpenCTI prod")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByTestId("ctem-legacy-cleanup-confirm"));
     await waitFor(() => expect(post).toHaveBeenLastCalledWith("/ctem-signals/sources/legacy-opencti-objects?dry_run=false", {}));
@@ -96,12 +107,29 @@ describe("Remove legacy OpenCTI objects (#2583 point 4)", () => {
     expect(within(dialog).queryByTestId("ctem-legacy-cleanup-confirm")).toBeNull();
   });
 
-  it("cannot remove when nothing is left", async () => {
+  it("offers only Close when the dry run finds nothing left", async () => {
     post.mockResolvedValueOnce({ dry_run: true, integrations: [{ integration_id: "i1", objects: [], removed: 0, errors: [] }] });
-    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener()]} isAdmin onEnable={() => {}} />);
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener({ legacy_pending: 2 })]} isAdmin onEnable={() => {}} />);
     fireEvent.click(screen.getByTestId("ctem-legacy-cleanup"));
     const dialog = await screen.findByTestId("ctem-legacy-cleanup-dialog");
     expect(await within(dialog).findByText("No legacy object left.")).toBeInTheDocument();
-    expect(within(dialog).getByTestId("ctem-legacy-cleanup-confirm")).toBeDisabled();
+    expect(within(dialog).queryByTestId("ctem-legacy-cleanup-confirm")).toBeNull();
+    expect(within(dialog).getByText("Close")).toBeInTheDocument();
+  });
+});
+
+describe("Open in links of a per-path source (#2627)", () => {
+  it("labels two playbooks of one row with the path each serves", () => {
+    const pir = listener({
+      kind: "pir_playbook",
+      objects: [
+        { kind: "notifier", id: "n1" },
+        { kind: "playbook", id: "p1", path: "new_vulnerability", path_label: "New vulnerability on a running version" },
+        { kind: "playbook", id: "p2", path: "relevant_threat", path_label: "Relevant new threat or actor" },
+      ],
+    });
+    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "pir_playbook" }} platformSources={[pir]} isAdmin onEnable={() => {}} />);
+    const texts = screen.getAllByTestId("ctem-platform-source-object-link").map((a) => a.textContent);
+    expect(texts).toEqual(["Notifier", "Playbook: New vulnerability on a running version", "Playbook: Relevant new threat or actor"]);
   });
 });
