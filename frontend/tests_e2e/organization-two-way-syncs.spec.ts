@@ -59,6 +59,10 @@ const DIRECTIONS = [
   { section: 'primary_assets', source: 'opencrq', directions: ['inbound'], reason: 'OpenCRQ owns its primary assets.' },
 ];
 
+// Who the sync acts as in the module (#2650): the stack connects no OpenCTI or
+// OpenAEV, so the caller is answered as a selectable candidate.
+const RUN_AS = [{ id: 'e2e-self', name: 'E2E admin', email: 'admin@example.com', is_self: true, selectable: true, reason: null }];
+
 const FIRST_RUN = { direction: 'outbound', counts: { enter: 2, update: 0, leave: 0, kept: 0 }, enter: ['payments-api', 'billing-db'], update: [], leave: [], kept: [], error: null };
 const CHANGE = { direction: 'outbound', counts: { enter: 1, update: 2, leave: 1, kept: 0 }, enter: ['web-01'], update: [], leave: ['old-db'], kept: [], error: null };
 
@@ -71,6 +75,10 @@ interface Sent {
 /** Answers the sync routes the two dialogs read and write; records every write. */
 async function serveSyncs(page: Page): Promise<Sent[]> {
   const sent: Sent[] = [];
+  await page.route(
+    (url) => url.pathname === '/api/v1/users/module-run-as',
+    (route: Route) => route.fulfill({ json: RUN_AS }),
+  );
   await page.route(
     (url) => url.pathname.startsWith('/api/v1/organization-context/'),
     async (route: Route) => {
@@ -124,6 +132,7 @@ test.describe('Organization syncs: push to a platform and edit the filters (#198
       source: 'opencti',
       direction: 'outbound',
       remove_gone: false,
+      run_as_user_id: 'e2e-self',
     });
   });
 
@@ -148,6 +157,6 @@ test.describe('Organization syncs: push to a platform and edit the filters (#198
 
     await dialog.getByRole('button', { name: 'Save the change' }).click();
     await expect(dialog).toBeHidden();
-    expect(sent.find((call) => call.method === 'PUT')?.body).toMatchObject({ direction: 'outbound', filters: { search: 'prod' } });
+    expect(sent.find((call) => call.method === 'PUT')?.body).toMatchObject({ direction: 'outbound', filters: { search: 'prod' }, run_as_user_id: 'e2e-self' });
   });
 });
