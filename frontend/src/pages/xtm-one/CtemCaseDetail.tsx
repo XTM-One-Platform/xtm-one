@@ -602,7 +602,7 @@ export default function CtemCaseDetail() {
     {
       // The kind of a signal member in the CSV (#1936): its trigger path, empty for a product issue.
       key: "trigger_path",
-      header: "Trigger path",
+      header: "Signal type",
       cell: () => null,
       csv: (r) => (isRestrictedIssue(r.issue) || !isSignalIssue(r.issue) ? "" : (signalPathLabel(r.issue, t_i18n) ?? "")),
       exportOnly: true,

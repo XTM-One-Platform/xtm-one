@@ -626,6 +626,8 @@ async def update_case(
             )
         )
         case.owner_user_id = new_owner
+        # A person given or cleared by hand owns the case alone: the routed team no longer does (#2577).
+        case.owner_group_id = None
     if due_at is not None and due_at != case.due_at:
         db.add(
             _event(

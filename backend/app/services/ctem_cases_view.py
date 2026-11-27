@@ -573,12 +573,35 @@ def _decode_view(raw: str | bytes) -> ViewerView:
         return _copy_view(found)
 
 
+#: A stored view this size or larger is decoded in a worker thread (#2570): a storm's view held the web loop.
+OFF_LOOP_DECODE_BYTES = 64 * 1024
+
+
+async def _decode_view_off_loop(raw: str | bytes) -> ViewerView:
+    """:func:`_decode_view`, with the JSON decode of a large view run off the web event loop (#2570).
+
+    The memo is read on the loop (cheap); only a miss of a view past
+    :data:`OFF_LOOP_DECODE_BYTES` is decoded in a thread, then memoised like any other.
+    """
+    data = raw.encode() if isinstance(raw, str) else raw
+    if len(data) < OFF_LOOP_DECODE_BYTES or hashlib.blake2b(data, digest_size=16).digest() in _decoded:
+        return _decode_view(data)
+    with timed_sync("decode"):
+        found = await asyncio.to_thread(ViewerView.from_json, data)
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    while len(_decoded) >= DECODED_VIEWS_MAX:
+        _decoded.pop(next(iter(_decoded)))
+    _decoded[digest] = found
+    with timed_sync("copy"):
+        return _copy_view(found)
+
+
 async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
     try:
         async with timed("redis"):
             cached = await client.get(_view_key(user_id, vertical, generation))
         if cached:
-            return _decode_view(cached)
+            return await _decode_view_off_loop(cached)
     except Exception:
         logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
     return None
@@ -645,7 +668,7 @@ async def _older_view(
         previous = None
     if previous:
         try:
-            return _decode_view(previous)
+            return await _decode_view_off_loop(previous)
         except Exception:
             logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
     # A pointer written before #2232: its view sits under the generation's own key.
@@ -815,7 +838,8 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
     await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
-            raw = view.to_json()
+            # #2570: the encode of a whole view runs off the web event loop.
+            raw = await asyncio.to_thread(view.to_json)
             await client.set(_view_key(user_id, vertical, generation), raw, ex=VIEW_TTL_SECONDS)
             # The previous view the list answers from while the next generation builds (#2232).
             await client.set(_previous_key(user_id, vertical), raw, ex=STALE_VIEW_TTL_SECONDS)
@@ -1145,6 +1169,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "state": case.state,
         "state_since": case.state_since.isoformat() if case.state_since else None,
         "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
+        # The platform group owning the case as a team (#2577); the person owner is its lead.
+        "owner_group_id": str(gid) if (gid := getattr(case, "owner_group_id", None)) else None,
         "due_at": case.due_at.isoformat() if case.due_at else None,
         "accepted_reason": case.accepted_reason,
         "accepted_until": case.accepted_until.isoformat() if case.accepted_until else None,
@@ -1633,6 +1659,7 @@ def list_for_viewer(
     signal_type: Iterable[str] | None = None,
     limit: int = 50,
     offset: int = 0,
+    owner_group_ids: Iterable[str] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """One page of the cases this viewer sees and their counts by state.
 
@@ -1643,8 +1670,10 @@ def list_for_viewer(
     primary asset (#1980 S2): the primary asset page's cases.
     *signal_type* keeps the cases one of whose visible signals has one of those
     trigger paths, ``none`` the cases with no visible signal (#2556); like *state*,
-    it narrows the page, not the counts by state.
+    it narrows the page, not the counts by state. *owner_user_id* also keeps the
+    cases a team owns when *owner_group_ids* (that person's groups) holds the team (#2577).
     """
+    teams = {str(g) for g in owner_group_ids}
     if asset and asset.strip():
         cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
     if primary_asset and primary_asset.strip():
@@ -1656,7 +1685,7 @@ def list_for_viewer(
     if state:
         rows = [r for r in rows if r["state"] == state]
     if owner_user_id:
-        rows = [r for r in rows if r["owner_user_id"] == owner_user_id]
+        rows = [r for r in rows if r["owner_user_id"] == owner_user_id or r.get("owner_group_id") in teams]
     if priority:
         rows = [r for r in rows if r["priority"] == priority]
     if signal_type:

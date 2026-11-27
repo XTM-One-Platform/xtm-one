@@ -191,6 +191,23 @@ describe("the fleet ROI view", () => {
     await vi.waitFor(() => expect(get).toHaveBeenCalledWith("/roi?scope=fleet&id=f-1&window=30d"));
   });
 
+  it("says the value is measured since the reset when the fleet was reset in the window (#2580)", async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url.startsWith("/fleets/")) return cost;
+      if (url.startsWith("/roi/chat")) return { currency: "EUR", totals: { deliverables: 0, pending: 0, corrected: 0, minutes: 0, hours: 0, value: 0 }, lines: [] };
+      return { ...report(0), value_measured_since: "2026-11-27T08:00:00Z" };
+    });
+    renderPage("/fleets/f-1/roi");
+    expect(await screen.findByTestId("roi-reset-note")).toHaveTextContent(/Measured since .*2026.* \(reset\)/);
+  });
+
+  it("draws no reset line for a fleet never reset", async () => {
+    serve({ windowRuns: 2 });
+    renderPage("/fleets/f-1/roi");
+    await screen.findByText("Contract reviewer");
+    expect(screen.queryByTestId("roi-reset-note")).toBeNull();
+  });
+
   it("exports the fleet's report, not the platform's", async () => {
     serve({ windowRuns: 2 });
     const download = vi.mocked(api.download);

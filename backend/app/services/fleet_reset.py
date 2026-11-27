@@ -33,18 +33,25 @@ notes, model pin, approval switches).
   itself makes (built-in integrations, knowledge bases, skills) kept, and its
   definition rewritten from the seed spec now (``_sync_agent_fields``).
 
+* the fleet's value (ROI) restarted: ``fleets.value_measured_since`` stamped now, so
+  every value read of the fleet counts only what happens from the reset on, records and
+  the AI cost of its agents alike (#2580, ``services/fleet_value_marks.py``); nothing
+  is deleted, the audit entry names the previous and the new mark.
+
 Kept: ids, run history, cases and findings, the audit trail, the workspace,
 and the open work items of the members (decision items included): the dry run
 and the audit entry name how many (``FleetResetOutcome.before``, #2134).
 A dry run answers the counts the confirmation dialog shows, and the automations
 an emergency stop holds. Refused during a platform emergency stop, while a stop
-holds any automation of the fleet, and on a custom fleet. Idempotent: a second call
-changes nothing and the next boot changes nothing. The caller owns the commit.
+holds any automation of the fleet, and on a custom fleet. Idempotent on the configuration: a
+second call changes no setting and the next boot changes nothing; each reset only moves
+the value mark to its own time, so the value restarts (#2580). The caller owns the commit.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request
@@ -122,6 +129,9 @@ class FleetResetOutcome:
     settings: list[str] = field(default_factory=list)
     documentation: bool = False
     held_by_stop: tuple[str, ...] = ()
+    #: The value mark before and after the reset (#2580): ISO times, ``None`` when unset.
+    value_measured_since_from: str | None = None
+    value_measured_since_to: str | None = None
     #: The fleet as it stood before the reset (#2134): the level that held, its members, pins and
     #: added gates, and the open work the reset keeps (open decision items and open items of its
     #: home members). What the audit entry records under ``before``.
@@ -139,6 +149,7 @@ class FleetResetOutcome:
             or self.agents
             or self.settings
             or self.documentation
+            or self.value_measured_since_to
         )
 
     def audit_details(self) -> dict[str, Any]:
@@ -154,6 +165,7 @@ class FleetResetOutcome:
             "settings": list(self.settings),
             "documentation": self.documentation,
             "held_by_stop": list(self.held_by_stop),
+            "value_measured_since": {"from": self.value_measured_since_from, "to": self.value_measured_since_to},
         }
 
 
@@ -372,6 +384,11 @@ async def reset_builtin_fleet(
             setattr(row, name, factory)
     if outcome.documentation:
         await _restore_shipped_documentation(db, fleet)
+    # The fleet's value restarts from now (#2580): records and AI cost are measured from the mark.
+    previous_mark = getattr(fleet, "value_measured_since", None)
+    fleet.value_measured_since = datetime.now(UTC)
+    outcome.value_measured_since_from = previous_mark.isoformat() if previous_mark else None
+    outcome.value_measured_since_to = fleet.value_measured_since.isoformat()
     if fleet.orchestrator_agent_id is not None:
         from app.services.fleets import ensure_fleet_health_check
 

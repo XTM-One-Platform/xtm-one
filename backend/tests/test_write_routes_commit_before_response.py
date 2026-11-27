@@ -108,26 +108,27 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # The ROI ledger's figures (#12077 L4) read the open days' cost live from llm_traces.
     "GET /api/v1/roi": (
-        frozenset({"app.services.roi_ledger.cost_facts"}),
+        frozenset({"app.services.roi_ledger.cost_facts", "app.services.roi_ledger._clip_cost_rows"}),
         "cost_facts executes _TRACE_FACTS_SQL, a text() SELECT over llm_traces (the read "
         "close_cost_days writes a closed day from); the route writes nothing",
     ),
     "GET /api/v1/roi/summary": (
-        frozenset({"app.services.roi_ledger.cost_facts"}),
+        frozenset({"app.services.roi_ledger.cost_facts", "app.services.roi_ledger._clip_cost_rows"}),
         "cost_facts executes _TRACE_FACTS_SQL, a text() SELECT over llm_traces; the list column writes nothing",
     ),
     # The chat totals and the fleet datasheet on the ledger's figures (#12077 L4b).
     "GET /api/v1/roi/chat": (
-        frozenset({"app.services.roi_ledger.cost_facts"}),
+        frozenset({"app.services.roi_ledger.cost_facts", "app.services.roi_ledger._clip_cost_rows"}),
         "cost_facts executes _TRACE_FACTS_SQL, a text() SELECT over llm_traces; the chat series writes nothing",
     ),
     # The CSV / PDF export on the ledger's figures (#12077 L4c).
     "GET /api/v1/roi/export": (
-        frozenset({"app.services.roi_ledger.cost_facts"}),
+        frozenset({"app.services.roi_ledger.cost_facts", "app.services.roi_ledger._clip_cost_rows"}),
         "cost_facts executes _TRACE_FACTS_SQL, a text() SELECT over llm_traces; the export writes nothing",
     ),
+    # _clip_cost_rows (#2580) runs the same _TRACE_FACTS_SQL SELECT from a reset fleet's mark.
     "GET /api/v1/fleets/{fleet_id}/documentation/datasheet.pdf": (
-        frozenset({"app.services.roi_ledger.cost_facts"}),
+        frozenset({"app.services.roi_ledger.cost_facts", "app.services.roi_ledger._clip_cost_rows"}),
         "cost_facts executes _TRACE_FACTS_SQL, a text() SELECT over llm_traces; the datasheet writes nothing",
     ),
 }

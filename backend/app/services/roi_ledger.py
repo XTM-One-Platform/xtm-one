@@ -63,6 +63,7 @@ from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
+from app.services import fleet_value_marks
 from app.services.tracing.attribution import TraceRefs, attribute
 
 logger = logging.getLogger(__name__)
@@ -456,6 +457,10 @@ async def ledger_facts(
     from app.services.roi_chat_series import counted_minutes
 
     pricing = await roi_report.load_pricing(db, currency)
+    # A fleet's value is measured from its last factory reset (#2580): its earlier facts are left
+    # out here, the one read every figure goes through, so the fleet view, its row of the
+    # organization's breakdown and the organization total exclude the same part.
+    marks = await fleet_value_marks.load_marks(db)
 
     def rate_of(unit: str) -> tuple[Any, float | None]:
         baseline = pricing.baselines.get(unit)
@@ -472,6 +477,8 @@ async def ledger_facts(
     if start is not None:
         runs = runs.where(RoiRunRecord.created_at >= start)
     for rec in (await db.execute(runs)).scalars():
+        if not fleet_value_marks.counts(rec.fleet_id, rec.created_at, marks):
+            continue
         baseline, rate = rate_of(rec.unit)
         facts.append(
             roi_figures.run_fact(
@@ -492,7 +499,11 @@ async def ledger_facts(
     chats_query = select(RoiChatRecord).where(RoiChatRecord.created_at < end)
     if start is not None:
         chats_query = chats_query.where(RoiChatRecord.created_at >= start)
-    chats = list((await db.execute(chats_query)).scalars())
+    chats = [
+        c
+        for c in (await db.execute(chats_query)).scalars()
+        if fleet_value_marks.counts(c.fleet_id, c.created_at, marks)
+    ]
     measured = await user_minutes(db, {c.conversation_id for c in chats if c.conversation_id})
     for chat in chats:
         if not roi_chat.is_counted(
@@ -541,6 +552,8 @@ async def ledger_facts(
     ]
     if open_first <= last:
         rows.extend(await cost_facts(db, first=open_first, last=last))
+    if marks:
+        rows = await _clip_cost_rows(db, rows, marks, first=first, last=last)
     facts.extend(
         roi_figures.LedgerFact(
             day=row["day"],
@@ -554,6 +567,32 @@ async def ledger_facts(
         for row in rows
     )
     return facts, pricing.currency
+
+
+async def _clip_cost_rows(
+    db: AsyncSession,
+    rows: list[Mapping[str, Any]],
+    marks: Mapping[uuid.UUID, datetime],
+    *,
+    first: date | None,
+    last: date,
+) -> list[Mapping[str, Any]]:
+    """*rows* without the cost a reset fleet spent before its mark (#2580).
+
+    A day before the mark's day is left out whole; the mark's own day is read again from the
+    traces from the mark's minute (the grain of :func:`cost_facts`), so the spend of the minutes
+    after the reset still counts.
+    """
+    kept = [r for r in rows if fleet_value_marks.counts(r["fleet_id"], r["day"], marks)]
+    for fleet_id, mark in marks.items():
+        day = mark.date()
+        if day > last or (first is not None and day < first):
+            continue
+        bounds = _day_bounds(day, day)
+        bounds["start"] = mark
+        live = (await db.execute(text(_TRACE_FACTS_SQL), bounds)).mappings().all()
+        kept.extend(r for r in await _with_home_fleets(db, [dict(x) for x in live]) if r["fleet_id"] == fleet_id)
+    return kept
 
 
 async def figures(
