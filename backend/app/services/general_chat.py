@@ -741,6 +741,7 @@ async def run_general_chat(
             build_skills_catalog_prompt,
             resolve_agent_skills,
         )
+        from app.services.code_interpreter import callable_builtin_tool_ids
 
         skill_access = await build_skill_access_context(db, None, fallback_user_id=user_id)
         # The General Assistant's skills are already checked under the person,
@@ -750,7 +751,8 @@ async def run_general_chat(
         if resolved_skills:
             skills_catalog = build_skills_catalog_prompt(
                 resolved_skills,
-                agent_capabilities=f"built-in tools: {', '.join(ga_builtin_tool_ids)}",
+                # Only the groups this turn can call (#2677).
+                agent_capabilities=f"built-in tools: {', '.join(callable_builtin_tool_ids(ga_builtin_tool_ids))}",
             )
             if skills_catalog:
                 system_parts.append(skills_catalog)

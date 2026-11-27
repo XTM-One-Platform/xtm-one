@@ -236,7 +236,7 @@ class TestTheExecutorHandsBackInsteadOfFailing:
             },
         )()
         exposure = type("E", (), {"id": task.exposure_id, "revoked_at": None, "run_as_user_id": uuid.uuid4()})()
-        agent = type("A", (), {"id": agent_id, "name": "Exposed"})()
+        agent = type("A", (), {"id": agent_id, "name": "Exposed", "builtin_tool_ids": [], "tool_deny_list": []})()
         finalised: list = []
 
         async def _fake_finalise(_db, _task, _run_id, status, summary, error, **_k):

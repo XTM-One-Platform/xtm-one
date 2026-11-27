@@ -4148,10 +4148,16 @@ async def handle_message(
             # The tool work of a turn a shutdown cut goes right before this
             # message (appended after compaction, 5b), and this turn checkpoints
             # its own, so a cut resumes from its last completed tool call, as on the web.
+            from app.api.v1.chat import turn_offers_code_interpreter
             from app.services import turn_checkpoint
 
+            # The resume note names attachments/ only when this turn can call the code interpreter (#2677).
+            _ch_user_id = getattr(user, "id", None)
             _ch_resumed, _ch_replay = await turn_checkpoint.load_replay(
-                db, conv.id, user_id=getattr(user, "id", None)
+                db,
+                conv.id,
+                user_id=_ch_user_id,
+                code_interpreter=await turn_offers_code_interpreter(db, conv, _ch_user_id),
             )
             turn.checkpoint = turn_checkpoint.TurnCheckpoint(
                 conv.id,

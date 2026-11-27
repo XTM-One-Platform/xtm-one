@@ -3509,8 +3509,16 @@ async def run_agent_chat(
                 _cap_parts.append(f"{len(agent.mcp_server_ids)} MCP server(s)")
             if agent.custom_tool_ids:
                 _cap_parts.append(f"{len(agent.custom_tool_ids)} custom tool(s)")
-            if agent.builtin_tool_ids:
-                _cap_parts.append(f"built-in tools: {', '.join(agent.builtin_tool_ids)}")
+            # Only the groups this turn can call (#2677).
+            from app.services.code_interpreter import callable_builtin_tool_ids
+
+            _callable_builtins = callable_builtin_tool_ids(
+                agent.builtin_tool_ids,
+                deny_list=getattr(agent, "tool_deny_list", None),
+                allowed_map=getattr(agent, "builtin_allowed_tools", None),
+            )
+            if _callable_builtins:
+                _cap_parts.append(f"built-in tools: {', '.join(_callable_builtins)}")
             if agent.knowledge_base_ids:
                 _cap_parts.append(f"{len(agent.knowledge_base_ids)} knowledge base(s)")
             _capabilities = (

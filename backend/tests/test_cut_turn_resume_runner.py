@@ -98,7 +98,7 @@ def env(monkeypatch):
 
     monkeypatch.setattr(parent_wake, "_left_unanswered_since_cut", _unanswered)
 
-    async def _load_replay(db, conversation_id, *, user_id=None, now=None):
+    async def _load_replay(db, conversation_id, *, user_id=None, now=None, code_interpreter=False):
         return turn_checkpoint.ResumedWork(found=bool(state.replay)), list(state.replay)
 
     monkeypatch.setattr(turn_checkpoint, "load_replay", _load_replay)

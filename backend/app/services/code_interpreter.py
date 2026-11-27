@@ -293,6 +293,47 @@ def code_interpreter_offered(tools: Iterable[ToolDefinition] | None) -> bool:
     )
 
 
+def code_interpreter_callable(builtin_tool_ids: Iterable[str] | None, deny_list: Iterable[str] | None = None) -> bool:
+    """Whether a run wired from *builtin_tool_ids* and *deny_list* can call the built-in code interpreter.
+
+    The decision an entry point makes before its loop binds a surface (#2677):
+    the deployment switch, the group selected, then the deny list. A text
+    written before the loop names ``code_interpreter`` or ``attachments/`` only
+    when this is true; inside a loop :func:`code_interpreter_offered` on
+    ``offered_tools()`` is the test.
+    """
+    from app.core.security_options import security_option
+
+    if security_option("disable_code_interpreter"):
+        return False
+    if "code_interpreter" not in {str(tool_id) for tool_id in builtin_tool_ids or ()}:
+        return False
+    return "code_interpreter" not in {str(name) for name in deny_list or ()}
+
+
+def callable_builtin_tool_ids(
+    builtin_tool_ids: Iterable[str] | None,
+    *,
+    deny_list: Iterable[str] | None = None,
+    allowed_map: dict[str, list[str] | None] | None = None,
+) -> list[str]:
+    """*builtin_tool_ids* less the groups the run cannot call: what a capabilities line may name (#2677).
+
+    A group scoped to no function (``builtin_allowed_tools`` maps it to ``[]``)
+    and the code interpreter when :func:`code_interpreter_callable` is false
+    are dropped; order is kept.
+    """
+    ids = [str(tool_id) for tool_id in builtin_tool_ids or ()]
+    out: list[str] = []
+    for tool_id in ids:
+        if allowed_map and allowed_map.get(tool_id) == []:
+            continue
+        if tool_id == "code_interpreter" and not code_interpreter_callable(ids, deny_list):
+            continue
+        out.append(tool_id)
+    return out
+
+
 #: The files a run mounts: ``(mount name, bytes)`` pairs, or a loader
 #: returning them - awaited only once the run has passed every gate (the
 #: sandbox reachable, the quota open, the sandbox created), so a refused run
