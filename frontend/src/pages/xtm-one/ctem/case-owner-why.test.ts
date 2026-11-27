@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { ownerBasisSentences } from "./case-owner-why";
+import { ownerBasisSentences, owningTeam } from "./case-owner-why";
 
 // The ICU message is the key; this stub fills the plain placeholders, enough to read which sentence is chosen.
 const t = (key: string, values?: Record<string, string | number>) =>
@@ -33,5 +33,36 @@ describe("ownerBasisSentences (#2571)", () => {
     expect(decider[decider.length - 1]).toBe(hint);
     expect(ownerBasisSentences({ kind: "decider", source: "decide_group", candidates: 1 }, t)).toHaveLength(2);
     expect(ownerBasisSentences({ kind: "person" }, t)).toEqual(["Set by a person."]);
+  });
+});
+
+describe("the owning team (#2586)", () => {
+  const team = { id: "g-1", name: "Payments team" };
+  const group = { kind: "asset_group" as const, name: "Payments servers", assets: 8, affected: 10, team };
+
+  it("is the basis team while the case still belongs to it", () => {
+    expect(owningTeam(group, "g-1")).toEqual(team);
+    expect(owningTeam({ kind: "primary_asset", name: "portal", team }, "g-1")).toEqual(team);
+  });
+
+  it("is none once the owner was set by hand or the basis names another team", () => {
+    expect(owningTeam(group, null)).toBeNull();
+    expect(owningTeam(group, "g-2")).toBeNull();
+    expect(owningTeam({ kind: "person" }, "g-1")).toBeNull();
+    expect(owningTeam(null, "g-1")).toBeNull();
+  });
+
+  it("words the team as the owner and the person shown as its lead", () => {
+    const sentences = ownerBasisSentences(group, t, team);
+    expect(sentences[0]).toContain("The team Payments team owns the asset group Payments servers");
+    expect(sentences[1]).toContain("leads the case for the team");
+    const primary = ownerBasisSentences({ kind: "primary_asset", name: "portal", team }, t, team);
+    expect(primary[0]).toContain("The team Payments team is accountable for the primary asset portal");
+    expect(primary).toHaveLength(2);
+  });
+
+  it("keeps the person sentences without a team", () => {
+    expect(ownerBasisSentences(group, t)).toHaveLength(1);
+    expect(ownerBasisSentences(group, t)[0]).toMatch(/^Owner of the asset group Payments servers/);
   });
 });

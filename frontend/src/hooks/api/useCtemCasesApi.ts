@@ -439,12 +439,20 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   owner_basis?: CtemCaseOwnerBasis | null;
   /** The other asset group owners who contribute (#2560); `group` is absent on an API older than #2571. */
   owner_contributors?: CtemCaseOwnerContributor[];
+  /** The platform group owning the case as a team (#2577), the owner being its lead; null when a person owns it. */
+  owner_group_id?: string | null;
+}
+
+/** The platform group owning a case as a team (#2577), carried on the routing basis. */
+export interface CtemCaseOwnerTeam {
+  id: string;
+  name: string;
 }
 
 /** How a case's owner was found (backend ctem_case_owner.owner_details, #2571). */
 export type CtemCaseOwnerBasis =
-  | { kind: "asset_group"; name: string; assets: number; affected: number | null }
-  | { kind: "primary_asset"; name: string }
+  | { kind: "asset_group"; name: string; assets: number; affected: number | null; team?: CtemCaseOwnerTeam }
+  | { kind: "primary_asset"; name: string; team?: CtemCaseOwnerTeam }
   | { kind: "default" }
   | { kind: "decider"; source: "decide_group" | "administrator"; candidates: number }
   | { kind: "kept" }
