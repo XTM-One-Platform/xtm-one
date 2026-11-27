@@ -90,7 +90,8 @@ async def test_the_listener_source_provisions_a_scoped_third_party_trigger(world
     assert main and all("Report" not in json.dumps(t["filters"]) for t in main), "vulnerability intake not widened"
     sub = row.state["paths"][sources.THIRD_PARTY_PATH]
     assert sub["organizations"][0]["identity_ids"] == ["identity--acme", "identity-internal"]
-    assert {"kind": "trigger", "id": sub["trigger_id"]} in sources.provisioned_objects(row.state)
+    held = [(o["kind"], o["id"]) for o in sources.provisioned_objects(row.state)]
+    assert ("trigger", sub["trigger_id"]) in held
 
 
 async def test_path_11_off_or_nothing_tracked_removes_the_third_party_trigger(world: dict[str, Any]) -> None:

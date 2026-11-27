@@ -875,24 +875,42 @@ def provisioned_objects(state: Any) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(kind: str, value: Any) -> None:
+    def add(kind: str, value: Any, stem: str = "") -> None:
         if isinstance(value, str) and value and (kind, value) not in seen:
             seen.add((kind, value))
-            out.append({"kind": kind, "id": value})
+            # #2583 point 6: the name the object carries in its platform, so the row says what it holds.
+            out.append({"kind": kind, "id": value, **({"name": f"{stem} - {kind.capitalize()}"} if stem else {})})
 
     def walk(sub: dict[str, Any]) -> None:
-        add("notifier", sub.get("notifier_id"))
-        add("trigger", sub.get("trigger_id"))
+        raw = sub.get("name")
+        stem = raw if isinstance(raw, str) else ""
+        add("notifier", sub.get("notifier_id"), stem)
+        add("trigger", sub.get("trigger_id"), stem)
         triggers = sub.get("trigger_ids")
         for value in triggers.values() if isinstance(triggers, dict) else triggers or []:
-            add("trigger", value)
-        add("playbook", sub.get("playbook_id"))
+            add("trigger", value, stem)
+        add("playbook", sub.get("playbook_id"), stem)
 
     walk(state)
     for _, sub in sorted((state.get("paths") or {}).items()):
         if isinstance(sub, dict):
             walk(sub)
     return out
+
+
+def fed_paths(provider: str, kind: str) -> list[dict[str, str]]:
+    """The trigger paths a source feeds, ``[{path, label}]`` in catalog order (#2583 point 6). Pure.
+
+    One provisioned object can feed several paths (the OpenCTI live listener): turning it off stops
+    them all, so the source row names them before an administrator switches it.
+    """
+    from app.services.ctem_signal_sources import PATH_SOURCES
+
+    return [
+        {"path": path, "label": path_label(path)}
+        for path, rows in PATH_SOURCES.items()
+        if any(s.provider == provider and s.kind == kind for s in rows)
+    ]
 
 
 def to_dict(row: Any) -> dict[str, Any]:
@@ -911,4 +929,5 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
         "objects": provisioned_objects(row.state),
+        "feeds": fed_paths(row.provider, row.kind),
     }

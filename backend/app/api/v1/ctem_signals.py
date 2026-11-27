@@ -200,6 +200,7 @@ async def list_ctem_signal_sources(
                     "reason_params": {},
                     "checked_at": None,
                     "objects": [],
+                    "feeds": platform_sources.fed_paths(provider, kind),
                 }
             )
             item["integration_name"] = integration.name

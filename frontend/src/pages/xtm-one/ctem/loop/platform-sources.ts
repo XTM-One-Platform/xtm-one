@@ -118,6 +118,26 @@ export function platformObjectLinks(
   return links;
 }
 
+/**
+ * The paths a source's one switch turns off when it feeds more than one (#2583 point 6): none for a source
+ * that feeds a single path, whose own row already names it.
+ */
+export function sharedFeeds(source: Pick<CtemPlatformSource, "feeds">): { path: string; label: string }[] {
+  const feeds = source.feeds ?? [];
+  return feeds.length > 1 ? feeds : [];
+}
+
+/**
+ * Whether the "Remove legacy OpenCTI objects" action shows under these sources (#2583 point 4): on the OpenCTI
+ * live listener only (one place on the page), once a Signals source is on for one of its integrations.
+ */
+export function holdsLegacyCleanup(
+  source: Pick<CtemSignalPathSource, "provider" | "kind">,
+  own: readonly Pick<CtemPlatformSource, "enabled">[],
+): boolean {
+  return source.provider === "opencti" && source.kind === "listener" && own.some((s) => s.enabled);
+}
+
 /** The refusal of an enable (`detail: {code, params}`) in the reader's language, or `null` for any other error. */
 export function enableRefusalText(error: unknown, t_i18n: Translate): string | null {
   const detail = (error as { detail?: unknown } | null)?.detail;

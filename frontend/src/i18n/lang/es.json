@@ -22151,5 +22151,17 @@
   "Delivered by event only": "Entregado solo por evento",
   "Notifier": "Notificador",
   "Triggers": "Disparadores",
-  "Playbook": "Playbook"
+  "Playbook": "Playbook",
+  "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Alimenta {count, plural, one {# ruta} other {# rutas}}: {paths}. Desactivarla las detiene todas.",
+  "Objects in {platform}:": "Objetos en {platform}:",
+  "No legacy object left.": "No queda ningún objeto antiguo.",
+  "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {Se eliminaría # objeto:} other {Se eliminarían # objetos:}}",
+  "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {No se eliminó ningún objeto.} one {# objeto eliminado.} other {# objetos eliminados.}}",
+  "Legacy OpenCTI objects removed": "Objetos antiguos de OpenCTI eliminados",
+  "The legacy OpenCTI objects could not be removed": "No se pudieron eliminar los objetos antiguos de OpenCTI",
+  "Remove legacy OpenCTI objects": "Eliminar los objetos antiguos de OpenCTI",
+  "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Los disparadores, playbooks y notificadores que las antiguas automatizaciones Threat response dejaron en OpenCTI. Las fuentes Signals los sustituyen; no se toca nada más.",
+  "Reading OpenCTI...": "Leyendo OpenCTI...",
+  "No OpenCTI integration has a Signals source on.": "Ninguna integración de OpenCTI tiene una fuente Signals activada.",
+  "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}"
 }

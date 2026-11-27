@@ -324,12 +324,16 @@ export interface CtemPlatformSource {
   objects?: CtemPlatformSourceObject[];
   /** The platform's web UI host, `null` when the integration stores none. */
   integration_url?: string | null;
+  /** The trigger paths it feeds (#2583 point 6): turning it off stops them all. */
+  feeds?: { path: string; label: string }[];
 }
 
 /** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
 export interface CtemPlatformSourceObject {
   kind: "notifier" | "trigger" | "playbook";
   id: string;
+  /** Its name in its platform ("XTM One - Signals - ... - Trigger"); empty when not known. */
+  name?: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */
@@ -349,6 +353,27 @@ export function useEnableCtemPlatformSource() {
   return useMutation<CtemPlatformSource, Error, { provider: string; kind: string; integration_id: string; run_as_user_id: string }>({
     mutationFn: (body) => api.post("/ctem-signals/sources/enable", body),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One integration of the legacy OpenCTI objects report (`POST /ctem-signals/sources/legacy-opencti-objects`). */
+export interface CtemLegacyOpenctiReport {
+  integration_id: string;
+  objects?: { kind: string; id: string; name: string }[];
+  removed?: number;
+  errors?: string[];
+  error?: string;
+}
+
+/** List (dry run) or remove the legacy Threat response objects left in OpenCTI (#2583 point 4). Administrators only. */
+export function useRemoveLegacyOpenctiObjects() {
+  const qc = useQueryClient();
+  return useMutation<{ dry_run: boolean; integrations: CtemLegacyOpenctiReport[] }, Error, { dryRun: boolean }>({
+    mutationFn: ({ dryRun }) => api.post(`/ctem-signals/sources/legacy-opencti-objects?dry_run=${dryRun}`, {}),
+    onSettled: (_data, _error, { dryRun }) => {
+      if (!dryRun) void qc.invalidateQueries({ queryKey: ["ctem-signals"] });
+    },
     meta: { suppressGlobalErrorToast: true },
   });
 }
