@@ -22165,6 +22165,6 @@
   "No OpenCTI integration has a Signals source on.": "Signals ソースがオンの OpenCTI 連携はありません。",
   "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}",
   "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
-  "{agents, plural, one {# outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {# outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {# 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
-  "{agents, plural, one {# outside agent supervises this fleet: its runs count in the organization total only.} other {# outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {# 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
 }
