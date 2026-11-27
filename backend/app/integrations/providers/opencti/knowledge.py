@@ -2554,6 +2554,16 @@ def register_knowledge(
         edit, refused = await _field_edit("stixCoreObject", entity_id, key, value)
         if refused:
             return refused
+        draft = headers.get("opencti-draft-id", "")
+        if not key.startswith(_CUSTOM_FIELD_PREFIX) and await _field_holds(entity_id, key, value):
+            # A patch to the stored value is a no-op on the OpenCTI side: say
+            # so, never "Updated", or the agent retries a write that does
+            # nothing (#2686).
+            return (
+                f"Unchanged: '{key}' on {entity_id} already holds this value"
+                + (f" in draft {draft}" if draft else "")
+                + ". Nothing was written."
+            )
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -2568,7 +2578,43 @@ def register_knowledge(
         if err:
             return err
         result = data.get("stixDomainObjectEdit", {}).get("fieldPatch", {})
-        return f"Updated '{key}' on [{result.get('entity_type', '?')}] {result.get('id', entity_id)}."
+        return (
+            f"Updated '{key}' on [{result.get('entity_type', '?')}] {result.get('id', entity_id)}"
+            + (f" (recorded in draft {draft})" if draft else "")
+            + "."
+        )
+
+    async def _field_holds(object_id: str, key: str, value: Any) -> bool:
+        """True when the object's STIX form already holds *value* under *key*.
+
+        Best effort: an unreadable object or a key its STIX form does not carry
+        answers False, and the patch is sent as before.
+        """
+        async with _client(headers, timeout=30) as client:
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query FieldValue($id: String!) { stixCoreObject(id: $id) { toStix } }",
+                {"id": object_id},
+            )
+        if err:
+            return False
+        raw = (data.get("stixCoreObject") or {}).get("toStix")
+        if not isinstance(raw, str):
+            return False
+        try:
+            stix = json.loads(raw)
+        except ValueError:
+            return False
+        if not isinstance(stix, dict) or key not in stix:
+            return False
+        stored = stix[key]
+        if isinstance(value, list) or isinstance(stored, list):
+            wanted = value if isinstance(value, list) else [value]
+            held = stored if isinstance(stored, list) else [stored]
+            return [str(v) for v in held] == [str(v) for v in wanted]
+        return str(stored) == str(value)
 
     # ── 11. Update relationship field(s) ─────────────────────────────
 
