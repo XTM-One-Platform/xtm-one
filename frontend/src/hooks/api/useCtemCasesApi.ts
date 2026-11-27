@@ -53,7 +53,10 @@ export interface CtemCaseSummary {
   priority: CtemCasePriority;
   priority_basis: string;
   issue_count: number;
+  /** Open members of a case being worked; 0 on a closed case (#2675). */
   open_issue_count: number;
+  /** On a closed case, the members the source still reports open (#2675); 0 on an open case, absent on an older API. */
+  open_at_source_count?: number;
   restricted_count: number;
   /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
   members_without_details?: number;

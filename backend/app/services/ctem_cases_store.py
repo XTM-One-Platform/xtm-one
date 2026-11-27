@@ -676,6 +676,9 @@ async def update_case(
         case.state_since = now
         if resolution_kind is not None:
             case.resolution_kind = resolution_kind
+        elif state == "resolved":
+            # A resolved case always says how it was closed (#2675).
+            case.resolution_kind = rules.derived_resolution_kind(getattr(case, "validations", None))
         elif state in OPEN_STATES:
             # Reopened: how it was closed no longer applies (as the loop's own reopen does).
             case.resolution_kind = None

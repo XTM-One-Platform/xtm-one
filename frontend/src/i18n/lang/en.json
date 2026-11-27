@@ -17718,6 +17718,8 @@
   "Left after your prioritization policy: thresholds, exclusions and accepted risk.": "Left after your prioritization policy: thresholds, exclusions and accepted risk.",
   "Set a prioritization policy": "Set a prioritization policy",
   "Open issues": "Open issues",
+  "Open at source": "Open at source",
+  "Case closed by decision": "Case closed by decision",
   "{count, plural, =0 {No open case} one {# open case} other {# open cases}}": "{count, plural, =0 {No open case} one {# open case} other {# open cases}}",
   "Open cases: the issues above grouped by the fix they share, needing attention or in progress.": "Open cases: the issues above grouped by the fix they share, needing attention or in progress.",
   "Not available yet": "Not available yet",

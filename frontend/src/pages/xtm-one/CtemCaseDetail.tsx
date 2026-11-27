@@ -537,6 +537,8 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
+  // A closed case works none of its members: those still open at source are shown apart (#2675).
+  const caseClosed = !isOpenCaseState(kase.state);
   // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
   const aggregatesRestricted = kase.aggregates_restricted === true;
   const withoutDetails = kase.members_without_details ?? 0;
@@ -837,14 +839,16 @@ export default function CtemCaseDetail() {
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard
           icon={IssuesGlyph}
-          label={t_i18n("Open issues")}
-          value={kase.open_issue_count}
+          label={caseClosed ? t_i18n("Open at source") : t_i18n("Open issues")}
+          value={caseClosed ? (kase.open_at_source_count ?? 0) : kase.open_issue_count}
           subtitle={
-            restricted > 0
-              ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
-              : aggregatesRestricted
-                ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
-                : t_i18n("All visible to you")
+            caseClosed
+              ? t_i18n("Case closed by decision")
+              : restricted > 0
+                ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
+                : aggregatesRestricted
+                  ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
+                  : t_i18n("All visible to you")
           }
         />
         <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={aggregatesSubtitle} />

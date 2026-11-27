@@ -41,7 +41,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CLOSED_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.models.user import User
 from app.services import ctem_case_audit as audit
@@ -1189,7 +1189,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
             "loop severity" if case.severity in SEVERITY_PRIORITY else "default policy, on the issues you can see"
         ),
         "issue_count": len(rows),
-        "open_issue_count": sum(1 for r in rows if r.open),
+        # A closed case works none of its members (#2675): those the source still reports open are
+        # counted apart, open at source under a case closed by decision, never as open issues.
+        "open_issue_count": 0 if case.state in CLOSED_STATES else sum(1 for r in rows if r.open),
+        "open_at_source_count": sum(1 for r in rows if r.open) if case.state in CLOSED_STATES else 0,
         "restricted_count": len(rows) - len(visible),
         # The open members read without their details, and whether the detail aggregates are
         # therefore unknown for this viewer (null, never 0).

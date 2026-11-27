@@ -1516,7 +1516,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "reason": {"type": "string"},
                     "evidence": {"type": "string"},
                     "note": {"type": "string"},
-                    "resolution_kind": {"type": "string"},
+                    "resolution_kind": {
+                        "type": "string",
+                        "description": "With resolved: not_relevant for an out-of-scope close; none given is derived.",
+                    },
                     "exploitation": {
                         "type": "array",
                         "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces it.",
