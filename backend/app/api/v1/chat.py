@@ -3631,6 +3631,22 @@ async def _resolve_upload_knowledge_base(
     return None, first_refusal or no_grant
 
 
+async def turn_offers_code_interpreter(db: AsyncSession, conv: Conversation | None, user_id: object) -> bool:
+    """:func:`_upload_offers_code_interpreter` for a turn that holds the user's id alone; ``False`` on any doubt.
+
+    Every resume entry point (web, REST, channel, cut-turn and parent wake)
+    passes it to ``turn_checkpoint.load_replay`` (#2677).
+    """
+    if conv is None:
+        return False
+    try:
+        user = await db.get(User, user_id)
+        return user is not None and await _upload_offers_code_interpreter(db, conv, user)
+    except Exception as exc:
+        logger.debug("Code interpreter offer not resolved for a resume: %s", format_exception_message(exc))
+        return False
+
+
 async def _upload_offers_code_interpreter(db: AsyncSession, conv: Conversation, user: User) -> bool:
     """Whether the turn that reads an upload message offers the code interpreter.
 
@@ -5564,7 +5580,9 @@ async def send_message(
                 logger.warning("Conversation memory management failed: %s", format_exception_message(exc), exc_info=True)
 
         # Same resume and checkpoint as the web chat turn.
-        _rest_resumed, _rest_replay = await turn_checkpoint.load_replay(db, conv_id, user_id=user.id)
+        _rest_resumed, _rest_replay = await turn_checkpoint.load_replay(
+            db, conv_id, user_id=user.id, code_interpreter=await _upload_offers_code_interpreter(db, conv, user)
+        )
         if _rest_replay:
             history = [*history, *_rest_replay]
         _rest_checkpoint = turn_checkpoint.TurnCheckpoint(
@@ -9215,7 +9233,13 @@ async def run_chat_connection(
             # The tool work of a turn that ended before it stored its
             # answer goes right before this message, past the
             # compaction, which keys its watermark on stored rows.
-            _turn_resumed, _turn_replay = await turn_checkpoint.load_replay(db, conv_id, user_id=user_id)
+            # The resume note names attachments/ only when this turn can call the code interpreter (#2677).
+            _turn_resumed, _turn_replay = await turn_checkpoint.load_replay(
+                db,
+                conv_id,
+                user_id=user_id,
+                code_interpreter=await turn_offers_code_interpreter(db, conv, user_id),
+            )
             if _turn_replay:
                 history = [*history, *_turn_replay]
             _turn_checkpoint = turn_checkpoint.TurnCheckpoint(

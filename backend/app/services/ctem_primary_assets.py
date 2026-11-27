@@ -185,6 +185,49 @@ FAMILY_WORDS: frozenset[str] = frozenset(
 )
 
 
+#: #2679: top-level domains that make a dotted label a host name (``tenant-my.sharepoint.com-1A2B``), not a product.
+_HOST_TLDS: frozenset[str] = frozenset(
+    {
+        "com",
+        "net",
+        "org",
+        "io",
+        "co",
+        "app",
+        "dev",
+        "cloud",
+        "ai",
+        "biz",
+        "info",
+        "gov",
+        "edu",
+        "eu",
+        "us",
+        "uk",
+        "fr",
+        "de",
+    }
+)
+#: A host of at least three labels (``a.b.com``), so ``ASP.NET`` or ``socket.io`` stay product names.
+_HOST = re.compile(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+\.([a-z]{2,6})(?![a-z0-9])")
+
+
+@lru_cache(maxsize=65536)
+def is_url_like(value: str) -> bool:
+    """Whether *value* is a URL or a host name label (a web-app shortcut row), not a product name (#2679).
+
+    ``https://...``, ``www.`` or a host of three labels or more ending in a known top-level domain
+    (``tenant-my.sharepoint.com-1A2B``); a CPE, a version (``4.8.1``) or a product with a dot
+    (``node.js``, ``ASP.NET Core``, ``.NET Framework``) is not one.
+    """
+    text = str(value or "").strip().lower()
+    if not text or text.startswith("cpe:"):
+        return False
+    if "://" in text or text.startswith("www."):
+        return True
+    return any(m.group(1) in _HOST_TLDS for m in _HOST.finditer(text))
+
+
 def is_family_word(value: str) -> bool:
     """Whether *value* is a bare OS or vendor family (``Windows``, ``Linux``, ``macOS``), not a product (#2628)."""
     return _needle(str(value or "")) in FAMILY_WORDS
@@ -199,9 +242,14 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True) -> boo
     a device whose OS family is ``Windows`` never runs ``Windows Server 2019`` by that word.
     *family_exact* False lets a family reference name a product of that family (a CVE
     naming only ``Windows`` reaches ``Windows 11``): a family-only match, never proven.
+    A URL or host name label (:func:`is_url_like`, a web-app shortcut such as
+    ``tenant-my.sharepoint.com-1A2B``) matches only itself (#2679): ``SharePoint`` is a
+    word of it, yet the device runs no SharePoint.
     """
     p, r = _needle(str(product or "")), _haystack(str(ref or ""))
     if not p or not r:
+        return False
+    if p != r and (is_url_like(p) or is_url_like(r)):
         return False
     if family_exact and p in FAMILY_WORDS and p != r:
         return False
@@ -361,18 +409,22 @@ class PrimaryAssetIndex:
         """
         if not self.reachers:
             return []
+        generic = generic_refs(software)
+        # The specific references first, so a device matched by both reports the specific one.
+        ordered = [r for r in software if r not in generic] + [r for r in software if r in generic]
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for reacher, matched in self._matching(software, keys):
+        for reacher, matched in self._matching(ordered, keys):
+            verified = matched not in generic and runs_versioned(reacher, matched)
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
-                    if not found[key]["version_verified"] and runs_versioned(reacher, matched):
+                    if not found[key]["version_verified"] and verified:
                         found[key]["version_verified"] = True
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
                     "software": matched,
-                    "version_verified": runs_versioned(reacher, matched),
+                    "version_verified": verified,
                     "asset": reacher.name,
                     "through": through,
                     "through_kind": kind,
@@ -459,6 +511,18 @@ def member_primary_assets(
     reached = tuple(names.get(key, key) for key in chains)
     inferred = tuple(names.get(key, key) for key, chain in chains.items() if link_basis(chain) == "inferred")
     return reached, inferred
+
+
+def generic_refs(software: list[str]) -> frozenset[str]:
+    """The references of *software* that a more specific reference of the same list names (#2679).
+
+    ``SharePoint`` beside ``SharePoint Server 2019``: the short row is the product family the
+    CVE record repeats, not an affected product, so a match through it alone is never version-verified.
+    """
+    refs = [str(r) for r in software if str(r or "").strip()]
+    return frozenset(
+        ref for ref in refs if any(_needle(other) != _needle(ref) and product_matches(ref, other) for other in refs)
+    )
 
 
 def runs_versioned(reacher: Reacher, ref: str) -> bool:
