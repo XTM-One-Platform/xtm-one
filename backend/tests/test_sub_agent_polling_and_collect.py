@@ -270,6 +270,14 @@ async def test_collect_items_list_with_a_total_adds_only_the_items() -> None:
     assert "Collected 4 items" in out
 
 
+async def test_collect_empty_item_list_extracts_nothing() -> None:
+    """An empty item list, alone or next to metadata, is zero items, never one bogus item."""
+    for result in ({"rules": [], "total": 0}, {"rules": []}, {"data": {"rules": []}}):
+        sv, out = await _collect_results([result], output_key="rules")
+        assert out == "No items could be extracted from the provided task results."
+        assert "$collected" not in sv
+
+
 async def test_collect_advertises_only_a_key_item_zero_carries() -> None:
     sv, out = await _collect_results([[{"batch": "A", "score": 3}, {"batch": "B"}]], output_key="my-key")
     assert "name" not in out

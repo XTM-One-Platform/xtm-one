@@ -834,6 +834,17 @@ def build_sub_agent_tools(
                 return False
             return any(_holds_items(v) for v in value.values())
 
+        def _holds_no_items(value: object) -> bool:
+            """True for an item list that is empty (or holds no dict), or a
+            text-free wrapper of one: a result that answers zero items."""
+            if isinstance(value, list):
+                return not any(isinstance(el, dict) for el in value)
+            if not isinstance(value, dict) or _is_envelope(value):
+                return False
+            if any(isinstance(v, str) for v in value.values()):
+                return False
+            return any(_holds_no_items(v) for v in value.values())
+
         def _named_list(data: dict[str, object]) -> list[object] | None:
             """The ``item_key`` list of *data*, at any depth, first found."""
             named = data.get(item_key)
@@ -860,7 +871,9 @@ def build_sub_agent_tools(
                values (counts, summaries) are metadata, never items.
             5. A dict with a single key wrapping one object
                (``{"rule": {...}}``) -> that object is the item.
-            6. Otherwise the dict itself IS one item, kept whole: its nested
+            6. A text-free dict whose item lists are empty
+               (``{"rules": [], "total": 0}``) -> zero items.
+            7. Otherwise the dict itself IS one item, kept whole: its nested
                objects are fields of the item, never items of their own.
             """
             if isinstance(data, list):
@@ -884,6 +897,8 @@ def build_sub_agent_tools(
                         _merge_item(v)
                     else:
                         _extract_items(v)
+                return
+            if _holds_no_items(data):
                 return
             if len(data) == 1:
                 only = next(iter(data.values()))
