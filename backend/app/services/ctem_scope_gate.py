@@ -71,6 +71,20 @@ PROVING_VERDICTS: frozenset[str] = frozenset({"exposed", "exploitable", "proven"
 PROVING_PATHS: frozenset[str] = frozenset({"proven_exploitable", "mitigation_regression"})
 #: The criticality a risk scenario gives an asset it holds when OpenCRQ names none.
 SCENARIO_DEFAULT_CRITICALITY = "high"
+#: #2542: how an OpenCTI software read of the gate went (``reconcile.cve_lookup`` / ``threat_lookup``).
+#: ``read``: it answered. ``not needed``: the evidence resolved the subject, nothing was read.
+#: ``not applicable``: the signal names no CVE (no OpenCTI threat id). ``not read``: needed, not taken
+#: by this pass. Any other value is why OpenCTI could not answer (``ctem_cve_software.LOOKUP_*``).
+LOOKUP_READ = "read"
+LOOKUP_NOT_NEEDED = "not needed"
+LOOKUP_NOT_APPLICABLE = "not applicable"
+LOOKUP_NOT_READ = "not read"
+#: The lookups that settle a decision; any other one leaves it incomplete (#2542).
+LOOKUP_SETTLED: frozenset[str] = frozenset({LOOKUP_READ, LOOKUP_NOT_NEEDED, LOOKUP_NOT_APPLICABLE})
+#: #2523: the OpenCTI types a threat signal is recorded from (the ``relevant_threat`` listener).
+THREAT_STIX_TYPES: frozenset[str] = frozenset(
+    {"intrusion-set", "threat-actor", "threat-actor-group", "campaign", "malware"}
+)
 
 _CVE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 
@@ -604,6 +618,34 @@ def _cve_ids(facts: SignalFacts) -> list[str]:
     return signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
 
 
+def threat_opencti_id(facts: SignalFacts) -> str:
+    """#2523: the OpenCTI id of a threat signal's subject, ``""`` when it has none (pure).
+
+    Only an OpenCTI-recorded threat of :data:`THREAT_STIX_TYPES` carries one: its
+    source external id (the internal id, #2505), else the STIX id of its evidence.
+    """
+    if facts.subject_kind != "threat" or facts.source_provider != "opencti":
+        return ""
+    evidence = facts.evidence if isinstance(facts.evidence, dict) else {}
+    if str(evidence.get("stix_type") or "").strip().lower() not in THREAT_STIX_TYPES:
+        return ""
+    return str(facts.source_external_id or evidence.get("stix_id") or "").strip()
+
+
+def lookup_value(recorded: str, *, applicable: bool, resolved: bool) -> str:
+    """#2542: the explicit ``cve_lookup`` / ``threat_lookup`` of a decision, never empty (pure).
+
+    *recorded* is what the store wrote in the facts (``""`` when it took no read);
+    *applicable* whether the signal has something to read (a CVE, an OpenCTI threat
+    id); *resolved* whether the subject resolved without the read.
+    """
+    if recorded:
+        return recorded
+    if not applicable:
+        return LOOKUP_NOT_APPLICABLE
+    return LOOKUP_NOT_NEEDED if resolved else LOOKUP_NOT_READ
+
+
 def _accepted(
     profile: OrganizationProfile, facts: SignalFacts, resolution: Resolution, today: date
 ) -> dict[str, Any] | None:
@@ -661,6 +703,13 @@ def decide(
     scenarios = scenarios or ScenarioIndex()
     policy = profile.prioritization_policy
     resolution = resolve(profile, facts, primary_assets)
+    # #2542: every decision says how each OpenCTI software read went, never None; a read the subject
+    # needed and OpenCTI did not answer leaves an unresolved decision incomplete (retried by the store).
+    cve_lookup = lookup_value(facts.cve_lookup, applicable=bool(_cve_ids(facts)), resolved=resolution.resolved)
+    threat_lookup = lookup_value(
+        facts.threat_lookup, applicable=bool(threat_opencti_id(facts)), resolved=resolution.resolved
+    )
+    incomplete = not resolution.resolved and any(value not in LOOKUP_SETTLED for value in (cve_lookup, threat_lookup))
     confidence, lenses, proven = _confidence(facts, related)
     contradicted = [r.id for r in related if r.verdict in CONTRADICTING_VERDICTS]
     if _verdict(facts.evidence) in CONTRADICTING_VERDICTS:
@@ -693,10 +742,10 @@ def decide(
             "software_refs": resolution.software_refs,
             # #2171: the software read from OpenCTI for the signal's CVEs, and how that read went.
             "cve_software": list(facts.cve_software),
-            "cve_lookup": facts.cve_lookup or None,
+            "cve_lookup": cve_lookup,
             # #2523: the software read from OpenCTI for a threat subject, and how that read went.
             "threat_software": list(facts.threat_software),
-            "threat_lookup": facts.threat_lookup or None,
+            "threat_lookup": threat_lookup,
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
@@ -712,6 +761,8 @@ def decide(
         "policy_checks": [],
         "severity": None,
         "sla_hours": None,
+        # #2542: an OpenCTI software read the subject needed did not answer; the store retries it.
+        "incomplete": incomplete,
     }
 
     def done(

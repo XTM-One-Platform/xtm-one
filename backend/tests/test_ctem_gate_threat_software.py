@@ -69,7 +69,10 @@ async def _no_fallback(db: Any) -> None:
 def test_a_listener_threat_without_software_stays_unmatched() -> None:
     decision = gate.decide(_profile(), _malware(), today=TODAY)
     assert decision.record["reason_code"] == "subject_unresolved"
-    assert decision.record["reconcile"]["threat_lookup"] is None
+    # #2542: needed and not taken by this decision: said so, and the decision is incomplete.
+    assert decision.record["reconcile"]["threat_lookup"] == gate.LOOKUP_NOT_READ
+    assert decision.record["reconcile"]["cve_lookup"] == gate.LOOKUP_NOT_APPLICABLE
+    assert decision.record["incomplete"] is True
 
 
 def test_the_software_it_targets_resolves_it_to_the_inventory() -> None:

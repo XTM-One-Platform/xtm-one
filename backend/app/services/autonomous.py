@@ -1792,6 +1792,11 @@ async def _run_autonomous_tick_inner() -> int:
                 undecided = await ctem_scope_gate_store.drain_new(db)
                 if undecided:
                     logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
+                # #2542: the unmatched signals whose remote software read failed, read again with backoff.
+                retried = await ctem_scope_gate_store.recheck_lookup_failed(db)
+                await db.commit()
+                if retried:
+                    logger.info("CTEM signals decided again after a failed software read: %s", retried)
         except Exception as e:
             logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
