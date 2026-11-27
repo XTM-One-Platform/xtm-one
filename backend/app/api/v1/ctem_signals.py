@@ -140,9 +140,19 @@ async def list_ctem_signal_paths(
         quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
+    # #2642: path 6's own inventory evaluation says why the path records nothing.
+    from app.services.ctem_inventory_staleness import last_outcome
+
+    evaluations = {"stale_asset": await last_outcome()}
     return {
         "paths": signals.path_catalog(
-            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, quiet=quiet
+            counts,
+            bound=bound,
+            activity=activity,
+            by_source=by_source,
+            webhooks=webhooks,
+            quiet=quiet,
+            evaluations=evaluations,
         )
     }
 
@@ -169,7 +179,6 @@ async def list_ctem_signal_sources(
     _require_xtm_one()
     from sqlalchemy import select
 
-    from app.models.assignment import Assignment
     from app.models.ctem_signal_source import CtemSignalSource
     from app.models.integration import Integration
     from app.services import ctem_platform_sources as platform_sources
@@ -193,11 +202,6 @@ async def list_ctem_signal_sources(
         (r.provider, r.kind, str(r.integration_id)): r
         for r in (await db.execute(select(CtemSignalSource))).scalars().all()
     }
-    configs = (
-        (await db.execute(select(Assignment.trigger_config).where(Assignment.trigger_type == "integration_event")))
-        .scalars()
-        .all()
-    )
     out: list[dict[str, Any]] = []
     for (provider, kind), spec in platform_sources.PROVISIONED.items():
         for integration in integrations:
@@ -228,11 +232,6 @@ async def list_ctem_signal_sources(
             item["integration_url"] = get_integration_public_url(integration)
             item["integration_connected"] = integration.status == "connected"
             item["label"] = spec.label
-            # #2640: the objects the fleets provisioned on the same integration are listed apart, with
-            # their owner, once per integration (on its listener row); a source row counts only its own.
-            others = platform_sources.fleet_objects(configs, provider, str(integration.id))
-            item["objects"] = platform_sources.with_shared_events(item.get("objects") or [], others)
-            item["fleet_objects"] = others if kind == "listener" else []
             if provider == "opencti":
                 item["legacy_pending"] = pending.get(str(integration.id), 0)
             out.append(item)

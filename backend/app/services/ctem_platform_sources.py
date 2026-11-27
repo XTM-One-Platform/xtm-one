@@ -29,7 +29,7 @@ from __future__ import annotations
 import importlib
 import logging
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -271,7 +271,11 @@ def is_connected(state: Any) -> bool:
 
 
 def status_of(row: Any) -> tuple[str, str | None]:
-    """``(status, reason)`` of a row: ``connected``, ``off`` or ``error`` with its reason."""
+    """``(status, reason)`` of a row: ``connected``, ``off``, ``not_configured`` or ``error`` with its reason.
+
+    A source switched off after a refused enable for a missing setting (``CONFIGURATION_CODES``) reads
+    ``not_configured``, never ``error``: nothing failed, a setting is missing (#2637).
+    """
     state = row.state if isinstance(getattr(row, "state", None), dict) else {}
     if row.enabled and state.get("status") == IDLE:
         # Switched on, every path it feeds off: it holds nothing and is never an error (#2583 point 7).
@@ -281,7 +285,11 @@ def status_of(row: Any) -> tuple[str, str | None]:
             return "connected", None
         return "off", state.get("error")
     if not row.enabled:
-        return ("error", state.get("error")) if state.get("status") == "error" else ("off", None)
+        if state.get("status") != "error":
+            return "off", None
+        if reason_code(state.get("error"))[0] in CONFIGURATION_CODES:
+            return "not_configured", state.get("error")
+        return "error", state.get("error")
     if is_connected(state):
         return "connected", None
     return "error", state.get("error") or "not provisioned yet"
@@ -864,6 +872,61 @@ def reason_code(reason: str | None) -> tuple[str | None, dict[str, str]]:
     return "provider_error", {"detail": reason[:500]}
 
 
+#: The reasons that say a setting is missing, never that the source platform failed (#2637): a source
+#: switched off after a refused enable for one of them reads Not configured, never Error.
+CONFIGURATION_CODES: frozenset[str] = frozenset(
+    {"no_run_as", "run_as_no_integration", "no_webhook_secret", "organization_context_missing"}
+)
+
+#: What fixes each reason, in one line, and where (#2637): the UI's action and an agent's next step.
+FIX_ACTIONS: dict[str, dict[str, str]] = {
+    "no_run_as": {"action": "Turn the source on again and pick the user it provisions as.", "route": "/ctem/signals"},
+    "run_as_inactive": {"action": "Pick another run-as user.", "route": "/ctem/signals"},
+    "run_as_no_integration": {
+        "action": "Connect the integration for the run-as user, or pick a user who has it.",
+        "route": "/integrations",
+    },
+    "no_webhook_secret": {"action": "Set a webhook secret on the integration.", "route": "/integrations"},
+    "no_token": {"action": "Authorize the integration again as the run-as user.", "route": "/integrations"},
+    "integration_not_found": {
+        "action": "Turn the source on again on an existing integration.",
+        "route": "/ctem/signals",
+    },
+    "organization_context_missing": {
+        "action": "Fill the missing fields in Settings > Organization.",
+        "route": "/settings/organization",
+    },
+    "objects_not_removed": {
+        "action": "The next check removes them again; remove them by hand in the source platform if it keeps failing.",
+        "route": "/ctem/signals",
+    },
+    "not_provisioned_yet": {
+        "action": "Wait for the next check, or turn the source off and on again.",
+        "route": "/ctem/signals",
+    },
+    "provider_error": {
+        "action": "Check the integration's connection and the run-as user's rights in the source platform.",
+        "route": "/integrations",
+    },
+}
+
+
+def error_detail(integration_id: str, reason: str | None, state: Any, *, enabled: bool) -> dict[str, Any]:
+    """One source in error on one integration, as data (#2637): its reason, code, last attempt and fix."""
+    code, params = reason_code(reason)
+    fix = FIX_ACTIONS.get(code or "provider_error", FIX_ACTIONS["provider_error"])
+    return {
+        "integration_id": integration_id,
+        "enabled": enabled,
+        "reason": reason,
+        "reason_code": code,
+        "reason_params": params,
+        "last_attempt_at": (state or {}).get("checked_at") if isinstance(state, dict) else None,
+        "fix": fix["action"],
+        "fix_route": fix["route"],
+    }
+
+
 def provisioned_objects(state: Any) -> list[dict[str, str]]:
     """The objects a source holds in its platform, ``[{kind, id}]`` (#2583 point 2), for the Open in links.
 
@@ -906,70 +969,6 @@ def provisioned_objects(state: Any) -> list[dict[str, str]]:
     return out
 
 
-#: Where an assignment keeps the state of what it provisioned in its platform, per provider (#2640).
-ASSIGNMENT_STATE_KEYS: dict[str, str] = {"opencti": "opencti_provisioning", "openaev": "openaev_provisioning"}
-
-#: The owner shown for an XTM One object whose name names none.
-UNKNOWN_OWNER = "XTM One"
-
-
-def object_owner(name: Any) -> str:
-    """The fleet or desk that owns an XTM One object, read from ``XTM One - <Owner> - <Purpose>`` (#2640)."""
-    if not isinstance(name, str):
-        return ""
-    parts = [p.strip() for p in name.split(" - ")]
-    return parts[1] if len(parts) >= 3 and parts[0] == "XTM One" and parts[1] else ""
-
-
-def owned_objects(state: Any, owner: str) -> list[dict[str, Any]]:
-    """``provisioned_objects`` with each object's *owner*, and the module event of each per-event trigger (#2640)."""
-    triggers = state.get("trigger_ids") if isinstance(state, dict) else None
-    events = {v: k for k, v in triggers.items() if isinstance(v, str) and v} if isinstance(triggers, dict) else {}
-    out: list[dict[str, Any]] = []
-    for obj in provisioned_objects(state):
-        event = events.get(obj["id"]) if obj["kind"] == "trigger" else None
-        out.append({**obj, "owner": owner, **({"event": event} if event else {})})
-    return out
-
-
-def fleet_objects(configs: Iterable[Any], provider: str, integration_id: str) -> list[dict[str, Any]]:
-    """The objects the fleets' assignments provisioned on one integration, each with its owner (#2640).
-
-    They sit beside a source's own objects in the module; the Signal sources page lists them apart,
-    so a source row counts only its own. *configs* are assignment ``trigger_config`` values. Pure.
-    """
-    key = ASSIGNMENT_STATE_KEYS.get(provider)
-    out: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    if not key:
-        return out
-    for config in configs:
-        if not isinstance(config, dict) or config.get("provider") != provider:
-            continue
-        state = config.get(key)
-        if not isinstance(state, dict) or str(state.get("integration_id") or "") != str(integration_id):
-            continue
-        owner = object_owner(state.get("name")) or UNKNOWN_OWNER
-        for obj in owned_objects(state, owner):
-            if (obj["kind"], obj["id"]) not in seen:
-                seen.add((obj["kind"], obj["id"]))
-                out.append(obj)
-    return out
-
-
-def with_shared_events(own: list[dict[str, Any]], others: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Mark each own trigger whose module event another owner also listens to, ``shared_with`` its owners (#2640).
-
-    Each owner keeps its own trigger on such an event: the delivery reaches its own receiver, which
-    starts its own run as its own run-as user. The page says so instead of hiding the second trigger.
-    """
-    owners: dict[str, set[str]] = {}
-    for obj in others:
-        if obj.get("event"):
-            owners.setdefault(obj["event"], set()).add(str(obj.get("owner") or UNKNOWN_OWNER))
-    return [{**obj, "shared_with": sorted(owners[obj["event"]])} if obj.get("event") in owners else obj for obj in own]
-
-
 def fed_paths(provider: str, kind: str) -> list[dict[str, str]]:
     """The trigger paths a source feeds, ``[{path, label}]`` in catalog order (#2583 point 6). Pure.
 
@@ -1000,6 +999,9 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_code": code,
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
-        "objects": owned_objects(row.state, OBJECT_FLEET),
+        # What fixes the reason (#2637), null when there is none.
+        "fix": FIX_ACTIONS.get(code, FIX_ACTIONS["provider_error"])["action"] if code else None,
+        "fix_route": FIX_ACTIONS.get(code, FIX_ACTIONS["provider_error"])["route"] if code else None,
+        "objects": provisioned_objects(row.state),
         "feeds": fed_paths(row.provider, row.kind),
     }
