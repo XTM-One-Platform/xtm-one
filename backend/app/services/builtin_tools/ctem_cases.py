@@ -68,8 +68,34 @@ _GAP_ROOT_CAUSES: tuple[str, ...] = ("no_rule", "no_log", "broken_collector", "m
 _STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
 _HISTORY_PAGE = 20
-#: Issues one ``get_ctem_case`` answer lists (#2092): a 700-issue case answered 300k characters.
+#: Issues one ``get_ctem_case`` answer lists at most (#2092): a 700-issue case answered 300k characters.
 _ISSUE_PAGE = 100
+#: Characters one ``get_ctem_case`` answer stays under (#2681), below the 150,000-character tool cap:
+#: a page of heavy rows (many assets and installed versions) stops filling here.
+_ANSWER_BUDGET = 120_000
+#: The issue rows a size-cut page always carries, however small the budget left.
+_MIN_PAGE_ROWS = 1
+#: Entries each issue row lists per unbounded list (#2681), the rest counted in ``more_<field>``.
+_ROW_LIST_CAPS: dict[str, int] = {
+    "assets": 20,
+    "primary_assets": 20,
+    "primary_asset_links": 20,
+    "version_outcomes": 10,
+}
+#: The fields of a row read with ``issue_fields="compact"`` (#2681).
+_COMPACT_FIELDS: tuple[str, ...] = (
+    "source",
+    "external_id",
+    "name",
+    "cve",
+    "cvss",
+    "epss",
+    "kev",
+    "open",
+    "details_unavailable",
+)
+#: What ``issue_fields`` takes.
+_ISSUE_FIELDS: tuple[str, ...] = ("full", "compact")
 #: A case read slower than this is logged with its size (#2092).
 _SLOW_READ_SECONDS = 5.0
 
@@ -183,23 +209,110 @@ def case_read_failed(exc: BaseException, log_line: str, generic: str) -> str:
     return generic
 
 
-def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
-    """*rendered* with at most :data:`_ISSUE_PAGE` issues from *offset*, the total and a truncated flag (#2092).
+def _bounded_row(row: dict[str, Any], fields: str) -> dict[str, Any]:
+    """One issue row as a page serves it (#2681): its lists capped with a ``more_<field>`` count, or compact."""
+    if fields == "compact":
+        return {k: row[k] for k in _COMPACT_FIELDS if k in row}
+    out = dict(row)
+    for field, cap in _ROW_LIST_CAPS.items():
+        values = out.get(field)
+        if isinstance(values, list) and len(values) > cap:
+            out[field] = values[:cap]
+            out[f"more_{field}"] = len(values) - cap
+    return out
+
+
+def _cve_rollups(rendered: dict[str, Any], issues: list[dict[str, Any]]) -> dict[str, Any]:
+    """Case-level CVE rollups from every issue row, whatever the page cut (#2681).
+
+    ``cve_ids`` and ``kev_cve_ids`` list the CVEs of the open rows, ``lead_cve`` the KEV one
+    first then the highest CVSS and EPSS. When the signal facts were not read
+    (``members_facts_unread``) and nothing restricts the aggregates, ``kev_count``,
+    ``max_cvss`` and ``max_epss`` are filled from the rows and ``facts_from`` says so.
+    """
+    open_rows = [r for r in issues if r.get("open") and r.get("cve")]
+    cves = sorted({str(r["cve"]) for r in open_rows})
+    kev = sorted({str(r["cve"]) for r in open_rows if r.get("kev")})
+    lead = max(
+        open_rows,
+        key=lambda r: (bool(r.get("kev")), float(r.get("cvss") or 0), float(r.get("epss") or 0)),
+        default=None,
+    )
+    out: dict[str, Any] = {"cve_ids": cves, "kev_cve_ids": kev, "lead_cve": lead["cve"] if lead else None}
+    if rendered.get("members_facts_unread") and not rendered.get("aggregates_restricted") and open_rows:
+        cvss = [float(r["cvss"]) for r in open_rows if r.get("cvss") is not None]
+        epss = [float(r["epss"]) for r in open_rows if r.get("epss") is not None]
+        out.update(
+            {
+                "kev_count": len(kev) if rendered.get("kev_count") is None else rendered["kev_count"],
+                "max_cvss": (max(cvss) if cvss else None) if rendered.get("max_cvss") is None else rendered["max_cvss"],
+                "max_epss": (max(epss) if epss else None) if rendered.get("max_epss") is None else rendered["max_epss"],
+                "facts_from": "the issue rows (the signal facts are unread)",
+            }
+        )
+    return out
+
+
+def issue_page_options(issues_limit: object, issue_fields: object) -> tuple[int, str, str]:
+    """``(limit, fields, why)`` of a case read's page options (#2681); *why* is set on a bad value."""
+    fields = str(issue_fields or "full").strip().lower() or "full"
+    if fields not in _ISSUE_FIELDS:
+        return 0, "", "issue_fields is 'full' or 'compact'."
+    try:
+        limit = int(str(issues_limit or _ISSUE_PAGE).strip())
+    except (TypeError, ValueError):
+        return 0, "", f"issues_limit is a whole number from 1 to {_ISSUE_PAGE}."
+    return max(1, min(_ISSUE_PAGE, limit)), fields, ""
+
+
+def _bounded_issues(
+    rendered: dict[str, Any],
+    offset: int = 0,
+    *,
+    limit: int = _ISSUE_PAGE,
+    fields: str = "full",
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """*rendered* with one page of issues from *offset*, the total, a truncated flag and *extra* (#2092, #2681).
 
     The issues come ranked (``ctem_cases_view.hydrate``), Restricted rows last, so
     the page keeps the ones that matter; the counts and scores stay those of the case.
-    ``issues_next_offset`` reads the next page (#2103), ``None`` on the last one.
+    A page holds at most *limit* rows (:data:`_ISSUE_PAGE` at most) and stops filling
+    before the whole answer passes :data:`_ANSWER_BUDGET` characters (``page_cut_by``
+    ``"size"``); each row's lists are capped (:data:`_ROW_LIST_CAPS`). ``issues_next_offset``
+    reads the next page (#2103), ``None`` on the last one, so chained pages serve every
+    issue exactly once. The CVE rollups are computed on every row, never the page alone.
     """
     issues = list(rendered.get("issues") or [])
     start = max(0, int(offset or 0))
-    end = start + _ISSUE_PAGE
+    cap = max(1, min(_ISSUE_PAGE, int(limit or _ISSUE_PAGE)))
+    head = {k: v for k, v in rendered.items() if k != "issues"}
+    head.update(_cve_rollups(rendered, issues))
+    head.update(extra or {})
+    # The envelope fields added below stay under 200 characters.
+    budget = _ANSWER_BUDGET - len(_dump(head)) - 200
+    page: list[dict[str, Any]] = []
+    used = 2  # the list's brackets
+    cut_by_size = False
+    for row in issues[start : start + cap]:
+        served = _bounded_row(row, fields)
+        size = len(_dump(served)) + 2  # the separator
+        if len(page) >= _MIN_PAGE_ROWS and used + size > budget:
+            cut_by_size = True
+            break
+        page.append(served)
+        used += size
+    end = start + len(page)
+    more = len(issues) > end
     return {
-        **rendered,
-        "issues": issues[start:end],
+        **head,
+        "issues": page,
         "issues_total": len(issues),
         "issues_offset": start,
-        "issues_truncated": start > 0 or len(issues) > end,
-        "issues_next_offset": end if len(issues) > end else None,
+        "issues_truncated": start > 0 or more,
+        "issues_next_offset": end if more else None,
+        "page_cut_by": ("size" if cut_by_size else "count") if more else None,
+        "issue_fields": fields,
     }
 
 
@@ -446,11 +559,14 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 exc, "CTEM case list failed", "Error: the cases could not be read right now. Say so; do not guess them."
             )
 
-    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0, issues_limit: int = 0, issue_fields: str = "") -> str:
         from app.core.database import async_session
 
         if not str(case_id or "").strip():
             return "case_id must be the id list_ctem_cases answers."
+        limit, fields, bad = issue_page_options(issues_limit, issue_fields)
+        if bad:
+            return bad
         started = time.perf_counter()
         try:
             async with async_session() as db:
@@ -495,19 +611,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if shown[0].remediation_kind == "upgrade"
                     else None
                 )
-                rendered = _bounded_issues(shown[2], issues_offset)
                 from app.services import ctem_case_routing as routing
 
                 # A case the catch-up has not asked yet names its place in the backlog (#2345).
                 place = (await routing.catch_up_places(db, [shown[0].id])).get(str(shown[0].id))
+                extra: dict[str, Any] = {"running_versions": running, "version_match": match}
                 if place is not None:
-                    rendered = {**rendered, "catch_up": place}
+                    extra["catch_up"] = place
+                # One page under the answer budget (#2681), whatever the size of each row.
+                rendered = _bounded_issues(shown[2], issues_offset, limit=limit, fields=fields, extra=extra)
                 elapsed = time.perf_counter() - started
                 if elapsed > _SLOW_READ_SECONDS:
                     logger.info(
                         "CTEM case read of %s took %.1f s (%d issues)", wanted, elapsed, rendered["issues_total"]
                     )
-                return _dump({**rendered, "running_versions": running, "version_match": match})
+                return _dump(rendered)
         except Exception as exc:
             return case_read_failed(exc, "CTEM case read failed", CASE_READ_FAILED)
 
@@ -1473,6 +1591,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "issues_offset": {
                         "type": "integer",
                         "description": "First issue of the page (issues_next_offset).",
+                    },
+                    "issues_limit": {"type": "integer", "description": "Issues a page, 1 to 100 (default 100)."},
+                    "issue_fields": {
+                        "type": "string",
+                        "enum": list(_ISSUE_FIELDS),
+                        "description": "compact: id, name, CVE and scores per issue.",
                     },
                 },
                 "required": ["case_id"],

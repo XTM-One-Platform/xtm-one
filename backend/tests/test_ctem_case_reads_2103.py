@@ -84,7 +84,7 @@ def test_the_read_group_takes_the_issues_offset() -> None:
     from app.services.builtin_tools.ctem_read import build_case_read
 
     get, _ = build_case_read(user_id=str(uuid.uuid4()), agent_id="")
-    assert set(get.input_schema["properties"]) == {"case_id", "issues_offset"}
+    assert set(get.input_schema["properties"]) == {"case_id", "issues_offset", "issues_limit", "issue_fields"}
 
 
 def test_an_id_prefix_is_eight_hex_characters_or_more() -> None:
