@@ -143,6 +143,11 @@ class CtemCase(Base):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    #: The platform group owning the case as a team (#2577), routed from an asset group or primary asset
+    #: owned by that group; ``owner_user_id`` is then the team's lead. ``None`` when a person owns it.
+    owner_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="SET NULL"), nullable=True
+    )
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     accepted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1145,6 +1145,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "state": case.state,
         "state_since": case.state_since.isoformat() if case.state_since else None,
         "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
+        # The platform group owning the case as a team (#2577); the person owner is its lead.
+        "owner_group_id": str(gid) if (gid := getattr(case, "owner_group_id", None)) else None,
         "due_at": case.due_at.isoformat() if case.due_at else None,
         "accepted_reason": case.accepted_reason,
         "accepted_until": case.accepted_until.isoformat() if case.accepted_until else None,
@@ -1633,6 +1635,7 @@ def list_for_viewer(
     signal_type: Iterable[str] | None = None,
     limit: int = 50,
     offset: int = 0,
+    owner_group_ids: Iterable[str] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """One page of the cases this viewer sees and their counts by state.
 
@@ -1643,8 +1646,10 @@ def list_for_viewer(
     primary asset (#1980 S2): the primary asset page's cases.
     *signal_type* keeps the cases one of whose visible signals has one of those
     trigger paths, ``none`` the cases with no visible signal (#2556); like *state*,
-    it narrows the page, not the counts by state.
+    it narrows the page, not the counts by state. *owner_user_id* also keeps the
+    cases a team owns when *owner_group_ids* (that person's groups) holds the team (#2577).
     """
+    teams = {str(g) for g in owner_group_ids}
     if asset and asset.strip():
         cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
     if primary_asset and primary_asset.strip():
@@ -1656,7 +1661,7 @@ def list_for_viewer(
     if state:
         rows = [r for r in rows if r["state"] == state]
     if owner_user_id:
-        rows = [r for r in rows if r["owner_user_id"] == owner_user_id]
+        rows = [r for r in rows if r["owner_user_id"] == owner_user_id or r.get("owner_group_id") in teams]
     if priority:
         rows = [r for r in rows if r["priority"] == priority]
     if signal_type:
