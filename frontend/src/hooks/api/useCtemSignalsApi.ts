@@ -340,6 +340,8 @@ export interface CtemPlatformSource {
   integration_url?: string | null;
   /** The trigger paths it feeds (#2583 point 6): turning it off stops them all. */
   feeds?: { path: string; label: string }[];
+  /** The objects the fleets provisioned on the same integration, listed apart with their owner (#2640); on the listener row only. */
+  fleet_objects?: CtemPlatformSourceObject[];
   /** OpenCTI only: the legacy Threat response objects XTM One still holds on this integration (#2627). */
   legacy_pending?: number;
 }
@@ -350,6 +352,12 @@ export interface CtemPlatformSourceObject {
   id: string;
   /** Its name in its platform ("XTM One - Signals - ... - Trigger"); empty when not known. */
   name?: string;
+  /** Who owns it: "Signals" for a source's own objects, else the fleet or desk that provisioned it (#2640). */
+  owner?: string;
+  /** The module event a per-event trigger listens to. */
+  event?: string;
+  /** The other owners that keep their own trigger on the same module event (#2640). */
+  shared_with?: string[];
   /** The trigger path a per-path object serves (the PIR playbooks, #2627), and its label. */
   path?: string;
   path_label?: string;

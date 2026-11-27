@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "組織が独自のベースラインを設定するまで、ROI の数値は既定のベースラインから推定されます。",
   "Screen left empty between two inserts": "2つのはめ込みの間で画面が空になった",
   "Simulation finished": "シミュレーション完了",
+  "Atomic test finished": "アトミックテスト完了",
   "Inject or atomic test finished": "インジェクトまたはアトミックテスト完了",
   "Finding created": "検出結果の作成",
   "Stored": "保存済み",
@@ -20083,6 +20084,7 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
+  "Asset stale": "アセットの陳腐化",
   "Asset turned stale": "アセット陳腐化",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
@@ -22163,7 +22165,7 @@
   "Triggers": "トリガー",
   "Playbook": "プレイブック",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "{count, plural, other {# 件のパス}}に供給: {paths}。オフにするとすべて停止します。",
-  "Objects in {platform}:": "{platform} のオブジェクト:",
+  "Owner: {owner}": "所有者: {owner}",
   "No legacy object left.": "旧オブジェクトは残っていません。",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, other {# 件のオブジェクトが削除されます:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {オブジェクトは削除されませんでした。} other {# 件のオブジェクトを削除しました。}}",
@@ -22192,5 +22194,8 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, other {前回のパス（{at}）は # 件の新しいホストを保留しました。部分的な読み取り、または前回のパスより前にプロバイダーが把握していたものです}}",
   "The last pass ({at}) found no undeclared host and no new port": "前回のパス（{at}）では未宣言のホストも新しいポートも見つかりませんでした",
   "The last pass ({at}) found nothing new on this path": "前回のパス（{at}）ではこのタイプに新しいものは見つかりませんでした",
-  "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした"
+  "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
+  "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。"
 }
