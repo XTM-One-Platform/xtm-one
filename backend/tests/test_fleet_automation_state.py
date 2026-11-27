@@ -203,14 +203,14 @@ async def test_enable_is_previewed_until_the_user_confirms_then_switches_on_and_
             fleet_control.FleetEnableItem(id=assignment_id, name="Weekly fleet health check", providers=(), missing=()),
         ),
     )
-    enabled: list[uuid.UUID] = []
+    enabled: list[tuple] = []
     audited: list[dict] = []
 
     async def _plan(_db, _fleet, **_kw):
         return plan
 
-    async def _enable(_db, _fleet, *, actor, run_as_user_id, **_kw):
-        enabled.append(run_as_user_id)
+    async def _enable(_db, _fleet, *, actor, run_as_user_id, run_as_by_module=None, **_kw):
+        enabled.append((actor.id, run_as_user_id, run_as_by_module))
         return fleet_control.FleetControlOutcome(changed=1, names=("Weekly fleet health check",))
 
     async def _log_audit(_db, **kw):
@@ -228,7 +228,8 @@ async def test_enable_is_previewed_until_the_user_confirms_then_switches_on_and_
     done = await _call(str(user.id), fleet_id=fid, action="enable", confirm=True)
     assert "1 automation(s) enabled: Weekly fleet health check" in done
     assert "Automations: On, 4 of 4 on" in done
-    assert enabled == [user.id] and [a["action"] for a in audited] == ["fleet_enable"]
+    # #2650: no fleet-wide run-as default to the clicking user; a module automation needs its own choice.
+    assert enabled == [(user.id, None, {})] and [a["action"] for a in audited] == ["fleet_enable"]
 
 
 async def _async(value):

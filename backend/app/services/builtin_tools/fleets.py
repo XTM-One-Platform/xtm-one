@@ -2455,7 +2455,7 @@ def build_fleet_tools(
                     "confirm": {"type": "boolean", "default": False},
                     "run_as": {
                         "type": "object",
-                        "description": "enable: who to act as per module, e.g. {opencti: me or a user id}.",
+                        "description": "enable: who to act as per module, keyed by the module's provider: me or a user id.",
                     },
                 },
                 "required": ["fleet_id", "action"],
