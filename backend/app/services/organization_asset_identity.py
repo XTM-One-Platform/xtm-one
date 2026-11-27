@@ -488,6 +488,14 @@ BUILTIN_SOURCE_CLASSES: dict[str, str] = {
 }
 #: Precedence of a field not listed above: a person first, then the suite, then anything.
 FALLBACK_PRECEDENCE: tuple[str, ...] = (HAND_CLASS, "openaev", "opencrq", "opencti", "*")
+#: Default precedence by subcategory, over :data:`DEFAULT_PRECEDENCE` (#2703): the source control system is the
+#: authority on a code repository's visibility and archival, so its public or archived wins over a scan's "no".
+SUBCATEGORY_PRECEDENCE: dict[str, dict[str, tuple[str, ...]]] = {
+    "code_repository": {
+        "internet_facing": ("scm", HAND_CLASS, "openaev", "opencrq", "*"),
+        "status": ("scm", HAND_CLASS, "openaev", "opencrq", "opencti", "*"),
+    },
+}
 #: Fields a person sets on a synced thing (local enrichment, #1134): a hand record's value wins; without one, the
 #: value kept on the synced record is shown (#1367: the person's edit of a synced asset lives there).
 DEFAULT_LOCAL_FIELDS: frozenset[str] = frozenset({"environment", "group", "description", "business_service"})
@@ -546,7 +554,8 @@ def resolve_fields(
 ) -> dict[str, FieldValue]:
     """Each field of *records* with the value its precedence picks and every source's value.
 
-    *precedence* overrides :data:`DEFAULT_PRECEDENCE` field by field. A value
+    *precedence* overrides :data:`DEFAULT_PRECEDENCE` field by field, on top of
+    :data:`SUBCATEGORY_PRECEDENCE` for the subcategory the records resolve to. A value
     that says nothing (empty, ``unknown``) never wins over one that does; a
     field of *local_fields* is taken from hand sources first; when no hand
     record carries a value, from the other records, where a person's local
@@ -556,9 +565,13 @@ def resolve_fields(
     """
     table = {**DEFAULT_PRECEDENCE, **(precedence or {})}
     local = set(local_fields)
-    names = sorted({name for r in records for name in r.fields})
+    # The subcategory is resolved first: its default precedence may differ (a code repository, #2703).
+    names = sorted({name for r in records for name in r.fields}, key=lambda n: (n != "subcategory", n))
     resolved: dict[str, FieldValue] = {}
     for name in names:
+        if name != "subcategory" and "subcategory" in resolved:
+            kind = str(resolved["subcategory"].value or "").strip().lower()
+            table = {**DEFAULT_PRECEDENCE, **SUBCATEGORY_PRECEDENCE.get(kind, {}), **(precedence or {})}
         order = tuple(table.get(name, FALLBACK_PRECEDENCE))
         offers = [r for r in records if name in r.fields]
         if name in local:

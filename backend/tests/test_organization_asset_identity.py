@@ -229,6 +229,42 @@ def test_precedence_picks_per_field_and_keeps_every_value() -> None:
     assert [c["source"] for c in fields["os_version"].candidates] == ["intune", "openaev", "opencrq"]
 
 
+_REPO = {"category": "source_code", "subcategory": "code_repository"}
+_HOST = {"category": "device", "subcategory": "server"}
+
+
+def _scm_and_scan(kind: dict[str, str]) -> list[SourceRecord]:
+    """#2703: a GitHub sync record (public, active, seen today) and an OpenAEV record saying no."""
+    scm = _rec(
+        "github",
+        "r-1",
+        fields={**kind, "internet_facing": "yes", "status": "active"},
+        seen=datetime(2026, 11, 27, tzinfo=UTC),
+    )
+    scan = _rec("openaev", "a-1", fields={**kind, "internet_facing": "no", "status": "inactive"})
+    return [scm, scan]
+
+
+def test_the_scm_source_wins_exposure_and_status_of_a_code_repository() -> None:
+    fields = ident.resolve_fields(_scm_and_scan(_REPO))
+    assert fields["internet_facing"].value == "yes" and fields["internet_facing"].source == "github"
+    assert fields["status"].value == "active" and fields["status"].source == "github"
+    # Every source's value is still kept.
+    assert {c["value"] for c in fields["internet_facing"].candidates} == {"yes", "no"}
+
+
+def test_other_asset_types_keep_openaev_first_for_exposure_and_status() -> None:
+    fields = ident.resolve_fields(_scm_and_scan(_HOST))
+    assert fields["internet_facing"].value == "no" and fields["internet_facing"].source == "openaev"
+    assert fields["status"].source == "openaev"
+
+
+def test_an_organization_precedence_still_wins_over_the_repository_default() -> None:
+    fields = ident.resolve_fields(_scm_and_scan(_REPO), precedence={"internet_facing": ("openaev", "*")})
+    assert fields["internet_facing"].source == "openaev"
+    assert fields["status"].source == "github"
+
+
 def test_unknown_never_wins_over_a_known_value() -> None:
     crq = _rec("opencrq", "c-1", fields={"criticality": "unknown"})
     aev = _rec("openaev", "a-1", fields={"criticality": "high"})
