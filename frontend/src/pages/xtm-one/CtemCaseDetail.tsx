@@ -34,6 +34,7 @@ import {
   CTEM_CASE_LIST_KEY,
   cachedCaseSummary,
   ctemCaseMaxCvss,
+  ctemCaseClosedLine,
   isClosedCaseState,
   isOpenCaseState,
   isRestrictedIssue,
@@ -846,7 +847,7 @@ export default function CtemCaseDetail() {
           value={caseClosed ? (kase.open_at_source_count ?? 0) : kase.open_issue_count}
           subtitle={
             caseClosed
-              ? t_i18n("Case closed by decision")
+              ? t_i18n(ctemCaseClosedLine(kase.state, kase.resolution_kind) ?? "Case closed")
               : restricted > 0
                 ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
                 : aggregatesRestricted

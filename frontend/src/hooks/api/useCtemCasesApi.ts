@@ -42,6 +42,29 @@ const CTEM_CLOSED_CASE_STATES: readonly string[] = ["mitigated_watching", "resol
 export function isClosedCaseState(state: string | null | undefined): boolean {
   return CTEM_CLOSED_CASE_STATES.includes(state ?? "");
 }
+
+/** How a resolved case was closed, by resolution kind: the line the case page shows under its open-at-source count. */
+const CTEM_RESOLVED_CLOSE_LINE: Readonly<Record<string, string>> = {
+  closed_by_decision: "Case closed by decision",
+  fixed: "Case closed as fixed",
+  not_exposed: "Case closed as not exposed",
+  not_relevant: "Case closed as not relevant",
+  dismissed: "Case dismissed by a person",
+  mitigated: "Case closed as mitigated",
+  accepted_risk: "Case closed, risk accepted",
+};
+
+/**
+ * The i18n key of the line telling why a closed case is closed, from its true status and resolution kind
+ * (UX round 1 on #2678, B1): accepted risk and mitigated-watching say so, a resolved case says its kind,
+ * a legacy or unknown kind a generic "Case closed". Null for a case still worked.
+ */
+export function ctemCaseClosedLine(state: string | null | undefined, resolutionKind: string | null | undefined): string | null {
+  if (state === "accepted_risk") return "Case closed, risk accepted";
+  if (state === "mitigated_watching") return "Case mitigated, watching";
+  if (state === "resolved") return CTEM_RESOLVED_CLOSE_LINE[resolutionKind ?? ""] ?? "Case closed";
+  return null;
+}
 export type CtemCasePriority = "critical" | "high" | "medium" | "low";
 
 /** A case as one list row (`summary` in backend/app/services/ctem_cases_view.py). */
