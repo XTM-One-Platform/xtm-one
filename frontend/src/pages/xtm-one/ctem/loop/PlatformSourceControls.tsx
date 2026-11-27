@@ -22,14 +22,12 @@ import { useUsers } from "@/hooks/api/useAuthApi";
 import {
   type CtemLegacyOpenctiReport,
   type CtemPlatformSource,
-  type CtemPlatformSourceObject,
   type CtemSignalPathSource,
   useDisableCtemPlatformSource,
   useEnableCtemPlatformSource,
   useRemoveLegacyOpenctiObjects,
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
-import { formatList } from "@/lib/format-list";
 import {
   PLATFORM_OBJECT_KIND_TEXT,
   PLATFORM_OBJECT_OPEN_LABEL,
@@ -37,10 +35,9 @@ import {
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
   legacyCleanupCount,
-  moduleEventText,
   platformObjectLinks,
-  platformSourceReason,
   sharedFeeds,
+  sourceReasonLine,
 } from "./platform-sources";
 
 /** The platform's name on an Open in label. */
@@ -211,7 +208,8 @@ function PlatformSourceLine({
   const { toast } = useToast();
   const disable = useDisableCtemPlatformSource();
   const runAs = useRunAsLabel(source.run_as_user_id);
-  const reason = platformSourceReason(source, t_i18n);
+  // The reason ended by its full stop, then its fix in the reader's language (UX round 1 on #2653, B2).
+  const reason = sourceReasonLine(source, null, t_i18n);
   const toggle = (on: boolean) => {
     if (on) return onEnable(source);
     if (!source.id) return;
@@ -269,9 +267,8 @@ function PlatformSourceLine({
 function PlatformSourceBlastRadius({ source }: { source: CtemPlatformSource }) {
   const { t_i18n } = useFormatter();
   const feeds = sharedFeeds(source);
-  const own = (source.objects ?? []).filter((o) => Boolean(o.name));
-  const others = (source.fleet_objects ?? []).filter((o) => Boolean(o.name));
-  if (feeds.length === 0 && own.length === 0 && others.length === 0) return null;
+  const names = (source.objects ?? []).map((o) => o.name).filter((n): n is string => Boolean(n));
+  if (feeds.length === 0 && names.length === 0) return null;
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
   return (
     <div className="flex min-w-0 flex-col gap-0.5 text-default-secondary" data-testid="ctem-platform-source-blast-radius">
@@ -283,66 +280,19 @@ function PlatformSourceBlastRadius({ source }: { source: CtemPlatformSource }) {
           })}
         </span>
       )}
-      {own.length > 0 && (
+      {names.length > 0 && (
         <>
-          <span>
-            {t_i18n("Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):", { platform, count: own.length })}
-          </span>
+          <span>{t_i18n("Objects in {platform}:", { platform })}</span>
           <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object-names">
-            {own.map((o) => (
-              <PlatformObjectName key={`${o.kind}:${o.id}`} object={o} />
-            ))}
-          </ul>
-        </>
-      )}
-      {others.length > 0 && (
-        <>
-          <span>
-            {t_i18n("Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):", {
-              platform,
-              count: others.length,
-            })}
-          </span>
-          <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-fleet-objects">
-            {others.map((o) => (
-              <PlatformObjectName key={`${o.kind}:${o.id}`} object={o} />
+            {names.map((name) => (
+              <li key={name} className="min-w-0 truncate" title={name}>
+                {name}
+              </li>
             ))}
           </ul>
         </>
       )}
     </div>
-  );
-}
-
-/**
- * One object a source or a fleet holds in its platform, with its owner (#2640). A trigger another owner
- * also holds on the same module event says why: each owner gets its own delivery and its own run.
- */
-function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
-  const { t_i18n, locale } = useFormatter();
-  const name = object.name ?? "";
-  const shared = object.shared_with ?? [];
-  return (
-    <li className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object" data-owner={object.owner ?? ""}>
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate" title={name}>
-          {name}
-        </span>
-        {object.owner && (
-          <span className="shrink-0" data-testid="ctem-platform-source-object-owner">
-            {t_i18n("Owner: {owner}", { owner: object.owner })}
-          </span>
-        )}
-      </span>
-      {shared.length > 0 && object.event && (
-        <span className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
-          {t_i18n(
-            "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
-            { count: shared.length, owners: formatList(shared, locale), event: moduleEventText(t_i18n, object.event) },
-          )}
-        </span>
-      )}
-    </li>
   );
 }
 
