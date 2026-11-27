@@ -21915,6 +21915,7 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
   "Partners read this agent's fleet": "Partners read this agent's fleet",
+  "Partners read fleets and runs as the owner": "Partners read fleets and runs as the owner",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.",
   "Could not change the partner fleet reads": "Could not change the partner fleet reads",
   "Defender XDR alert raised": "Defender XDR alert raised",
@@ -22174,5 +22175,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
-  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task."
 }
