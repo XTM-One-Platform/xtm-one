@@ -247,6 +247,46 @@ async def test_get_and_lookup_answer_one_asset_by_id_prefix_or_name() -> None:
         assert detail is not None and len(detail["installations"]["items"]) == 3
 
 
+async def test_group_by_source_totals_the_distinct_assets_not_the_overlapping_buckets() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = Organization(id=uuid.uuid4(), name="B", role="primary", relationship=None)
+        session.add(org)
+        await session.flush()
+        sources = {"a": ("intune", "openaev"), "b": ("openaev",), "c": ("intune",)}
+        for name, origins in sources.items():
+            asset = OrganizationAsset(
+                id=uuid.uuid4(),
+                organization_id=org.id,
+                canonical_key=name,
+                name=name,
+                name_key=name,
+                fields={"os_family": _field("linux")},
+            )
+            session.add(asset)
+            await session.flush()
+            for origin in origins:
+                session.add(
+                    OrganizationAssetRecord(
+                        organization_id=org.id,
+                        source=origin,
+                        external_id=f"{origin}-{name}",
+                        asset_id=asset.id,
+                        name=name,
+                        name_key=name,
+                    )
+                )
+        await session.commit()
+
+        by_source = await q.aggregate_inventory(session, org.id, group_by="source", os_family=["linux"])
+        assert {b["value"]: b["count"] for b in by_source["buckets"]} == {"intune": 2, "openaev": 2}
+        assert by_source["total"] == 3 and by_source["bucket_sum"] == 4 and by_source["multi_valued"] is True
+
+        by_os = await q.aggregate_inventory(session, org.id, group_by="os_family", os_family=["linux"])
+        found = await q.search_assets(session, org.id, os_family=["linux"])
+        assert by_os["total"] == found["total"] == 3
+        assert "bucket_sum" not in by_os and "multi_valued" not in by_os
+
+
 def test_version_in_range_is_semantic_and_says_when_it_cannot_compare() -> None:
     assert q.version_in_range("1.10.2", min_version="1.9", max_version="2.0") is True
     assert q.version_in_range("2.0", max_version="2.0") is False
