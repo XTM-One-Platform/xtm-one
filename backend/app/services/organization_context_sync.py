@@ -57,6 +57,29 @@ SECTION_SCOPES: dict[str, tuple[str, ...]] = {
 LOCK_SECONDS = 900
 #: Read errors that mean the owner cannot read the platform any more: the sync pauses.
 _PAUSING_ERRORS = ("not connected", "no token")
+#: Errors that pass by themselves (#2629): a statement timeout, a provider throttle or timeout, a dropped
+#: connection. A scheduled run that meets one retries after these delays, all within the hour.
+_TRANSIENT_ERRORS = (
+    "statement timeout",
+    "timeout",
+    "timed out",
+    "throttled",
+    "retry later",
+    "too many requests",
+    "429",
+    "503",
+    "service unavailable",
+    "dbapierror",
+    "connection reset",
+    "connection was closed",
+)
+RETRY_DELAYS: tuple[timedelta, ...] = (timedelta(minutes=5), timedelta(minutes=15), timedelta(minutes=30))
+#: Watchlist signals one recheck savepoint decides again; halved on a statement timeout (#2629).
+RECHECK_SYNC_BATCH = 100
+#: The smallest recheck batch before the recheck gives up for this run.
+RECHECK_MIN_BATCH = 10
+#: Recheck batches one run decides at most (the rest waits for the next run: the recheck is idempotent).
+RECHECK_MAX_ROUNDS = 50
 
 
 class SyncRefusedError(ValueError):
@@ -220,6 +243,53 @@ def _pausing(error: str | None) -> bool:
     return bool(error) and any(marker in (error or "").lower() for marker in _PAUSING_ERRORS)
 
 
+def is_transient(error: BaseException | str | None) -> bool:
+    """Whether *error* passes by itself, so the run is retried soon instead of the next day (#2629)."""
+    from app.core.utils import is_statement_timeout
+
+    if error is None or error == "":
+        return False
+    if isinstance(error, BaseException):
+        if is_statement_timeout(error) or isinstance(error, TimeoutError | ConnectionError):
+            return True
+        text = f"{type(error).__name__}: {error}"
+    else:
+        text = error
+    if _pausing(text):
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_ERRORS)
+
+
+def schedule_after(sync: Any, result: dict[str, Any] | None, *, prior_attempts: int, now: datetime) -> datetime:
+    """The next run of *sync* after a run that answered *result*, a retry first when it failed transiently.
+
+    A transient failure (:func:`is_transient`) retries after :data:`RETRY_DELAYS` (attempt
+    *prior_attempts* + 1), never later than the next scheduled run; the attempt and the retry
+    time are written on *result* so the sync row shows them. Any other outcome, or the retries
+    spent, keeps the schedule.
+    """
+    scheduled = next_run(sync, now)
+    result = result if isinstance(result, dict) else None
+    if result is None or not result.get("transient") or prior_attempts >= len(RETRY_DELAYS):
+        return scheduled
+    retry_at = min(now + RETRY_DELAYS[prior_attempts], scheduled)
+    result["retry_attempt"] = prior_attempts + 1
+    result["retry_at"] = retry_at.isoformat()
+    return retry_at
+
+
+def _prior_attempts(sync: Any) -> int:
+    """The retries already made since the last run that did not fail transiently."""
+    last = getattr(sync, "last_result", None)
+    if not isinstance(last, dict) or not last.get("transient"):
+        return 0
+    try:
+        return max(0, int(last.get("retry_attempt") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 async def _owner(db: AsyncSession, sync: OrganizationContextSync) -> tuple[User | None, str]:
     """The administrator a run reads as, or the reason it cannot run."""
     if sync.owner_user_id is None:
@@ -270,7 +340,14 @@ def _links_changed(links: Any) -> bool:
 
 
 async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, str]:
-    """#1591 S3: decide again the watchlist signals held for scope; never fails the sync."""
+    """#1591 S3: decide again the watchlist signals held for scope; never fails the sync.
+
+    #2629: in batches of :data:`RECHECK_SYNC_BATCH`, each in its own savepoint, so one
+    statement fits the database's statement timeout; a batch that times out is rolled back
+    alone and taken again at half the size, down to :data:`RECHECK_MIN_BATCH`. The recheck is
+    idempotent (a decided signal moves past *since*), so what one run leaves the next one takes.
+    """
+    from app.core.utils import is_statement_timeout
     from app.services import ctem_scope_gate_store
     from app.services.organizations import get_primary
 
@@ -278,12 +355,31 @@ async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, 
         primary = await get_primary(db)
         if primary is None:
             return {}
-        async with db.begin_nested():
-            await db.flush()
-            return await ctem_scope_gate_store.recheck_held(db, organization_id=primary.id, since=datetime.now(UTC))
+        await db.flush()
     except Exception as exc:
         logger.warning("CTEM held signals not decided again after the sync", exc_info=True)
         return {"error": format_exception_message(exc)[:300]}
+    since = datetime.now(UTC)
+    counts: dict[str, int] = {}
+    batch = RECHECK_SYNC_BATCH
+    for _ in range(RECHECK_MAX_ROUNDS):
+        try:
+            async with db.begin_nested():
+                decided = await ctem_scope_gate_store.recheck_held(
+                    db, organization_id=primary.id, since=since, batch=batch
+                )
+        except Exception as exc:
+            if is_statement_timeout(exc) and batch > RECHECK_MIN_BATCH:
+                batch = max(RECHECK_MIN_BATCH, batch // 2)
+                logger.info("CTEM held signals: statement timeout, batch now %d", batch)
+                continue
+            logger.warning("CTEM held signals not decided again after the sync", exc_info=True)
+            return {**counts, "error": format_exception_message(exc)[:300]}
+        for state, count in decided.items():
+            counts[state] = counts.get(state, 0) + count
+        if sum(decided.values()) < batch:
+            break
+    return counts
 
 
 async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: str) -> dict[str, Any]:
@@ -370,6 +466,10 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             # Devices synced but their software could not be read: said, never a silent zero (#1251).
             result["software_unread"] = len(plan.software_unread)
             result["software_error"] = plan.software_error[:500]
+        links_error = result.get("links", {}).get("error") if isinstance(result.get("links"), dict) else None
+        if any(is_transient(e) for e in (result["error"], result.get("software_error"), links_error)):
+            # #2629: a timeout or a throttle passes by itself: the scheduler retries within the hour.
+            result["transient"] = True
         if (
             result["version"] is not None
             or result.get("rows_written")
@@ -550,6 +650,8 @@ async def run_now(db: AsyncSession, sync: OrganizationContextSync, *, trigger: s
         totals["version"] = outcome["version"] or totals["version"]
         if outcome["error"]:
             errors.append(f"{member.section} from {member.source}: {outcome['error']}")
+        if outcome.get("transient"):
+            totals["transient"] = True
     totals["error"] = "; ".join(errors)[:500] or None
     sync.last_run_at = datetime.now(UTC)
     sync.last_result = totals
@@ -583,9 +685,13 @@ async def run_due_syncs(db: AsyncSession, *, now: datetime | None = None) -> int
         sync = await db.get(OrganizationContextSync, sync_id)
         if sync is None:
             continue
+        prior = _prior_attempts(sync)
         try:
-            await run_now(db, sync, trigger="schedule")
-            sync.next_run_at = next_run(sync, now)
+            outcome = await run_now(db, sync, trigger="schedule" if not prior else f"retry {prior + 1}")
+            # #2629: a transient failure retries within the hour instead of waiting for the next day.
+            result = dict(sync.last_result or outcome or {})
+            sync.next_run_at = schedule_after(sync, result, prior_attempts=prior, now=now)
+            sync.last_result = result
             await db.commit()
             ran += 1
         except Exception as exc:  # one sync never stops the others
@@ -593,8 +699,17 @@ async def run_due_syncs(db: AsyncSession, *, now: datetime | None = None) -> int
             await db.rollback()
             failed = await db.get(OrganizationContextSync, sync_id)
             if failed is not None:
-                failed.next_run_at = next_run(failed, now)
+                # The failure is said with its message, and a timeout or a dropped connection retries (#2629).
+                result = {
+                    "added": 0,
+                    "updated": 0,
+                    "removed": 0,
+                    "version": None,
+                    "error": f"{type(exc).__name__}: {format_exception_message(exc)}"[:500],
+                    "transient": is_transient(exc),
+                }
+                failed.next_run_at = schedule_after(failed, result, prior_attempts=prior, now=now)
                 failed.last_run_at = now
-                failed.last_result = {"error": type(exc).__name__}
+                failed.last_result = result
                 await db.commit()
     return ran
