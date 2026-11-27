@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "Las cifras de ROI se estiman con referencias predeterminadas hasta que su organización defina las suyas.",
   "Screen left empty between two inserts": "Pantalla vacía entre dos inserciones",
   "Simulation finished": "Simulación finalizada",
+  "Atomic test finished": "Prueba atómica finalizada",
   "Inject or atomic test finished": "Inject o prueba atómica finalizada",
   "Finding created": "Hallazgo creado",
   "Stored": "Guardado",
@@ -20082,6 +20083,7 @@
   "Step in progress": "Paso en curso",
   "Asset created": "Activo creado",
   "Asset updated": "Activo modificado",
+  "Asset stale": "Activo obsoleto",
   "Asset turned stale": "Activo obsoleto",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Se activa cuando un activo no se ha visto en OpenAEV durante más tiempo que el umbral de obsolescencia del tenant (inactivo hasta que se defina el umbral).",
   "Finding deleted": "Hallazgo eliminado",
@@ -22177,5 +22179,5 @@
   "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objetos en {platform}, propiedad de Signals ({count, plural, one {# objeto} other {# objetos}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Otros objetos de XTM One en {platform}, propiedad de flotas, no contados aquí ({count, plural, one {# objeto} other {# objetos}}):",
-  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} también escucha {event} con su propio disparador: cada propietario recibe su propia entrega e inicia su propia ejecución, con su propio usuario de ejecución."
+  "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} también escucha el evento «{event}» con su propio disparador: cada propietario recibe su propia entrega e inicia su propia ejecución, con su propio usuario de ejecución."
 }

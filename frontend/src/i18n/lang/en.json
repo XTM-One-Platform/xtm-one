@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "ROI figures are estimated from default baselines until your organization sets its own.",
   "Screen left empty between two inserts": "Screen left empty between two inserts",
   "Simulation finished": "Simulation finished",
+  "Atomic test finished": "Atomic test finished",
   "Inject or atomic test finished": "Inject or atomic test finished",
   "Finding created": "Finding created",
   "Stored": "Stored",
@@ -20082,6 +20083,7 @@
   "Step in progress": "Step in progress",
   "Asset created": "Asset created",
   "Asset updated": "Asset updated",
+  "Asset stale": "Asset stale",
   "Asset turned stale": "Asset turned stale",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).",
   "Finding deleted": "Finding deleted",
@@ -22177,5 +22179,5 @@
   "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
-  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user."
+  "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user."
 }

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemPlatformSource } from "@/hooks/api/useCtemSignalsApi";
 import { PlatformSourceControls } from "./PlatformSourceControls";
-import { holdsLegacyCleanup, sharedFeeds } from "./platform-sources";
+import { holdsLegacyCleanup, moduleEventText, sharedFeeds } from "./platform-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -103,11 +103,21 @@ describe("Owner of each provisioned object (#2640)", () => {
     expect(within(own).getAllByTestId("ctem-platform-source-object")).toHaveLength(2);
     expect(within(own).getAllByText("Owner: Signals")).toHaveLength(2);
     expect(within(own).getByTestId("ctem-platform-source-object-shared").textContent).toBe(
-      "Detection validation desk also listens to simulation_finished with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+      "Detection validation desk also listens to the \"Simulation finished\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
     );
+    expect(within(own).getByTestId("ctem-platform-source-object-shared").textContent).not.toContain("simulation_finished");
     const fleets = within(radius).getByTestId("ctem-platform-source-fleet-objects");
     expect(within(fleets).getByText("Owner: Detection validation desk")).toBeInTheDocument();
     expect(within(radius).getByText("Other XTM One objects in OpenAEV, owned by fleets, not counted here (1 object):")).toBeInTheDocument();
+  });
+});
+
+describe("Module event in words (UX round 1 on #2664, B1)", () => {
+  it("names a known event by its label and falls back to the code only for an unknown one", () => {
+    const t = (key: string) => `t:${key}`;
+    expect(moduleEventText(t, "simulation_finished")).toBe("t:Simulation finished");
+    expect(moduleEventText(t, "finding_updated")).toBe("t:Finding updated");
+    expect(moduleEventText(t, "some_new_event")).toBe("some_new_event");
   });
 });
 

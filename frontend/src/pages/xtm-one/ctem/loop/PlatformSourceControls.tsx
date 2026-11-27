@@ -36,6 +36,7 @@ import {
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
   holdsLegacyCleanup,
+  moduleEventText,
   platformObjectLinks,
   platformSourceReason,
   sharedFeeds,
@@ -327,8 +328,8 @@ function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
       {shared.length > 0 && object.event && (
         <span className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
           {t_i18n(
-            "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
-            { owners: shared.join(", "), event: object.event },
+            "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+            { owners: shared.join(", "), event: moduleEventText(t_i18n, object.event) },
           )}
         </span>
       )}
