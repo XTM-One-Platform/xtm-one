@@ -372,7 +372,9 @@ async def test_a_holder_s_old_objects_go_only_once_the_source_delivers(row, stat
 def test_the_pir_playbook_source_reads_the_profile_pirs():
     spec = sources.PROVISIONED[("opencti", "pir_playbook")].spec()
     assert spec["mode"] == "pir_playbook" and spec["organization_context"] == ["pir_ids"]
-    assert "Vulnerability" in spec["entity_types"] and "Intrusion-Set" in spec["entity_types"]
+    # #2583 point 3: a vulnerability is never flagged in a PIR itself, so the flagged playbook omits it.
+    assert "Vulnerability" not in spec["entity_types"] and "Intrusion-Set" in spec["entity_types"]
+    assert spec["pir_relation"] == "flagged"
 
 
 @pytest.mark.parametrize(

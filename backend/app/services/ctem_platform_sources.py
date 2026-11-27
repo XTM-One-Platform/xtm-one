@@ -74,9 +74,10 @@ def _openaev_spec(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> di
     return {"fleet": OBJECT_FLEET, "purpose": "OpenAEV listener", "events": openaev_events(excluded)}
 
 
-#: The entity types the OpenCTI PIR playbook delivers: the vulnerability and the threat paths.
+#: The entity types the single OpenCTI PIR playbook (before #2436) delivers: the threats flagged in a
+#: PIR. A vulnerability is never flagged itself (#2583 point 3): the per-path playbook of
+#: ``new_vulnerability`` delivers the vulnerabilities linked to a flagged entity.
 PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
-    "Vulnerability",
     "Intrusion-Set",
     "Threat-Actor-Group",
     "Threat-Actor-Individual",
@@ -88,7 +89,7 @@ PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
 def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
     """The PIR playbook spec; for *path* (#2436), the playbook of that path alone, over its entity types."""
     from app.services import opencti_trigger_provisioning as prov
-    from app.services.ctem_signal_sources import PIR_PATHS
+    from app.services.ctem_signal_sources import PIR_PATH_RELATIONS, PIR_PATHS
 
     spec = prov.read_provision_spec(
         {
@@ -97,6 +98,7 @@ def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
                 "fleet": OBJECT_FLEET,
                 "purpose": f"OpenCTI PIR playbook - {path}" if path else "OpenCTI PIR playbook",
                 "mode": prov.PIR_PLAYBOOK_MODE,
+                "pir_relation": PIR_PATH_RELATIONS.get(path, prov.PIR_FLAGGED),
                 "entity_types": list(PIR_PATHS[path] if path else PIR_PLAYBOOK_ENTITY_TYPES),
                 "organization_context": ["pir_ids"],
                 "pir_min_score": 1,

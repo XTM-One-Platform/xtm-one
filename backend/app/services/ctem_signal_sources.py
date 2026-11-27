@@ -241,6 +241,11 @@ PIR_PATHS: dict[str, tuple[str, ...]] = {
     "relevant_threat": ("Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign", "Malware"),
 }
 
+#: How each path's playbook reaches its entities (#2583 point 3): a threat is flagged in a PIR
+#: itself; a vulnerability never is, so it arrives when a new relationship links it to a flagged
+#: entity (``provision.pir_relation`` ``linked``, OpenCTI's ``create_rel``).
+PIR_PATH_RELATIONS: dict[str, str] = {"new_vulnerability": "linked", "relevant_threat": "flagged"}
+
 #: The OpenCTI ``pir_type`` values a path takes by default (#2436). OpenCTI offers threat PIRs today;
 #: a vulnerability PIR type is matched by name as soon as OpenCTI offers one.
 PIR_PATH_TYPES: dict[str, tuple[str, ...]] = {

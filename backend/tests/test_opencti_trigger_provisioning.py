@@ -427,7 +427,8 @@ def test_delivery_carries_the_entity_not_only_its_id():
 
 CONTEXT_CONFIG = {
     "provider": "opencti",
-    "provision": {"fleet": "Threat response", "purpose": "PIR threats", "entity_types": ["Report"],
+    # Intrusion-Set: a Report is never flagged in a PIR, its PIR score filter is refused (#2583 point 3).
+    "provision": {"fleet": "Threat response", "purpose": "PIR threats", "entity_types": ["Intrusion-Set"],
                   "organization_context": ["pir_ids"], "pir_min_score": 20},
 }
 

@@ -1245,6 +1245,17 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   PIR information, and the fleet reads the live score from OpenCTI
   before acting. Leaving a PIR is not delivered (the delete toggle stays
   off).
+- PIR sources (#2583 point 3): OpenCTI flags an entity in a PIR only as the
+  source of a relationship matching one of its criteria, which a
+  `Vulnerability` or a `Report` never is. `read_provision_spec` refuses a
+  `pir_ids` spec on those types with the reason
+  (`NOT_PIR_SOURCE_TYPES`, `pir_source_refusal`) unless it sets
+  `provision.pir_relation: "linked"` (PIR playbook only): the entry then
+  listens to `create_rel` alone (an entity a new relationship links to a
+  flagged one, OpenCTI's `stixIdOfLinkedEntity`), with the entity type
+  filter and no `pir_score` filter. The `new_vulnerability` playbook
+  (`PIR_PATH_RELATIONS`) and the PIR desk's "PIR matches" (reports and
+  vulnerabilities) are linked; `relevant_threat` stays flagged.
 
 ### 8.2 Event enrichment
 
@@ -1260,7 +1271,7 @@ save repairs the trigger at the next pass:
 
 ```json
 {"provision": {"fleet": "Threat response", "purpose": "PIR threats",
-               "entity_types": ["Report"], "organization_context": ["pir_ids"],
+               "entity_types": ["Intrusion-Set"], "organization_context": ["pir_ids"],
                "pir_min_score": 20}}
 ```
 

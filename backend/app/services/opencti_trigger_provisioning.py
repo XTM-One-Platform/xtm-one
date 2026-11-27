@@ -115,6 +115,12 @@ PROVISION_MODES = (TRIGGER_MODE, PIR_PLAYBOOK_MODE)
 #: criteria; a Vulnerability or a Report never is (#2583 point 3), so a PIR score filter on them
 #: can never match and a listener built on it never fires.
 NOT_PIR_SOURCE_TYPES: tuple[str, ...] = ("Vulnerability", "Report")
+#: ``provision.pir_relation`` of a PIR playbook: the entity flagged in a PIR (default), or (#2583
+#: point 3) the entity a new relationship links to a flagged one, OpenCTI's ``create_rel`` toggle
+#: (``listenPirEventsUtils.stixIdOfLinkedEntity``), how a Vulnerability or a Report reaches a PIR.
+PIR_FLAGGED = "flagged"
+PIR_LINKED = "linked"
+PIR_RELATIONS = (PIR_FLAGGED, PIR_LINKED)
 #: OpenCTI's playbook components (``modules/playbook/components``).
 PIR_ENTRY_COMPONENT = "PLAYBOOK_DATA_STREAM_PIR"
 NOTIFIER_COMPONENT = "PLAYBOOK_NOTIFIER_COMPONENT"
@@ -232,6 +238,17 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         raise ProvisionSpecError(
             "provision.mode pir_playbook listens to the profile PIRs: organization_context must name pir_ids"
         )
+    pir_relation = raw.get("pir_relation") or PIR_FLAGGED
+    if pir_relation not in PIR_RELATIONS:
+        raise ProvisionSpecError(f"provision.pir_relation: use one of {list(PIR_RELATIONS)}")
+    if pir_relation == PIR_LINKED and mode != PIR_PLAYBOOK_MODE:
+        raise ProvisionSpecError(
+            "provision.pir_relation linked is read by the PIR playbook only: set mode pir_playbook"
+        )
+    if "pir_ids" in context_fields and pir_relation == PIR_FLAGGED:
+        refusal = pir_source_refusal(entity_types)
+        if refusal is not None:
+            raise ProvisionSpecError(f"{refusal}, or set mode pir_playbook with pir_relation linked")
     organizations = _organizations_scope(raw.get("organizations"))
     if organizations != PRIMARY_SCOPE and context_fields:
         raise ProvisionSpecError(
@@ -275,6 +292,7 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "pir_min_score": pir_min_score,
         "pir_subset": pir_subset,
         "mode": mode,
+        "pir_relation": pir_relation,
         "organizations": organizations,
         # Filled from the tracked organizations by :func:`with_tracked_organizations`.
         "organization_refs": [],
@@ -899,10 +917,15 @@ def pir_playbook_nodes(
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
     names = pir_names or {}
+    linked = spec.get("pir_relation") == PIR_LINKED
     per_score = pir_score_filters(spec)
-    if len(per_score) <= 1:
+    if linked:
+        # #2583 point 3: the delivered entity is the one a new relationship links to a flagged
+        # entity; OpenCTI tests the filters on it, and it carries no score in these PIRs.
+        score_filter: dict[str, Any] = {"mode": "and", "filters": [], "filterGroups": []}
+    elif len(per_score) <= 1:
         score = per_score[0]["values"][0]["values"][0] if per_score else str(spec.get("pir_min_score", 1))
-        score_filter: dict[str, Any] = {
+        score_filter = {
             "mode": "and",
             "filters": [{"key": ["pir_score"], "values": [score], "operator": "gte", "mode": "or"}],
             "filterGroups": [],
@@ -924,10 +947,10 @@ def pir_playbook_nodes(
         )
     entry = {
         "inPirFilters": [{"value": pid, "label": names.get(pid) or pid, "type": "Pir"} for pid in pir_ids],
-        "create": True,
-        "update": True,
+        "create": not linked,
+        "update": not linked,
         "delete": False,
-        "create_rel": False,
+        "create_rel": linked,
         "filters": json.dumps(score_filter, sort_keys=True),
     }
     notify = {
