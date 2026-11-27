@@ -1305,6 +1305,107 @@ async def remove(gql: Gql, state: dict[str, Any]) -> str | None:
     return None
 
 
+#: The names the legacy Threat response holders gave their objects (#2583 point 4), before and after
+#: the fleet rename (#2121): the stems a legacy object's name starts with.
+LEGACY_NAME_STEMS: tuple[str, ...] = (
+    f"{NAME_PREFIX} - Threat response - ",
+    f"{NAME_PREFIX} - CTEM loop - New relevant threats",
+    f"{NAME_PREFIX} - CTEM loop - Threat activity flagged in a PIR",
+)
+#: The state of a legacy holder whose objects were retired: it holds nothing and is not re-provisioned
+#: while its Signals source is on and connected.
+RETIRED = "retired"
+#: ``(GraphQL list root, delete mutation)`` of each kind of object a holder provisioned.
+LEGACY_ROOTS: tuple[tuple[str, str], ...] = (
+    ("triggersKnowledge", "triggerKnowledgeDelete"),
+    ("playbooks", "playbookDelete"),
+    ("notifiers", "notifierDelete"),
+)
+
+
+def is_legacy_name(name: Any) -> bool:
+    return isinstance(name, str) and any(name.startswith(stem) for stem in LEGACY_NAME_STEMS)
+
+
+async def legacy_objects(gql: Gql) -> list[dict[str, str]]:
+    """The legacy Threat response objects present in OpenCTI: ``{root, id, name}``, triggers first."""
+    found: list[dict[str, str]] = []
+    for root, _ in LEGACY_ROOTS:
+        data, err = await gql(
+            f"query XtmFind($search: String) {{ {root}(first: 200, search: $search) {{ edges {{ node {{ id name }} }} }} }}",
+            {"search": NAME_PREFIX},
+        )
+        if err:
+            raise RuntimeError(err)
+        for edge in (data.get(root) or {}).get("edges") or []:
+            node = edge.get("node") or {}
+            if node.get("id") and is_legacy_name(node.get("name")):
+                found.append({"root": root, "id": node["id"], "name": node["name"]})
+    return found
+
+
+async def remove_legacy_objects(gql: Gql, objects: list[dict[str, str]]) -> list[str]:
+    """Delete *objects* (from :func:`legacy_objects`), triggers and playbooks before notifiers; the errors."""
+    mutations = dict(LEGACY_ROOTS)
+    errors: list[str] = []
+    for obj in objects:
+        try:
+            await _delete(gql, mutations[obj["root"]], obj["id"])
+        except Exception as exc:
+            errors.append(f"{obj['name']}: {str(exc)[:200]}")
+    return errors
+
+
+async def legacy_cleanup(db: Any, *, dry_run: bool = True) -> list[dict[str, Any]]:
+    """Admin "Remove legacy OpenCTI objects" (#2583 point 4): per OpenCTI integration a Signals source
+    is on for, the legacy Threat response objects found and, unless *dry_run*, removed.
+
+    Reads each integration as the run-as of its enabled source; one entry per integration:
+    ``{integration_id, objects, removed, errors}`` (``error`` instead when it cannot be read).
+    """
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    rows = (
+        (
+            await db.execute(
+                select(CtemSignalSource).where(
+                    CtemSignalSource.provider == "opencti", CtemSignalSource.enabled.is_(True)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    report: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        integration_id = str(row.integration_id)
+        if integration_id in seen or row.run_as_user_id is None:
+            continue
+        seen.add(integration_id)
+        conn = await integration_connection(db, integration_id, row.run_as_user_id)
+        if isinstance(conn, str):
+            report.append({"integration_id": integration_id, "error": conn})
+            continue
+        try:
+            objects = await legacy_objects(conn[0])
+        except Exception as exc:
+            report.append({"integration_id": integration_id, "error": str(exc)[:500]})
+            continue
+        errors = [] if dry_run else await remove_legacy_objects(conn[0], objects)
+        report.append(
+            {
+                "integration_id": integration_id,
+                "objects": [{"kind": o["root"], "id": o["id"], "name": o["name"]} for o in objects],
+                "removed": 0 if dry_run else len(objects) - len(errors),
+                "errors": errors,
+            }
+        )
+    return report
+
+
 def due_for_check(state: Any, now: datetime) -> bool:
     if not isinstance(state, dict) or state.get("status") != "provisioned":
         return True
@@ -1450,15 +1551,21 @@ def _with_state(trigger_config: dict, state: dict | None) -> dict:
     return updated
 
 
-async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime | None = None) -> dict | None:
-    """Reconcile one assignment; writes and returns its new state (``None`` = nothing held)."""
+async def provision_one(
+    db: Any, assignment: Any, agent: Any, *, now: datetime | None = None, retired: bool = False
+) -> dict | None:
+    """Reconcile one assignment; writes and returns its new state (``None`` = nothing held).
+
+    *retired*: a legacy holder whose Signals source delivers instead (#2583 point 4): its
+    objects are removed whatever its ``provision`` block declares.
+    """
     from app.core.config import settings
 
     now = now or datetime.now(UTC)
     config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
     state = config.get(STATE_KEY) if isinstance(config.get(STATE_KEY), dict) else None
     try:
-        spec = read_provision_spec(config) if assignment.enabled else None
+        spec = read_provision_spec(config) if assignment.enabled and not retired else None
     except ProvisionSpecError as exc:
         new_state = {**(state or {}), "status": "error", "error": str(exc), "checked_at": now.isoformat()}
         assignment.trigger_config = _with_state(config, new_state)
@@ -1473,6 +1580,13 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
             return new_state
         error = await remove(conn[0], state)
         new_state = None if error is None else {**state, "status": "error", "error": error, "checked_at": now.isoformat()}
+        if retired and error is None:
+            # A tombstone, so the next pass never provisions the holder again while its source delivers.
+            new_state = {
+                "status": RETIRED,
+                "integration_id": state.get("integration_id"),
+                "checked_at": now.isoformat(),
+            }
         assignment.trigger_config = _with_state(config, new_state)
         return new_state
     if isinstance(conn, str):
@@ -1548,7 +1662,7 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.assignment import Assignment
 
     now = now or datetime.now(UTC)
-    from app.services.ctem_platform_sources import replaced_by_source
+    from app.services.ctem_platform_sources import RETIRED_HOLDERS, replaced_by_source, source_connected
 
     rows = (
         await db.execute(
@@ -1561,7 +1675,20 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     for assignment, agent in rows:
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
         listening = assignment.trigger_type == "integration_event" and config.get("provider") == "opencti"
-        if not listening:
+        retired = False
+        kind = RETIRED_HOLDERS.get((getattr(agent, "slug", ""), assignment.name))
+        if listening and kind and isinstance(config.get(STATE_KEY), dict):
+            # A legacy Threat response holder (#2583 point 4): its objects go once the Signals
+            # source of the same integration delivers instead; new before old, nothing lost.
+            state = config[STATE_KEY]
+            retired = bool(state.get("integration_id")) and await source_connected(
+                db, "opencti", kind, state.get("integration_id")
+            )
+        if retired:
+            if state.get("status") == RETIRED:
+                continue  # already removed; nothing to recheck while the source delivers
+            config = {k: v for k, v in config.items() if k != PROVISION_KEY}
+        elif not listening:
             # A holder the seed moved to ctem_signal.recorded (#2434) keeps its old objects
             # until the platform source of the same integration delivers: new before old.
             if not isinstance(config.get(STATE_KEY), dict) or not await replaced_by_source(
@@ -1575,7 +1702,7 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
         if wants and not due_for_check(config.get(STATE_KEY), now):
             continue
         before = config.get(STATE_KEY)
-        after = await provision_one(db, assignment, agent, now=now)
+        after = await provision_one(db, assignment, agent, now=now, retired=retired)
         if (before or {}).get("fingerprint") != (after or {}).get("fingerprint") or (before or {}).get(
             "status"
         ) != (after or {}).get("status"):

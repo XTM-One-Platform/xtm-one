@@ -688,24 +688,38 @@ async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int
 async def replaced_by_source(db: Any, provider: str, state: Any) -> bool:
     """Whether a holder's old objects (*state*) may go: the platform source of the same
     integration is on and connected, so removing them loses no delivery (#2434)."""
-    from sqlalchemy import select
-
-    from app.models.ctem_signal_source import CtemSignalSource
-
     pair = held_source(provider, state)
     if pair is None:
         # No object is held (an error before any was created): clearing it loses nothing.
         return isinstance(state, dict) and bool(state) and not _held(state)
+    return await source_connected(db, pair[0], pair[1], state.get("integration_id"))
+
+
+#: The legacy Threat response holders (#2583 point 4): their OpenCTI objects are retired once the
+#: Signals source of the same integration is on and connected, ``(agent slug, name)`` -> the kind
+#: of the source that replaces them. Their assignment stays (it listens to nothing afterwards).
+RETIRED_HOLDERS: dict[tuple[str, str], str] = {
+    ("ctem-threat-response-orchestrator", "New relevant threat"): "listener",
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"): "pir_playbook",
+}
+
+
+async def source_connected(db: Any, provider: str, kind: str, integration_id: Any) -> bool:
+    """Whether the platform source ``(provider, kind)`` of *integration_id* is on and connected."""
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
     try:
-        integration_id = uuid.UUID(str(state.get("integration_id")))
+        integration_uuid = uuid.UUID(str(integration_id))
     except ValueError:
         return False
     row = (
         await db.execute(
             select(CtemSignalSource).where(
-                CtemSignalSource.provider == pair[0],
-                CtemSignalSource.kind == pair[1],
-                CtemSignalSource.integration_id == integration_id,
+                CtemSignalSource.provider == provider,
+                CtemSignalSource.kind == kind,
+                CtemSignalSource.integration_id == integration_uuid,
             )
         )
     ).scalar_one_or_none()

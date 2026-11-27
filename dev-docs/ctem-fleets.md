@@ -1256,6 +1256,20 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   filter and no `pir_score` filter. The `new_vulnerability` playbook
   (`PIR_PATH_RELATIONS`) and the PIR desk's "PIR matches" (reports and
   vulnerabilities) are linked; `relevant_threat` stays flagged.
+- Legacy Threat response holders (#2583 point 4): the assignments "New
+  relevant threat" and "Threat activity flagged in a PIR"
+  (`ctem_platform_sources.RETIRED_HOLDERS`) lose their OpenCTI trigger,
+  playbook and notifier once the Signals source of the same integration
+  (`listener`, `pir_playbook`) is on and connected: `maintain` passes
+  `retired=True` to `provision_one`, which removes them and leaves a
+  `retired` tombstone state, so the next pass does not provision them again;
+  the source going off provisions them back (new before old, no delivery
+  lost). The admin route `POST /api/v1/ctem-signals/sources/legacy-opencti-objects`
+  (`dry_run` true by default) lists, then removes, every object left in
+  OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
+  response - ...", "XTM One - CTEM loop - New relevant threats" and "...
+  Threat activity flagged in a PIR"), per integration a Signals source is on
+  for, triggers and playbooks before their notifiers.
 
 ### 8.2 Event enrichment
 
