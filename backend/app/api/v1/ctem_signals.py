@@ -124,7 +124,7 @@ async def list_ctem_signal_paths(
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
     by_source: dict[str, dict[str, dict[str, Any]]] = {}
-    quiet: dict[str, str] = {}
+    quiet: dict[str, dict[str, Any]] = {}
     if primary is not None:
         from app.services.ctem_attack_surface import quiet_reasons
 

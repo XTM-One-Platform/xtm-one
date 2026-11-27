@@ -563,10 +563,13 @@ order:
    the mark is replaced by the signal key, so the next pass dedupes on it; the
    pass itself runs only after every route and diffs against the pre-purge pass.
    While the routes replay, the paths list gives the outside paths the reason
-   "Pass queued after the resync" (`quiet_reason`, `ctem_attack_surface.quiet_reasons`);
+   `resync_queued` (`quiet_reason`, `ctem_attack_surface.quiet_reasons`);
    after it, an outside path with no signal in 30 days names why (first pass
    baseline, no undeclared host, new hosts withheld, re-armed hosts waiting, or
-   an owned scope the provider read `empty`). The routes follow, each route with its own read window and its own cap
+   an owned scope the provider read `empty`). The reason is data, never a
+   sentence: `{code, at, count, scopes, empty_scopes}`; the signal sources panel
+   words each code through `t_i18n` (`quiet-reason.ts`) and renders `at` with
+   the locale date format. The routes follow, each route with its own read window and its own cap
    (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
    windows live in `WINDOWS`; the dialog sends the chosen ones as
    `resync_windows`, validated by `validate_windows` (1 to 365 days; an

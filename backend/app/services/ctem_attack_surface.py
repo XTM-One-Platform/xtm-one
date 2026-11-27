@@ -829,51 +829,53 @@ def empty_reads(statuses: dict[str, str]) -> list[str]:
 
 async def quiet_reasons(
     db: AsyncSession, organization_id: uuid.UUID, *, resync_running: bool = False
-) -> dict[str, str]:
+) -> dict[str, dict[str, Any]]:
     """Why the attack-surface pass raised nothing on each of its paths (#2634): read from the latest
     committed pass and the baseline, for the source rows of an empty path. Pure reads.
 
+    Each reason is data the screen words in the reader's language (UX round 1 on #2654): ``code``
+    (resync_queued, a ``no_pass_reason`` code, empty_read, rearmed, baseline, withheld,
+    no_undeclared_host or nothing_new; frontend quiet-reason.ts words each one), ``at`` (the
+    last pass, ISO 8601), ``count`` and ``scopes`` when the code needs them, and ``empty_scopes``:
+    the scopes the provider answered nothing for on a pass that still read hosts.
     *resync_running*: a purge resync is replaying its routes; its pass runs after them.
     """
     paths = ("new_exposure", "stale_asset", "surface_drift")
     if resync_running:
-        return {p: "Pass queued after the resync: it runs once every other source has replayed" for p in paths}
+        return {p: {"code": "resync_queued"} for p in paths}
     latest = await list_passes(db, organization_id, limit=1)
     if not latest:
-        why = await why_no_pass(db, organization_id)
-        return {p: f"No pass has run yet: {why}" for p in paths}
+        code, _sentence = await no_pass_reason(db, organization_id)
+        return {p: {"code": code} for p in paths}
     last = latest[0]
     counts = dict(last.counts or {})
-    when = last.at.isoformat() if last.at else ""
+    when = last.at.isoformat() if last.at else None
     armed = sum(
         1
         for row in (await _baseline(db, organization_id)).values()
         if any(str(k).startswith(REARM_PREFIX) for k in row.signalled or [])
     )
     empty = empty_reads(dict(last.statuses or {}))
-    out: dict[str, str] = {}
+    out: dict[str, dict[str, Any]] = {}
     for path in paths:
         if counts.get(path):
             continue
+        reason: dict[str, Any] = {"at": when}
         if empty and not counts.get("observed"):
-            out[path] = f"The last pass ({when}) read no host: the provider answered nothing for {', '.join(empty)}"
+            reason.update(code="empty_read", scopes=list(empty))
         elif armed:
-            out[path] = (
-                f"{armed} host(s) re-armed by the signal purge wait for the next pass that sees them (last pass {when})"
-            )
+            reason.update(code="rearmed", count=armed)
         elif path == "surface_drift" and last.previous_at is None:
-            out[path] = f"The first pass ({when}) set the baseline: it raises no drift"
+            reason["code"] = "baseline"
         elif path == "surface_drift" and counts.get("new_host_withheld"):
-            out[path] = (
-                f"The last pass ({when}) withheld {counts['new_host_withheld']} new host(s): a partial read, "
-                "or known to the provider before the previous pass"
-            )
+            reason.update(code="withheld", count=int(counts["new_host_withheld"]))
         elif path == "surface_drift":
-            out[path] = f"The last pass ({when}) found no undeclared host and no new port"
+            reason["code"] = "no_undeclared_host"
         else:
-            out[path] = f"The last pass ({when}) found nothing new on this path"
+            reason["code"] = "nothing_new"
         if empty and counts.get("observed"):
-            out[path] += f"; the provider answered nothing for {', '.join(empty)}"
+            reason["empty_scopes"] = list(empty)
+        out[path] = reason
     return out
 
 
@@ -915,18 +917,25 @@ async def why_no_pass(db: AsyncSession, organization_id: uuid.UUID) -> str:
     reason names the first step the schedule stops at (off, no scope, no provider, no reader),
     else says that no pass has completed yet, with what makes one write nothing (#2331).
     """
+    _code, sentence = await no_pass_reason(db, organization_id)
+    return sentence
+
+
+async def no_pass_reason(db: AsyncSession, organization_id: uuid.UUID) -> tuple[str, str]:
+    """``why_no_pass`` as a code the screen words (pass_off, no_scope, no_provider,
+    provider_unreadable, no_pass_completed) and the sentence agents and the API read (#2634)."""
     from app.services import organization_context as org_context
 
     _row, profile = await org_context.current_profile(db, organization_id)
     surface = profile.attack_surface
     if not surface.enabled:
-        return "the attack surface pass is turned off in the organization profile (attack_surface.enabled)"
+        return "pass_off", "the attack surface pass is turned off in the organization profile (attack_surface.enabled)"
     if not (profile.owned_domains or profile.address_ranges):
-        return "the organization profile declares no owned domains and no address ranges to read"
+        return "no_scope", "the organization profile declares no owned domains and no address ranges to read"
     reader = await reader_for(db, profile)
     if isinstance(reader, str):
-        return reader
-    return (
+        return ("provider_unreadable" if declared_integrations(surface) else "no_provider"), reader
+    return "no_pass_completed", (
         "no pass has completed yet: a pass is recorded only when it completes (records exist since #1512, "
         "none is deleted); a pass whose provider read failed records nothing and is retried after a backoff"
     )

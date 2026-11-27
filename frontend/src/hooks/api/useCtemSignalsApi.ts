@@ -206,10 +206,21 @@ export interface CtemSignalPath {
   count_30d?: number;
   last_signal_at?: string | null;
   /** No signal in 30 days: why its pass raised nothing, when the attack-surface pass says it (#2634). */
-  quiet_reason?: string;
+  quiet_reason?: CtemSignalQuietReason;
   /** Its sources on, and its sources that are or could be on here (#2506). */
   sources_enabled?: number;
   sources_available?: number;
+}
+
+/** Why an outside path raised nothing (#2634): a code the screen words (quiet-reason.ts) and its data. */
+export interface CtemSignalQuietReason {
+  code: string;
+  /** The last pass, ISO 8601. */
+  at?: string | null;
+  count?: number;
+  scopes?: string[];
+  /** Scopes the provider answered nothing for, on a pass that still read hosts. */
+  empty_scopes?: string[];
 }
 
 /** A generic signed webhook source of one trigger path (#2506, dev-docs/ctem-signals.md 4ter). */
