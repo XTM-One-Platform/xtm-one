@@ -650,6 +650,9 @@ export interface OrganizationSync {
   /** Why the sync stopped by itself (a missing or revoked token); empty while it runs. */
   paused_reason: string;
   owner_email: string | null;
+  /** "Runs as" (#2650): the user the sync acts as in its module; null when nobody is chosen. */
+  run_as_user_id?: string | null;
+  run_as_name?: string | null;
   next_run_at: string | null;
   last_run_at: string | null;
   last_result: { added?: number; updated?: number; removed?: number; version?: number | null; error?: string | null } | null;
@@ -657,7 +660,7 @@ export interface OrganizationSync {
 
 export type OrganizationSyncBody = Pick<
   OrganizationSync,
-  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "direction" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
+  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "direction" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled" | "run_as_user_id"
 >;
 
 const SYNCS = [...KEY, "syncs"] as const;

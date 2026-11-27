@@ -1527,7 +1527,13 @@ export interface FleetEnableEstimate {
 export interface FleetEnableResult {
   fleet_id: string;
   dry_run: boolean;
-  run_as_user_id: string;
+  run_as_user_id: string | null;
+  /** Who XTM One acts as in each module, as chosen (#2650). */
+  run_as_by_module?: Record<string, string>;
+  /** The modules the picked automations act in: one "Act in <module> as" choice each (#2650). */
+  modules?: string[];
+  /** Of `modules`, those nobody was chosen for yet: Enable is refused until each is. */
+  unchosen?: string[];
   /** The automations switched on (or, on a dry run, that would be). */
   changed: number;
   /** False when nothing is off or a module is missing: Confirm stays disabled. */
@@ -1541,14 +1547,14 @@ export interface FleetEnableResult {
 
 /**
  * What Enable fleet would switch on, read while its setup dialog is open
- * (`POST /fleets/{id}/enable` with `dry_run`: nothing is written). `runAs`
- * `null` is the caller. Not cached: every opening and every run-as change
- * reads it again.
+ * (`POST /fleets/{id}/enable` with `dry_run`: nothing is written). `runAsByModule`
+ * maps each module to the user XTM One acts as there (#2650: nobody by default).
+ * Not cached: every opening and every run-as change reads it again.
  */
-export function useFleetEnablePlan(fleetId: string, runAs: string | null, open: boolean) {
+export function useFleetEnablePlan(fleetId: string, runAsByModule: Record<string, string>, open: boolean) {
   return useQuery<FleetEnableResult>({
-    queryKey: [...KEY, "enable-plan", fleetId, runAs],
-    queryFn: () => api.post<FleetEnableResult>(`/fleets/${fleetId}/enable`, { run_as_user_id: runAs, dry_run: true }),
+    queryKey: [...KEY, "enable-plan", fleetId, runAsByModule],
+    queryFn: () => api.post<FleetEnableResult>(`/fleets/${fleetId}/enable`, { run_as_by_module: runAsByModule, dry_run: true }),
     enabled: open,
     gcTime: 0,
     staleTime: 0,
@@ -1557,25 +1563,25 @@ export function useFleetEnablePlan(fleetId: string, runAs: string | null, open: 
   });
 }
 
-/** What Enable fleet switches on: `runAs` null is the caller; `assignmentIds` absent picks every automation that is off. */
+/** What Enable fleet switches on: `runAsByModule` the user per module (#2650); `assignmentIds` absent picks every automation that is off. */
 export interface FleetEnableRequest {
-  runAs: string | null;
+  runAsByModule: Record<string, string>;
   assignmentIds?: string[];
 }
 
 /**
  * Enable fleet (`POST /fleets/{id}/enable`, #9769 S4b): the automations of
  * the fleet that are off are switched on, every one or the picked
- * `assignmentIds` (partial enable, #9173 S5), the seeded ones as
- * `run_as_user_id` (the caller when null). All or nothing over the pick.
+ * `assignmentIds` (partial enable, #9173 S5), each acting in its modules as
+ * the user chosen per module (#2650). All or nothing over the pick.
  */
 export function useFleetEnable(fleetId: string) {
   const invalidate = useInvalidateFleet();
   const qc = useQueryClient();
   return useMutation<FleetEnableResult, Error, FleetEnableRequest>({
-    mutationFn: ({ runAs, assignmentIds }) =>
+    mutationFn: ({ runAsByModule, assignmentIds }) =>
       api.post<FleetEnableResult>(`/fleets/${fleetId}/enable`, {
-        run_as_user_id: runAs,
+        run_as_by_module: runAsByModule,
         dry_run: false,
         ...(assignmentIds ? { assignment_ids: assignmentIds } : {}),
       }),

@@ -760,6 +760,7 @@ ce:
   - frontend/src/components/dashboard-grid
   - frontend/src/components/groups
   - frontend/src/components/integrations
+  - frontend/src/components/module-run-as
   - frontend/src/components/ui/charts
   - frontend/src/components/users
   - frontend/src/dev

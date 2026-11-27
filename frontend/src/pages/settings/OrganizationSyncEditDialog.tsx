@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Alert, Radio, RadioGroup, Spinner } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
+import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
 import { CompactFigure } from "@/components/ui/compact-figure";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SettingsField, SettingsGroupDescription, SettingsGroupTitle, SettingsSwitchField, settingsFieldLabelId } from "@/components/ui/settings-form";
@@ -78,8 +79,8 @@ interface EditProps {
   open: boolean;
   saving: boolean;
   onClose: () => void;
-  /** The direction is sent only for a section sync; Sync all has none. The filters only when this dialog changed them. */
-  onSave: (schedule: SyncSchedule, enabled: boolean, direction: SyncDirection | undefined, filters?: OrganizationSync["filters"]) => void;
+  /** The direction is sent only for a section sync; Sync all has none. The filters only when this dialog changed them; the run-as only for a module (#2650). */
+  onSave: (schedule: SyncSchedule, enabled: boolean, direction: SyncDirection | undefined, filters?: OrganizationSync["filters"], runAs?: string) => void;
 }
 
 /** The words of each count of the change preview, by direction (#1982 S4). @i18n-keys */
@@ -119,6 +120,8 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
   const [enabled, setEnabled] = useState(true);
   const [direction, setDirection] = useState<SyncDirection>("inbound");
   const [filters, setFilters] = useState<SyncFilters>({});
+  const [runAs, setRunAs] = useState("");
+  const moduleSync = sync !== null && isRunAsModule(sync.source);
   const [previewed, setPreviewed] = useState(false);
   const change = usePreviewOrganizationSyncChange();
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -140,6 +143,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
       setEnabled(sync ? sync.enabled : true);
       setDirection(sync ? directionOf(sync) : "inbound");
       setFilters(cleanFilters(sync?.filters));
+      setRunAs(sync?.run_as_user_id ?? "");
       setPreviewed(false);
       change.reset();
     }
@@ -166,17 +170,24 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {sync?.paused_reason
-              ? t_i18n("Paused: {reason} Saving resumes it with your own platform token.", { reason: sync.paused_reason })
-              : t_i18n("Saving it makes your own platform token the one its runs read with.")}
+            {moduleSync
+              ? sync?.paused_reason
+                ? t_i18n("Paused: {reason} Saving resumes it as the user picked below.", { reason: sync.paused_reason })
+                : t_i18n("Its runs read and write with the connection of the user picked below.")
+              : sync?.paused_reason
+                ? t_i18n("Paused: {reason} Saving resumes it with your own platform token.", { reason: sync.paused_reason })
+                : t_i18n("Saving it makes your own platform token the one its runs read with.")}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">
           <OrganizationSharedContextNotice
             elevation={1}
             direction={sectionSync ? direction : "inbound"}
-            actor={sync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null}
+            actor={sync && !moduleSync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null}
           />
+          {sync && isRunAsModule(sync.source) && (
+            <ModuleRunAsField module={sync.source} value={runAs} onChange={setRunAs} active={open} disabled={saving} helper={t_i18n("Changing it takes effect on the next run.")} />
+          )}
           {sectionSync && (
             <SettingsField
               id="org-sync-edit-direction"
@@ -314,8 +325,8 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
             </Button>
           ) : (
             <Button
-              onClick={() => onSave(schedule, enabled, sectionSync ? direction : undefined, filtersChanged ? cleanFilters(filters) : undefined)}
-              disabled={saving || (needsPreview && Boolean(change.data?.error))}
+              onClick={() => onSave(schedule, enabled, sectionSync ? direction : undefined, filtersChanged ? cleanFilters(filters) : undefined, moduleSync ? runAs : undefined)}
+              disabled={saving || (needsPreview && Boolean(change.data?.error)) || (moduleSync && !runAs)}
               aria-busy={saving || undefined}
             >
               {saving && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}

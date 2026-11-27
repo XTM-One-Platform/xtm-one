@@ -355,7 +355,13 @@ source.
   source never switched on as `off`.
 - **Enable with a run-as.** `POST /api/v1/ctem-signals/sources/enable`
   (administrator) takes the provider, kind, integration and run-as user, and
-  provisions at once as that user (`ctem_platform_sources.enable`). It answers
+  provisions at once as that user (`ctem_platform_sources.enable`). The UI asks
+  it in the enable dialog's "Act in <module> as" field before anything is
+  created (#2650): the caller by default, an administrator may pick any active
+  user from `GET /users/module-run-as?provider=` (users without the module
+  connected listed disabled with the reason). An enabled source shows "Runs
+  as" with Change, which enables it again as the new user: its objects are
+  removed as the user who made them, then made again. It answers
   the row `connected`, or 400 with the exact reason (no run-as, run-as
   deactivated, run-as without a connection to the integration, no webhook
   secret, integration not connected, organization context missing for the PIR
