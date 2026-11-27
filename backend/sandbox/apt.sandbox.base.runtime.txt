@@ -10,5 +10,8 @@
 #
 # libfreetype6, libpng16-16t64: matplotlib's font/PNG rendering backends, in
 # case a future matplotlib version stops bundling them in its wheel.
+# ca-certificates: CA bundle for TLS verification on the documented final-full
+# fallback path (final-minimal gets its bundle copied from the builder stage).
+ca-certificates
 libfreetype6
 libpng16-16t64
