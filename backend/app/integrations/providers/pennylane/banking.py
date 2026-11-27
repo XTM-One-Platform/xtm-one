@@ -124,8 +124,9 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
             ("date", "gteq", start), ("date", "lteq", end), ("bank_account_id", "in", id_list(bank_account_ids))
         )
         async with ctx.client() as client:
+            # GET /transactions sorts on id alone (a date sort answers 400); newest first.
             page, err = await ctx.page(
-                client, "transactions", params={"filter": flt, "sort": "-date"}, limit=clamp(limit), cursor=cursor
+                client, "transactions", params={"filter": flt, "sort": "-id"}, limit=clamp(limit), cursor=cursor
             )
         if err:
             return err

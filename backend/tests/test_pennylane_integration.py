@@ -456,6 +456,52 @@ async def test_unmatched_transactions_only():
     assert "Card" in result.content and "SEPA" not in result.content
 
 
+# The sort fields each list endpoint of the company API v2 accepts (its reference, "Available
+# fields"); a field outside the list answers 400, as GET transactions did with -date (#2612).
+ALLOWED_SORT_FIELDS = {
+    "transactions": {"id"},
+    "ledger_entries": {"id", "date"},
+    "ledger_entry_lines": {"id", "date"},
+    "supplier_invoices": {"id", "date"},
+    "customer_invoices": {"id", "date"},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "path", "arguments"),
+    [
+        ("list_pennylane_transactions", "transactions", {"date_from": "2026-11-16", "date_to": "2026-11-22"}),
+        ("list_pennylane_transactions", "transactions", {}),
+        ("list_pennylane_ledger_entries", "ledger_entries", {}),
+        ("search_pennylane_ledger_entry_lines", "ledger_entry_lines", {}),
+        ("list_pennylane_supplier_invoices", "supplier_invoices", {}),
+        ("list_pennylane_customer_invoices", "customer_invoices", {}),
+    ],
+)
+async def test_every_list_sorts_on_a_field_the_endpoint_allows(tool, path, arguments):
+    api = FakePennylane(
+        {
+            f"GET {path}": listing([]),
+            "GET ledger_accounts": listing([]),
+            "GET journals": listing([]),
+        }
+    )
+    executor, _ = _executor()
+    with fake_api(api):
+        await call(executor, tool, **arguments)
+    sent = api.query(path)
+    assert sent, f"{tool} never called GET {path}"
+    sort = sent[0]["sort"]
+    assert sort.removeprefix("-") in ALLOWED_SORT_FIELDS[path]
+    if path == "transactions":
+        assert sort == "-id"
+        flt = json.loads(sent[0].get("filter", "[]"))
+        if arguments:
+            assert {"field": "date", "operator": "gteq", "value": "2026-11-16"} in flt
+            assert {"field": "date", "operator": "lteq", "value": "2026-11-22"} in flt
+
+
 @pytest.mark.asyncio
 async def test_changes_since_read_the_changelog():
     api = FakePennylane(
