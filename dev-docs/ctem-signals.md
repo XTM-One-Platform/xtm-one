@@ -304,8 +304,17 @@ is part of the key: a caller never reads back, nor overwrites, a row another
 user or a listener recorded under the same (guessable) key; it gets its own
 row, and the reconcile step merges what several recorders saw. A sighting of
 a known key by the same recorder moves `last_seen_at` to the later of the stored value and its own time, adds
-one to `seen_count`, keeps its evidence and label; recorder, state, decision
-and case stay as the first sighting and the next steps left them.
+one to `seen_count`, merges its evidence into the stored one (#2543,
+`merge_evidence`, the stored row read under a row lock) and keeps its label;
+recorder, state, decision and case stay as the first sighting and the next
+steps left them. The merge takes the latest sighting's facts, except that the
+PIR matches (`pir`) are merged by PIR id with the highest `score_at_delivery`
+kept, `pir_floor_met` is the stored value OR the new one (a sighting with no
+PIR data never downgrades it, and the listener writes no floor without PIR
+data), and every source key that saw the signal is kept in `xtm_sources`
+(written once two sources saw it), so `activity_by_source` counts the signal
+under each of them. The result stays under 8,000 characters (the lowest PIR
+scores dropped first).
 
 ## 4. Three ways in
 
