@@ -96,35 +96,13 @@ export const PLATFORM_OBJECT_KIND_TEXT = {
   playbook: "Playbook",
 } as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
 
-/**
- * The module events a provisioned trigger listens to, in words (UX round 1 on #2664, B1): the page never shows
- * the event code. One label per code of `openaev_trigger_provisioning.EVENTS`. @i18n-keys
- */
-const MODULE_EVENT_LABEL = {
-  simulation_finished: "Simulation finished",
-  atomic_test_finished: "Atomic test finished",
-  finding_created: "Finding created",
-  finding_updated: "Finding updated",
-  finding_deleted: "Finding deleted",
-  asset_created: "Asset created",
-  asset_updated: "Asset updated",
-  asset_stale: "Asset stale",
-  vulnerability_created: "Vulnerability created",
-  scenario_score_degraded: "Scenario score degraded",
-  critical_asset_reached: "Critical asset reached",
-} as const;
-
-/** A module event in words, translated; the code itself only for an event this page does not know yet. */
-export function moduleEventText(t: (key: string) => string, event: string): string {
-  const label = (MODULE_EVENT_LABEL as Record<string, string>)[event];
-  return label ? t(label) : event;
-}
-
 /** One Open in link: the object, its kind, and the URL in its platform. */
 export interface PlatformObjectLink {
   kind: CtemPlatformSourceObject["kind"];
   id: string;
   href: string;
+  /** The label of the path a per-path object serves (#2627); none for an object of the whole source. */
+  pathLabel?: string;
 }
 
 /** The Open in links of a source's objects; none without a web UI host or a route for the kind. */
@@ -137,7 +115,7 @@ export function platformObjectLinks(
   const links: PlatformObjectLink[] = [];
   for (const object of source.objects ?? []) {
     const route = routes[object.kind];
-    if (route) links.push({ kind: object.kind, id: object.id, href: `${base}${route(object.id)}` });
+    if (route) links.push({ kind: object.kind, id: object.id, href: `${base}${route(object.id)}`, pathLabel: object.path_label });
   }
   return links;
 }
@@ -152,14 +130,16 @@ export function sharedFeeds(source: Pick<CtemPlatformSource, "feeds">): { path: 
 }
 
 /**
- * Whether the "Remove legacy OpenCTI objects" action shows under these sources (#2583 point 4): on the OpenCTI
- * live listener only (one place on the page), once a Signals source is on for one of its integrations.
+ * How many legacy objects the "Remove legacy OpenCTI objects" action would clear under these sources
+ * (#2583 point 4, #2627): on the OpenCTI live listener only (one place on the page), the objects XTM One
+ * still holds on the integrations a Signals source is on for; 0 hides the action.
  */
-export function holdsLegacyCleanup(
+export function legacyCleanupCount(
   source: Pick<CtemSignalPathSource, "provider" | "kind">,
-  own: readonly Pick<CtemPlatformSource, "enabled">[],
-): boolean {
-  return source.provider === "opencti" && source.kind === "listener" && own.some((s) => s.enabled);
+  own: readonly Pick<CtemPlatformSource, "enabled" | "legacy_pending">[],
+): number {
+  if (source.provider !== "opencti" || source.kind !== "listener") return 0;
+  return own.filter((s) => s.enabled).reduce((n, s) => n + (s.legacy_pending ?? 0), 0);
 }
 
 /** The refusal of an enable (`detail: {code, params}`) in the reader's language, or `null` for any other error. */
