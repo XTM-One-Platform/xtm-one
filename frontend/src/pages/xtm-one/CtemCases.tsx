@@ -54,6 +54,7 @@ import { CaseOpeningOffEmptyState, CaseOpeningSwitch } from "./ctem/CaseOpeningS
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
+import { primaryAssetsCell } from "./ctem/case-primary-assets";
 import {
   CASE_PRIORITY_LABEL,
   CASE_PRIORITY_RANK,
@@ -212,7 +213,8 @@ export default function CtemCases() {
       key: "primary_assets",
       header: "Primary assets",
       align: "right",
-      cell: (c) => formatCount(intl.locale, c.primary_asset_count),
+      // #2635: inferred primary assets are said as inferred, never a bare 0.
+      cell: (c) => primaryAssetsCell(c, t_i18n, (n) => formatCount(intl.locale, n)),
       sortValue: (c) => c.primary_asset_count,
       csv: (c) => c.primary_asset_count,
       firstSort: "desc",
