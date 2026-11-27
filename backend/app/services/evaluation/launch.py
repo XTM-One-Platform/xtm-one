@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.dataset import Dataset, DatasetEntry, EvaluationDataset
 from app.models.evaluation import Evaluation, EvaluationAgent, EvaluationPlaceboComparison, EvaluationRun
+from app.models.flow import Flow
 from app.models.user import User
 from app.services.evaluation.constants import MODEL_INDEPENDENT
 from app.services.evaluation.fanout import evaluation_has_runs, resolve_effective_models
@@ -129,13 +130,52 @@ OWNER_CANNOT_RUN = (
 )
 
 
+#: Why an evaluation running an agent or flow its owner cannot see does not launch.
+SUBJECT_NOT_VISIBLE = (
+    "This evaluation's owner can no longer see every agent or flow it runs: an evaluation runs only "
+    "its owner's own, those shared with them and company-managed ones. Remove the others from it, "
+    "or ask their owners to share them."
+)
+
+
+async def subjects_hidden_from(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    agent_ids: Iterable[uuid.UUID] = (),
+    flow_ids: Iterable[uuid.UUID] = (),
+) -> bool:
+    """Whether any of these agents or flows is outside *user_id*'s three tiers.
+
+    No admin bypass: evaluating an agent acts with what it carries, which its
+    owner lends by sharing it, so an administrator evaluates the ones shared
+    with them like anyone else uses them.
+    """
+    from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+
+    group_ids: list[str] | None = None
+    for model, ids in ((Agent, set(agent_ids)), (Flow, set(flow_ids))):
+        if not ids:
+            continue
+        if group_ids is None:
+            group_ids = await get_user_group_ids(db, user_id)
+        seen = await db.scalar(
+            select(func.count())
+            .select_from(model)
+            .where(model.id.in_(ids), user_visible_filter(model, user_id, group_ids))
+        )
+        if (seen or 0) < len(ids):
+            return True
+    return False
+
+
 async def owner_refusal(db: AsyncSession, evaluation: Evaluation) -> str | None:
     """Why *evaluation*'s owner may not run it now, or ``None``.
 
     Its runs act as its owner, whoever starts them (a schedule, an approval,
-    another admin's trigger): evaluations are an administrators' tool, so an
-    owner demoted or deactivated since stops them - at launch, when a run
-    starts or resumes, and when a callback resumes an episode. An ownerless
+    another admin's trigger): an owner demoted or deactivated since, or one who
+    no longer sees one of its agents or flows, stops them - at launch, when a
+    run starts or resumes, and when a callback resumes an episode. An ownerless
     evaluation (Platform Health's, behind its own consent gate) has no owner
     to check.
     """
@@ -145,6 +185,20 @@ async def owner_refusal(db: AsyncSession, evaluation: Evaluation) -> str | None:
     owner = (await db.execute(select(User.role, User.is_active).where(User.id == owner_id))).one_or_none()
     if owner is None or owner.role != "admin" or not owner.is_active:
         return OWNER_CANNOT_RUN
+    links = (
+        await db.execute(
+            select(EvaluationAgent.agent_id, EvaluationAgent.flow_id).where(
+                EvaluationAgent.evaluation_id == evaluation.id
+            )
+        )
+    ).all()
+    if await subjects_hidden_from(
+        db,
+        owner_id,
+        agent_ids=(link.agent_id for link in links if link.agent_id is not None),
+        flow_ids=(link.flow_id for link in links if link.flow_id is not None),
+    ):
+        return SUBJECT_NOT_VISIBLE
     return None
 
 
@@ -346,7 +400,6 @@ async def add_launch_runs(
     Each flow subject (#8257) gets one run on ``MODEL_INDEPENDENT``, stamped with
     the flow's version, which the run stamps again when it starts.
     """
-    from app.models.flow import Flow
     from app.services.agent_version_snapshots import resolve_agent_version_snapshots
     from app.services.evaluation import dataset_versioning
 

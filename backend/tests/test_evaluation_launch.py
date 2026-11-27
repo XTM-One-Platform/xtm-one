@@ -430,3 +430,177 @@ async def test_the_run_button_reads_the_owners_providers_once(monkeypatch):
         assert len(reads) == 1
     finally:
         await cleanup()
+
+
+# ── Agents its owner may evaluate ────────────────────────────────────────────
+
+
+async def _colleague(s, *, role="user", email="c@x.io") -> User:
+    user = User(email=email, full_name="Colleague", hashed_password="x", role=role)
+    s.add(user)
+    await s.flush()
+    return user
+
+
+async def _colleague_agent(s, owner: User, *, name="Colleague's agent", **fields) -> Agent:
+    agent = Agent(user_id=owner.id, name=name, **fields)
+    s.add(agent)
+    await s.flush()
+    return agent
+
+
+_REACH = [
+    pytest.param(lambda evaluation_owner: {}, False, id="private"),
+    pytest.param(lambda evaluation_owner: {"shared_user_ids": [str(evaluation_owner.id)]}, True, id="shared"),
+    pytest.param(lambda evaluation_owner: {"is_company_managed": True}, True, id="company-managed"),
+]
+
+
+@pytest.mark.parametrize(("fields", "runs"), _REACH)
+async def test_a_schedule_runs_only_agents_its_owner_can_see(caplog, fields, runs):
+    """Its runs act as its owner, with what each agent carries: an agent nobody
+    shared with the owner stops the whole launch."""
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, _agent, evaluation = await _scheduled(s)
+            agent = await _colleague_agent(s, await _colleague(s), **fields(owner))
+            s.add(EvaluationAgent(evaluation_id=evaluation.id, agent_id=agent.id))
+            await s.commit()
+            with caplog.at_level(logging.WARNING, logger=autonomous.logger.name):
+                assert await autonomous._process_scheduled_evaluations(s) == (1 if runs else 0)
+
+        if not runs:
+            assert await _runs(sm, evaluation.id) == []
+            assert any("can no longer see every agent" in r.getMessage() for r in caplog.records)
+    finally:
+        await cleanup()
+
+
+async def test_the_run_button_checks_the_owner_not_who_presses_it():
+    from app.services.evaluation.launch import SUBJECT_NOT_VISIBLE
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            _owner, _agent, evaluation = await _scheduled(s)
+            other = await _colleague(s, role="admin", email="b@x.io")
+            agent = await _colleague_agent(s, await _colleague(s), shared_user_ids=[str(other.id)])
+            s.add(EvaluationAgent(evaluation_id=evaluation.id, agent_id=agent.id))
+            await s.commit()
+            with pytest.raises(HTTPException) as refused:
+                await evaluations_api.trigger_evaluation(evaluation_id=str(evaluation.id), body=None, user=other, db=s)
+
+        assert (refused.value.status_code, refused.value.detail) == (409, SUBJECT_NOT_VISIBLE)
+        assert await _runs(sm, evaluation.id) == []
+    finally:
+        await cleanup()
+
+
+async def test_a_queued_run_stops_once_an_agent_is_unshared_from_its_owner():
+    from app.services import evaluation_engine as ee
+    from app.services.evaluation.launch import SUBJECT_NOT_VISIBLE
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, _agent, evaluation = await _scheduled(s)
+            agent = await _colleague_agent(s, await _colleague(s), shared_user_ids=[str(owner.id)])
+            s.add(EvaluationAgent(evaluation_id=evaluation.id, agent_id=agent.id))
+            run = EvaluationRun(
+                evaluation_id=evaluation.id, agent_id=agent.id, model_id="model-a", status="pending", trigger_reason="manual"
+            )
+            s.add(run)
+            await s.commit()
+            agent.shared_user_ids = []
+            await s.commit()
+            await ee.execute_evaluation_run(s, str(run.id))
+
+        [stopped] = await _runs(sm, evaluation.id)
+        assert (stopped.status, stopped.error, stopped.completed_entries) == ("failed", SUBJECT_NOT_VISIBLE, 0)
+    finally:
+        await cleanup()
+
+
+async def test_the_agent_picker_lists_the_caller_s_own_shared_and_company_managed_agents():
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            admin = await _admin(s)
+            colleague = await _colleague(s)
+            await _colleague_agent(s, admin, name="Own")
+            await _colleague_agent(s, colleague, name="Shared", shared_user_ids=[str(admin.id)])
+            await _colleague_agent(s, colleague, name="Company", is_company_managed=True)
+            await _colleague_agent(s, colleague, name="Private")
+            await s.commit()
+            listed = await evaluations_api.list_all_agents_for_evaluations(
+                search=None, limit=50, exclude_ids=None, user=admin, db=s
+            )
+
+        assert sorted(a["name"] for a in listed) == ["Company", "Own", "Shared"]
+    finally:
+        await cleanup()
+
+
+async def test_an_evaluation_is_not_created_with_an_agent_its_owner_cannot_see():
+    from app.api.v1.schemas.evaluation import CreateEvaluationRequest
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            admin = await _admin(s)
+            agent = await _colleague_agent(s, await _colleague(s))
+            await s.commit()
+            with pytest.raises(HTTPException) as refused:
+                await evaluations_api.create_evaluation(
+                    body=CreateEvaluationRequest(name="E", agent_ids=[str(agent.id)]),
+                    user=admin,
+                    db=s,
+                    _agentic_gate=None,
+                )
+            await s.rollback()
+            assert refused.value.status_code == 422
+            assert await s.scalar(select(func.count(Evaluation.id))) == 0
+    finally:
+        await cleanup()
+
+
+async def test_an_agent_added_by_another_admin_must_be_one_the_owner_can_see():
+    from app.api.v1.schemas.evaluation import AddAgentsRequest
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            _owner, _agent, evaluation = await _scheduled(s)
+            other = await _colleague(s, role="admin", email="b@x.io")
+            agent = await _colleague_agent(s, await _colleague(s), shared_user_ids=[str(other.id)])
+            await s.commit()
+            with pytest.raises(HTTPException) as refused:
+                await evaluations_api.add_agents(
+                    evaluation_id=str(evaluation.id),
+                    body=AddAgentsRequest(agent_ids=[str(agent.id)]),
+                    user=other,
+                    db=s,
+                    _ai_gate=None,
+                )
+
+        assert refused.value.status_code == 422
+    finally:
+        await cleanup()
+
+
+async def test_a_copy_runs_as_its_new_owner_and_needs_every_agent_shared_with_them():
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, _agent, evaluation = await _scheduled(s)
+            other = await _colleague(s, role="admin", email="b@x.io")
+            agent = await _colleague_agent(s, await _colleague(s), shared_user_ids=[str(owner.id)])
+            s.add(EvaluationAgent(evaluation_id=evaluation.id, agent_id=agent.id))
+            await s.commit()
+            with pytest.raises(HTTPException) as refused:
+                await evaluations_api.copy_evaluation(evaluation_id=str(evaluation.id), user=other, db=s, _ai_gate=None)
+
+        assert refused.value.status_code == 422
+    finally:
+        await cleanup()

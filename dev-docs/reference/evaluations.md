@@ -194,7 +194,7 @@ Admin = `require_admin`; +AI = `require_ai_enabled`; +EE = `require_agentic_ai` 
 | Family catalogue | `GET /families`: `[{id, label, description, metric_keys, structured_output, extractor_output_kinds}]`; open to any user, the flag still applies | User |
 | Metric catalogue | `GET /{id}/metric-catalog`, `GET /metric-catalog?family` (400 for an unknown family) | Admin |
 | Owner's models | `GET /{id}/available-models`: the chat models of the owner's providers, what the Configuration tab and the Run menus offer to add (§3) | Admin |
-| Pickers, warnings | `GET /agents/all`, `GET /always-ask-tools?agent_ids`, `GET /prompt-guard` | Admin |
+| Pickers, warnings | `GET /agents/all` (the caller's three tiers, no admin bypass), `GET /always-ask-tools?agent_ids`, `GET /prompt-guard` | Admin |
 | Agents, baseline, agent tags | `POST /{id}/agents`, `DELETE /{id}/agents/{agent_id}`, `PUT /{id}/baseline`, `PUT /{id}/agents/{agent_id}/tags` | Admin +AI |
 | Extractor preview (§9) | `POST /{id}/extractors/preview`, `POST /extractors/preview`, `GET /{id}/extractors/sample-results` | Admin |
 | Launch (§8) | `POST /{id}/trigger`, `POST /{id}/trigger-from-runs` (≤ 200 run ids), `POST /runs/{run_id}/replay` | Admin +AI |
@@ -228,7 +228,7 @@ A placebo comparison's run is refused by `trigger-from-runs`, `replay` and `resc
 - `reuse`: `inherit` (default, writes nothing), `on` or `off`, stored as the `manual` `reuse` parameter, winning over a `reuse` key in `params`; else 422 (§7).
 - `placebo`, `confirm_write_tools`, `placebo_seed`: `dev-docs/agent-placebo-evaluation.md`.
 
-A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model, 409 when the evaluation's owner is no longer an active administrator (`owner_refusal`: its runs act as its owner, whoever starts them; an ownerless evaluation is not checked). The same rule fails a run when it starts or resumes, and closes a callback episode's resume with that reason.
+A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model, 409 when the evaluation's owner is no longer an active administrator or can no longer see one of its agents or flows (`owner_refusal`: its runs act as its owner, whoever starts them; an ownerless evaluation is not checked). The same rule fails a run when it starts or resumes, and closes a callback episode's resume with that reason. Linking an agent its owner cannot see is refused with 422 (`subjects_hidden_from`, the three tiers with no admin bypass): on create, on `POST /{id}/agents`, and on copy, where the copier is the new owner.
 
 **Re-run and re-score** (§8):
 
