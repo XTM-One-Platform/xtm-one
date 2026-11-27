@@ -609,6 +609,62 @@ async def _with_threat_software(
     return replace(facts, threat_software=tuple(found), threat_lookup=how)
 
 
+def _needs_scores(profile: Any, facts: gate.SignalFacts) -> list[str]:
+    """#2631: the CVEs whose scores OpenCTI is read for: a minimum set and a score missing from the evidence."""
+    policy = getattr(profile, "prioritization_policy", None)
+    if policy is None or (policy.cvss_min is None and policy.epss_min is None):
+        return []
+    if gate.scores_in_evidence(facts.evidence):
+        return []
+    return gate.signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
+
+
+async def _with_cve_scores(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    *,
+    remote: bool = True,
+    release: bool = False,
+    reuse_failure: bool = False,
+) -> gate.SignalFacts:
+    """*facts* with the CVSS, EPSS and KEV OpenCTI holds on the signal's CVEs (#2631).
+
+    Read only when the policy sets a score minimum and the evidence lacks a score,
+    with the recorder's own OpenCTI access, once per session, reader and CVE list.
+    Never raises. *remote*, *release* and *reuse_failure* as :func:`_with_cve_software`.
+    """
+    from app.services import ctem_cve_software
+
+    cves = _needs_scores(profile, facts)
+    if not cves:
+        return facts
+
+    def scored(found: Any, how: str) -> gate.SignalFacts:
+        cvss, epss, kev = found if isinstance(found, tuple) and len(found) == 3 else (None, None, False)
+        return replace(facts, cve_cvss=cvss, cve_epss=epss, cve_kev=bool(kev), score_lookup=how)
+
+    if not remote:
+        fallback = _session_hit(db, ("fallback_reader",))
+        hit = _software_hit(db, ("cve_scores", scenario_reader(row, fallback), tuple(cves)))
+        return facts if hit is None else scored(*hit)
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _software_read(
+            db,
+            ("cve_scores", reader, tuple(cves)),
+            lambda: ctem_cve_software.cve_scores(db, reader, cves, release=release),
+            reuse_failure=reuse_failure,
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: CVE scores not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (None, None, False), ctem_cve_software.LOOKUP_FAILED
+    return scored(found, how)
+
+
 async def _with_remote_software(
     db: AsyncSession,
     row: CtemSignal,
@@ -620,10 +676,12 @@ async def _with_remote_software(
     release: bool = False,
     reuse_failure: bool = False,
 ) -> gate.SignalFacts:
-    """*facts* with the OpenCTI software reads the gate takes: the CVEs' (#2171), then the threat's (#2523)."""
+    """*facts* with the OpenCTI reads the gate takes: the CVEs' software (#2171), the threat's
+    software (#2523), then the CVEs' scores when the policy needs them (#2631)."""
     kw = {"remote": remote, "release": release, "reuse_failure": reuse_failure}
     facts = await _with_cve_software(db, row, facts, profile, primary_assets, **kw)
-    return await _with_threat_software(db, row, facts, profile, primary_assets, **kw)
+    facts = await _with_threat_software(db, row, facts, profile, primary_assets, **kw)
+    return await _with_cve_scores(db, row, facts, profile, **kw)
 
 
 async def prepare_cve_reads(
