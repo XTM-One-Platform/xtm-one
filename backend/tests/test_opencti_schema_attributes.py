@@ -653,8 +653,9 @@ async def test_an_unknown_or_unfit_custom_update_changes_nothing(monkeypatch: py
 async def test_a_native_field_update_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     executor, rec, _ = _build(monkeypatch)
     await _call(executor, "update_opencti_field", entity_id="m1", key="description", value="new")
-    assert len(rec.calls) == 1
-    assert rec.calls[0][1]["input"] == [{"key": "description", "value": ["new"]}]
+    # One read of the stored value (the no-op check), then the one patch.
+    assert len(_mutations(rec)) == 1
+    assert rec.calls[-1][1]["input"] == [{"key": "description", "value": ["new"]}]
 
 
 # ── The NLQ filter agent gets the custom-field filter keys ──
