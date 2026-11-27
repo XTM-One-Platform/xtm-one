@@ -608,7 +608,9 @@ async def enable(
     """Enable one source as *run_as_user_id* and provision it at once; raises :class:`SourceRefusedError` with the reason.
 
     A refused enable stays off and leaves no object behind in the source platform.
-    The caller commits.
+    Enabling a source that runs as another user is the "Change" of its Runs as
+    (#2650): its objects are first removed as the user who made them, then made
+    again as *run_as_user_id*. The caller commits.
     """
     from app.models.integration import Integration
 
@@ -619,6 +621,11 @@ async def enable(
         raise SourceRefusedError(f"no {PROVISIONED[(provider, kind)].label} integration {integration_id}")
     now = now or datetime.now(UTC)
     row = await get_or_create(db, provider, kind, integration_id)
+    if row.enabled and row.run_as_user_id is not None and row.run_as_user_id != run_as_user_id:
+        await disable(db, row, now=now)
+        if (row.state or {}).get("status") == "error":
+            # The old identity could not remove its objects: never leave two sets behind.
+            raise SourceRefusedError(str(row.state.get("error") or "objects not removed"))
     row.run_as_user_id = run_as_user_id
     state = await _reconcile(db, row, now)
     if not is_connected(state):

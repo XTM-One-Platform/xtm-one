@@ -3341,7 +3341,9 @@ async def enable_fleet_automations(
     by_module: dict[str, uuid.UUID] = {}
     for module, raw in (body.run_as_by_module or {}).items():
         if module not in MODULES:
-            raise HTTPException(status_code=422, detail=f"run_as_by_module: {module} is not opencti, openaev or opencrq")
+            raise HTTPException(
+                status_code=422, detail=f"run_as_by_module: {module} is not opencti, openaev or opencrq"
+            )
         chosen = await _enable_run_as(db, user, raw)
         if chosen is not None:
             by_module[module] = chosen

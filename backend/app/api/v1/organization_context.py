@@ -2577,6 +2577,9 @@ class OrganizationSyncRequest(BaseModel):
     weekday: int = 0
     timezone: str = "UTC"
     enabled: bool = True
+    #: Who XTM One acts as in the module of an OpenCTI, OpenAEV or OpenCRQ sync (#2650): required to
+    #: create one; omitted on an edit, the stored choice is kept. Ignored for any other source.
+    run_as_user_id: str | None = None
 
 
 class OrganizationSyncResponse(BaseModel):
@@ -2599,6 +2602,9 @@ class OrganizationSyncResponse(BaseModel):
     #: Why the sync stopped by itself (a missing or revoked token); empty while it runs.
     paused_reason: str
     owner_email: str | None = None
+    #: "Runs as" of the sync (#2650): the user it reads as, None when nobody is chosen.
+    run_as_user_id: str | None = None
+    run_as_name: str | None = None
     next_run_at: datetime | None = None
     last_run_at: datetime | None = None
     #: ``{added, updated, removed, version, error}`` of the last run.
@@ -2625,19 +2631,41 @@ async def _sync_response(db: AsyncSession, row: Any) -> OrganizationSyncResponse
         enabled=row.enabled,
         paused_reason=row.paused_reason,
         owner_email=owner.email if owner else None,
+        run_as_user_id=str(owner.id) if owner else None,
+        run_as_name=(getattr(owner, "full_name", None) or owner.email) if owner else None,
         next_run_at=row.next_run_at,
         last_run_at=row.last_run_at,
         last_result=row.last_result,
     )
 
 
-def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> None:
-    """Write *body* on *row*, refused with 422 when the scheduler could not run it."""
+async def _apply_sync_body(db: AsyncSession, row: Any, body: OrganizationSyncRequest, admin: User) -> None:
+    """Write *body* on *row*, refused with 422 when the scheduler could not run it.
+
+    A sync of a module (OpenCTI, OpenAEV, OpenCRQ) reads as the user chosen in its
+    "Act in <module> as" dialog (#2650): required on create, kept on an edit that
+    names nobody, never the saving administrator by default. Any other source reads
+    as the administrator who saved it, as before.
+    """
+    from app.services import module_run_as
     from app.services import organization_context_sync as osync
 
+    fields = body.model_dump(exclude={"run_as_user_id"})
+    owner_id = admin.id
+    if module_run_as.is_module(body.source):
+        stored = getattr(row, "owner_user_id", None)
+        if body.run_as_user_id is None and stored is not None and getattr(row, "source", None) == body.source:
+            owner_id = stored
+        else:
+            try:
+                owner_id = await module_run_as.resolve(
+                    db, actor=admin, raw=body.run_as_user_id, providers=[body.source]
+                )
+            except module_run_as.RunAsRefusedError as exc:
+                raise HTTPException(status_code=exc.status, detail=str(exc)) from None
     try:
-        # Saving again is how a paused sync resumes: it now reads with this administrator's token.
-        osync.define(row, owner_id=admin.id, **body.model_dump())
+        # Saving again is how a paused sync resumes.
+        osync.define(row, owner_id=owner_id, **fields)
     except osync.SyncRefusedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
@@ -2696,7 +2724,7 @@ async def create_organization_sync(
     if body.section == osync.ALL_SECTIONS and await osync.global_sync_exists(db):
         raise HTTPException(status_code=409, detail="A Sync all schedule exists already: edit it.")
     row = OrganizationContextSync()
-    _apply_sync_body(row, body, admin)
+    await _apply_sync_body(db, row, body, admin)
     db.add(row)
     await db.flush()
     await log_audit(
@@ -2735,7 +2763,7 @@ async def update_organization_sync(
     row = await _sync_or_404(db, sync_id)
     if (row.section == "all") != (body.section == "all"):
         raise HTTPException(status_code=422, detail="A section sync cannot become Sync all, nor the reverse.")
-    _apply_sync_body(row, body, admin)
+    await _apply_sync_body(db, row, body, admin)
     await log_audit(
         db,
         user=admin,

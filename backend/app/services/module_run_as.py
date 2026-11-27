@@ -70,9 +70,7 @@ def missing_choice_refusal(modules: list[str]) -> str:
     )
 
 
-async def resolve(
-    db: AsyncSession, *, actor: Any, raw: Any, providers: list[str]
-) -> uuid.UUID:
+async def resolve(db: AsyncSession, *, actor: Any, raw: Any, providers: list[str]) -> uuid.UUID:
     """The run-as of a write that acts in *providers*: the explicit *raw* choice, checked.
 
     Refused with :class:`RunAsRefusedError`: 400 when *raw* is missing and a
@@ -115,7 +113,7 @@ async def candidates(db: AsyncSession, *, actor: Any, provider: str) -> list[Can
         raise RunAsRefusedError(422, f"{provider} is not a module XTM One acts in per user")
     if getattr(actor, "is_admin", False):
         rows = (
-            (await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.name, User.email)))
+            (await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name, User.email)))
             .scalars()
             .all()
         )
@@ -127,7 +125,7 @@ async def candidates(db: AsyncSession, *, actor: Any, provider: str) -> list[Can
         out.append(
             Candidate(
                 id=user.id,
-                name=str(getattr(user, "name", "") or getattr(user, "email", "")),
+                name=str(getattr(user, "full_name", "") or getattr(user, "email", "")),
                 email=str(getattr(user, "email", "") or ""),
                 is_self=user.id == actor.id,
                 selectable=not missing,

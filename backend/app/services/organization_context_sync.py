@@ -292,12 +292,26 @@ def _prior_attempts(sync: Any) -> int:
 
 
 async def _owner(db: AsyncSession, sync: OrganizationContextSync) -> tuple[User | None, str]:
-    """The administrator a run reads as, or the reason it cannot run."""
+    """The user a run reads as, or the reason it cannot run.
+
+    A sync of OpenCTI, OpenAEV or OpenCRQ reads as the user chosen to act in
+    that module (#2650), who needs no administrator role; any other sync reads
+    as the administrator who saved it. Never a fallback to another user.
+    """
+    from app.services.module_run_as import is_module
+
+    module = is_module(getattr(sync, "source", ""))
     if sync.owner_user_id is None:
+        if module:
+            return None, "Choose who this sync runs as."
         return None, "The administrator who saved this sync no longer exists. Save it again."
     owner = await db.get(User, sync.owner_user_id)
     if owner is None or not owner.is_active:
+        if module:
+            return None, "The user this sync runs as is no longer active. Choose who this sync runs as."
         return None, "The administrator who saved this sync is no longer active. Save it again."
+    if module:
+        return owner, ""
     if not owner.is_admin:
         return None, "The administrator who saved this sync is no longer an administrator. Save it again."
     return owner, ""

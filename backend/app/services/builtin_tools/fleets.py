@@ -1284,9 +1284,7 @@ def build_fleet_tools(
                     f"**{fleet.name}**, acting in each module as chosen: {names}.{missing} Show this to the user "
                     "and call again with confirm=true only once they agree."
                 )
-            outcome = await enable_fleet(
-                db, fleet, actor=user, run_as_user_id=None, run_as_by_module=by_module
-            )
+            outcome = await enable_fleet(db, fleet, actor=user, run_as_user_id=None, run_as_by_module=by_module)
             await _audit(
                 db,
                 user,
