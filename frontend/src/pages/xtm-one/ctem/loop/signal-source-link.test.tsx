@@ -98,6 +98,34 @@ describe("signal source link", () => {
     expect(pivot).toHaveAttribute("target", "_blank");
   });
 
+  // A third-party event (path 11) keys its signal "<OpenCTI id>:<organization id>": the pivot opens
+  // the OpenCTI object by the entity_id the API derives, never the composite key.
+  it("a third-party event pivots to the OpenCTI object, not its composite key", async () => {
+    const thirdParty: CtemSignal = {
+      ...cti,
+      trigger_path: "third_party_event",
+      source: { provider: "opencti", external_id: "report-1:org-1", entity_id: "report-1" },
+      subject: { kind: "third_party", ref: "Example SaaS", label: "Example SaaS" },
+      evidence: { event: "update", opencti_id: "report-1" },
+    };
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith("/platform/registrations")
+          ? [{ platform_identifier: "opencti", platform_url: "https://cti.example/", status: "active" }]
+          : thirdParty,
+      ),
+    );
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
+        <SignalTraceBody id={ID} />
+      </MemoryRouter>,
+    );
+    const facts = await screen.findByTestId("ctem-signal-facts");
+    const pivot = await within(facts).findByTestId("ctem-signal-source-pivot");
+    expect(pivot).toHaveAttribute("href", "https://cti.example/dashboard/id/report-1");
+    expect(within(facts).getByTestId("ctem-signal-evidence")).not.toHaveTextContent("opencti_id");
+  });
+
   it("draws no pivot when OpenCTI is not connected", async () => {
     get.mockImplementation((path: string) => Promise.resolve(path.startsWith("/platform/registrations") ? [] : cti));
     renderWithProviders(

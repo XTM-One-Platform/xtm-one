@@ -605,6 +605,42 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
+#: The evidence key that names the OpenCTI object a signal came from when its ``source_external_id`` is a
+#: composite dedupe key (path 11: ``<OpenCTI id>:<tracked organization id>``, one signal per organization).
+OPENCTI_ID_EVIDENCE = "opencti_id"
+
+
+def module_entity_id(provider: str | None, external_id: str | None, evidence: Any = None) -> str | None:
+    """The id of the signal's object in its source module, the one an "Open in <Module>" link opens.
+
+    ``source_external_id`` is a dedupe key: path 11 stores ``<OpenCTI id>:<tracked organization id>``, so
+    the OpenCTI id is the evidence ``opencti_id`` when recorded, else the part before the first colon of an
+    OpenCTI key (an OpenCTI internal id or a STIX id never holds one). Any other key is returned as it is.
+    """
+    value = (external_id or "").strip() or None
+    if (provider or "").lower() != "opencti":
+        return value
+    recorded = evidence.get(OPENCTI_ID_EVIDENCE) if isinstance(evidence, dict) else None
+    if isinstance(recorded, str) and recorded.strip():
+        return recorded.strip()
+    if value and ":" in value:
+        return value.split(":", 1)[0].strip() or None
+    return value
+
+
+def _source_shape(signal: CtemSignal) -> dict[str, Any]:
+    """The signal's source; ``entity_id`` only when the module object's id is not the key itself."""
+    shape: dict[str, Any] = {
+        "provider": signal.source_provider,
+        "name": provider_name(signal.source_provider),
+        "external_id": signal.source_external_id,
+    }
+    entity_id = module_entity_id(signal.source_provider, signal.source_external_id, signal.evidence)
+    if entity_id != signal.source_external_id:
+        shape["entity_id"] = entity_id
+    return shape
+
+
 def to_dict(signal: CtemSignal) -> dict[str, Any]:
     """The API and tool shape of one signal."""
     return {
@@ -612,11 +648,7 @@ def to_dict(signal: CtemSignal) -> dict[str, Any]:
         "trigger_path": signal.trigger_path,
         "trigger_path_label": PATH_CATALOG.get(signal.trigger_path, ("", ""))[0],
         "lens": signal.lens,
-        "source": {
-            "provider": signal.source_provider,
-            "name": provider_name(signal.source_provider),
-            "external_id": signal.source_external_id,
-        },
+        "source": _source_shape(signal),
         "subject": {"kind": signal.subject_kind, "ref": signal.subject_ref, "label": signal.subject_label},
         "observed_at": _iso(signal.observed_at),
         "first_seen_at": _iso(signal.first_seen_at),

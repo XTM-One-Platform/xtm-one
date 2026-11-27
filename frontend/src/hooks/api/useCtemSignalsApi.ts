@@ -72,7 +72,8 @@ export interface CtemSignal {
   trigger_path: string;
   trigger_path_label: string;
   lens: CtemLens;
-  source: { provider: string; external_id: string };
+  /** external_id is the dedupe key (path 11: "<OpenCTI id>:<organization id>"); entity_id, sent only when it differs, is the object's id in its module, the one a pivot opens. */
+  source: { provider: string; external_id: string; entity_id?: string | null };
   subject: { kind: string; ref: string; label: string };
   observed_at: string | null;
   first_seen_at: string | null;
