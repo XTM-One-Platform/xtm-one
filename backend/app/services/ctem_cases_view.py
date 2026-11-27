@@ -573,12 +573,35 @@ def _decode_view(raw: str | bytes) -> ViewerView:
         return _copy_view(found)
 
 
+#: A stored view this size or larger is decoded in a worker thread (#2570): a storm's view held the web loop.
+OFF_LOOP_DECODE_BYTES = 64 * 1024
+
+
+async def _decode_view_off_loop(raw: str | bytes) -> ViewerView:
+    """:func:`_decode_view`, with the JSON decode of a large view run off the web event loop (#2570).
+
+    The memo is read on the loop (cheap); only a miss of a view past
+    :data:`OFF_LOOP_DECODE_BYTES` is decoded in a thread, then memoised like any other.
+    """
+    data = raw.encode() if isinstance(raw, str) else raw
+    if len(data) < OFF_LOOP_DECODE_BYTES or hashlib.blake2b(data, digest_size=16).digest() in _decoded:
+        return _decode_view(data)
+    with timed_sync("decode"):
+        found = await asyncio.to_thread(ViewerView.from_json, data)
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    while len(_decoded) >= DECODED_VIEWS_MAX:
+        _decoded.pop(next(iter(_decoded)))
+    _decoded[digest] = found
+    with timed_sync("copy"):
+        return _copy_view(found)
+
+
 async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
     try:
         async with timed("redis"):
             cached = await client.get(_view_key(user_id, vertical, generation))
         if cached:
-            return _decode_view(cached)
+            return await _decode_view_off_loop(cached)
     except Exception:
         logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
     return None
@@ -645,7 +668,7 @@ async def _older_view(
         previous = None
     if previous:
         try:
-            return _decode_view(previous)
+            return await _decode_view_off_loop(previous)
         except Exception:
             logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
     # A pointer written before #2232: its view sits under the generation's own key.
@@ -815,7 +838,8 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
     await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
-            raw = view.to_json()
+            # #2570: the encode of a whole view runs off the web event loop.
+            raw = await asyncio.to_thread(view.to_json)
             await client.set(_view_key(user_id, vertical, generation), raw, ex=VIEW_TTL_SECONDS)
             # The previous view the list answers from while the next generation builds (#2232).
             await client.set(_previous_key(user_id, vertical), raw, ex=STALE_VIEW_TTL_SECONDS)

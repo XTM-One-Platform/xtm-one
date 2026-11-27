@@ -4810,6 +4810,19 @@ async def execute_assignment_run(
             )
             return
 
+        # ── A CTEM case event whose case is gone ─────────────────
+        # #2570: a purge deletes cases, not the deliveries their events queued: a
+        # "Supervise CTEM loop" run of a deleted case is skipped at start, never run
+        # against nothing (no model call, no charge).
+        if run.started_at is None and await _ctem_case_gone(db, run.trigger_context):
+            run.status = "skipped"
+            run.error = CTEM_CASE_GONE_ERROR
+            run.completed_at = datetime.now(UTC)
+            await db.commit()
+            await _release_run_work_item(run, agent, failed=False)
+            logger.info("Assignment run %s skipped: its CTEM case no longer exists", run_id)
+            return None
+
         # ── May agentic AI run here at all? ───────────────
         # Defence in depth behind the trigger-time gate: a run queued or
         # delayed before AI was switched off, or before the deployment dropped
@@ -12088,6 +12101,25 @@ async def _evict_oldest_queued_run(
 
 #: The run error and the summarised dropped-event reason of a platform-event delivery past the queue limit (#2570).
 PLATFORM_EVENT_QUEUE_FULL_REASON = "skipped: queue full"
+
+#: A platform-event run about a CTEM case deleted since its event (#2570): skipped at start.
+CTEM_CASE_GONE_ERROR = "Skipped: the CTEM case this event is about no longer exists (purged or deleted)."
+
+
+async def _ctem_case_gone(db: AsyncSession, trigger_context: Any) -> bool:
+    """Whether *trigger_context* is a platform event about a CTEM case that no longer exists."""
+    if not isinstance(trigger_context, dict) or trigger_context.get("type") != "platform_event":
+        return False
+    if trigger_context.get("object_type") != "ctem_case":
+        return False
+    try:
+        case_id = _uuid.UUID(str(trigger_context.get("object_id")))
+    except (TypeError, ValueError):
+        return False
+    from app.models.ctem_case import CtemCase
+
+    found = (await db.execute(select(CtemCase.id).where(CtemCase.id == case_id))).scalar_one_or_none()
+    return found is None
 
 
 async def trim_platform_event_queues(db: AsyncSession) -> dict[Any, int]:

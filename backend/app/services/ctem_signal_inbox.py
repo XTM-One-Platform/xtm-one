@@ -1,0 +1,137 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""The durable inbox of verified CTEM signal-source deliveries (#2570).
+
+OpenCTI never retries a webhook: a signal-source delivery answered 429/503, or held
+past the sender's timeout, is lost. During a case-opened storm the recorders
+(``ctem_signal_listeners.note_event``, ``ctem_analyst_mark.note_event``,
+``ctem_openaev_events.note_event``) waited on a saturated pool and loop while the
+request held its slot. The webhook now writes the verified delivery here in one
+short transaction and answers ``202`` at once (:func:`accept`); :func:`drain`, run by
+the autonomous tick, records the rows oldest first, a bounded batch per pass, and
+deletes each once recorded. A row whose recording raises is kept and retried up to
+:data:`MAX_ATTEMPTS`, then dropped with a log line naming it.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Mapping
+from typing import Any
+
+from sqlalchemy import delete, select, update
+
+from app.core.utils import format_exception_message
+
+logger = logging.getLogger(__name__)
+
+#: Rows recorded per drain pass: one tick never holds the loop for a whole storm.
+DRAIN_BATCH = 200
+#: Recording attempts before a row is dropped.
+MAX_ATTEMPTS = 5
+
+
+async def accept(
+    provider: str, integration_id: str, event_key: str, payload: Mapping[str, Any], *, verified: bool
+) -> None:
+    """Write one verified delivery to the inbox and commit; the request answers right after."""
+    from app.core.database import async_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    async with async_session() as db:
+        db.add(
+            CtemSignalInbox(
+                provider=provider,
+                integration_id=str(integration_id),
+                event_key=(event_key or "")[:200],
+                payload=dict(payload),
+                verified=verified,
+            )
+        )
+        await db.commit()
+
+
+async def record(
+    provider: str, integration_id: str, event_key: str, payload: dict[str, Any], *, verified: bool
+) -> bool:
+    """What the webhook used to do inline: hand one delivery to its recorders. ``True`` when a signal was recorded."""
+    from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners
+
+    if provider == "openaev":
+        await ctem_openaev_events.stamp_reachability_assertion(
+            event_key, payload, integration_id=str(integration_id), verified=verified
+        )
+    recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
+    if provider == "opencti":
+        await ctem_analyst_mark.note_event(provider, payload, verified=verified)
+    if provider == "openaev":
+        await ctem_openaev_events.note_event(event_key, payload, verified=verified)
+    return bool(recorded)
+
+
+async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
+    """Record up to *limit* waiting deliveries, oldest first; the counts recorded, retried and dropped.
+
+    Rows are read with ``SKIP LOCKED`` so two pods never record one delivery twice, and
+    each row is deleted in its own short transaction once recorded: no connection is
+    held while a recorder works.
+    """
+    from app.core.database import async_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    counts = {"recorded": 0, "retried": 0, "dropped": 0}
+    async with async_session() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(CtemSignalInbox)
+                    .order_by(CtemSignalInbox.created_at)
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not rows:
+            return counts
+        ids = [row.id for row in rows]
+        batch = [
+            (row.id, row.provider, row.integration_id, row.event_key, row.payload, row.verified, row.attempts)
+            for row in rows
+        ]
+        # Claimed by bumping attempts first: a pod killed mid-batch leaves a counted attempt, never a loop.
+        await db.execute(
+            update(CtemSignalInbox).where(CtemSignalInbox.id.in_(ids)).values(attempts=CtemSignalInbox.attempts + 1)
+        )
+        await db.commit()
+    for row_id, provider, integration_id, event_key, payload, verified, attempts in batch:
+        try:
+            await record(provider, integration_id, event_key, payload or {}, verified=verified)
+        except Exception as exc:
+            if attempts + 1 >= MAX_ATTEMPTS:
+                logger.error(
+                    "CTEM signal inbox: delivery %s (%s %s) dropped after %d attempts: %s",
+                    row_id,
+                    provider,
+                    event_key,
+                    attempts + 1,
+                    format_exception_message(exc),
+                )
+                counts["dropped"] += 1
+                await _delete(row_id)
+            else:
+                counts["retried"] += 1
+            continue
+        counts["recorded"] += 1
+        await _delete(row_id)
+    return counts
+
+
+async def _delete(row_id: Any) -> None:
+    from app.core.database import async_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    async with async_session() as db:
+        await db.execute(delete(CtemSignalInbox).where(CtemSignalInbox.id == row_id))
+        await db.commit()
