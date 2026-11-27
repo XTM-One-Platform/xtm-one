@@ -170,3 +170,21 @@ async def test_a_long_text_around_a_mention_is_cut_per_run() -> None:
     first = posted[0]["rich_text"][0]["text"]["content"]
     assert len(first) == 2000 and first.endswith("…"), content
     assert posted[0]["rich_text"][1]["type"] == "mention"
+
+
+@pytest.mark.asyncio
+async def test_an_email_listed_without_emails_names_the_capability() -> None:
+    no_email = [{**person, "person": {}} for person in (_ADA, _BOB)]
+
+    async def _users_without_email(*args: Any, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(200, json={"results": no_email, "has_more": False, "next_cursor": None})
+
+    with patch(f"{__name__}._users_get", side_effect=_users_without_email):
+        content, posted = await _call(
+            {"page_id": "page-1", "text": "hi @{ada@example.com}", "mentions": ["ada@example.com"]}
+        )
+    assert posted == []
+    assert "ada@example.com" in content
+    assert "Read user information including email addresses" in content
+    assert "Nothing was posted" in content
+    assert "no Notion workspace user matches" not in content

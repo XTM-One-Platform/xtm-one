@@ -283,6 +283,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
         if emails:
             params: dict[str, str] = {"page_size": "100"}
             pages = 0
+            listed = 0
+            listed_with_email = 0
             while True:
                 resp, err, status_code, _code = await _throttled_request_with_error_metadata(
                     client,
@@ -300,6 +302,9 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 data = resp.json()
                 for user in data.get("results", []):
                     email = str((user.get("person") or {}).get("email") or "").lower()
+                    if user.get("type") == "person":
+                        listed += 1
+                        listed_with_email += 1 if email else 0
                     if email in emails and user.get("id"):
                         resolved[email] = (str(user["id"]), _extract_notion_user_name(user))
                 if all(e in resolved for e in emails):
@@ -309,7 +314,20 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 if pages >= _EMAIL_SCAN_MAX_PAGES:
                     break
                 params["start_cursor"] = data["next_cursor"]
-            missing.extend(e for e in emails if e not in resolved)
+            unmatched = [e for e in emails if e not in resolved]
+            if unmatched and listed and not listed_with_email:
+                return (
+                    {},
+                    [],
+                    "Error: Notion listed the workspace people without their email "
+                    f"addresses, so {', '.join(unmatched)} cannot be matched: this "
+                    "Notion connection reads user information without email addresses. "
+                    "Enable 'Read user information including email addresses' in the "
+                    "Notion integration's Capabilities tab (notion.so/profile/integrations) "
+                    "and reconnect the integration if it was authorized through OAuth, or "
+                    "pass the Notion user ids instead (list_notion_users).",
+                )
+            missing.extend(unmatched)
         return resolved, missing, None
 
     async def add_notion_comment(
