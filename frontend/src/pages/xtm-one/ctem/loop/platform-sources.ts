@@ -89,6 +89,13 @@ export const PLATFORM_OBJECT_OPEN_LABEL = {
   playbook: "Open the playbook in {platform}",
 } as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
 
+/** The visible text of each Open in button, the object kind it opens (UX advisory A1 of #2592). @i18n-keys */
+export const PLATFORM_OBJECT_KIND_TEXT = {
+  notifier: "Notifier",
+  trigger: "Triggers",
+  playbook: "Playbook",
+} as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
+
 /** One Open in link: the object, its kind, and the URL in its platform. */
 export interface PlatformObjectLink {
   kind: CtemPlatformSourceObject["kind"];

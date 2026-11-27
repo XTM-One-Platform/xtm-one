@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import en from "@/i18n/lang/en.json";
-import { PLATFORM_OBJECT_OPEN_LABEL, platformObjectLinks } from "./platform-sources";
+import { PLATFORM_OBJECT_KIND_TEXT, PLATFORM_OBJECT_OPEN_LABEL, platformObjectLinks } from "./platform-sources";
 import { SOURCE_KIND_LABEL } from "./signal-sources";
 
 describe("Open in links of provisioned objects (#2583 point 2)", () => {
@@ -48,6 +48,10 @@ describe("Open in links of provisioned objects (#2583 point 2)", () => {
   it("has an English key for every label it shows", () => {
     const keys = en as Record<string, string>;
     for (const label of Object.values(PLATFORM_OBJECT_OPEN_LABEL)) expect(keys[label]).toBe(label);
+    // UX advisory A1 of #2592: each button writes the kind it opens; no two kinds share a text.
+    const texts = Object.values(PLATFORM_OBJECT_KIND_TEXT);
+    for (const text of texts) expect(keys[text]).toBe(text);
+    expect(new Set(texts).size).toBe(texts.length);
     expect(keys[SOURCE_KIND_LABEL.cases_reader]).toBe("Cases recompute");
   });
 });

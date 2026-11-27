@@ -27,6 +27,7 @@ import {
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import {
+  PLATFORM_OBJECT_KIND_TEXT,
   PLATFORM_OBJECT_OPEN_LABEL,
   PLATFORM_SOURCE_STATUS_LABEL,
   PLATFORM_SOURCE_STATUS_TONE,
@@ -39,8 +40,9 @@ import {
 const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
 
 /**
- * One icon button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
- * Objects that open the same page (several triggers in one list) share one button.
+ * One labelled button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
+ * Objects that open the same page (several triggers in one list) share one button. The kind is written on the
+ * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592).
  */
 function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const { t_i18n } = useFormatter();
@@ -54,8 +56,9 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
         const label = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
         return (
           <Tip key={link.href} content={label}>
-            <Button asChild variant="ghost" size="icon" className="size-7">
+            <Button asChild variant="ghost" size="sm">
               <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
+                {t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind])}
                 <Icon name="external-link" size={16} aria-hidden />
               </a>
             </Button>
