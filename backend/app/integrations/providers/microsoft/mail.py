@@ -2978,7 +2978,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         ),
         ToolDefinition(
             name="list_microsoft_mail_folders",
-            description="List the mail folders of the Outlook mailbox, every level (custom folders included): one line per folder with its path ('Inbox/Contracts'), id, child folder count, item and unread counts. Pass parent to list only the folders under one folder. Read a folder with list_microsoft_emails(folder=<path or id>) or search it with search_microsoft_emails(folder=...).",
+            description="List the mail folders of the Outlook mailbox, every level (custom folders included): one line per folder with its path ('Inbox/Contracts'), id, child folder count, item and unread counts. Pass parent to list only the folders under one folder. Read a folder with list_microsoft_emails(folder=PATH_OR_ID) or search it with search_microsoft_emails(folder=...).",
             input_schema={
                 "type": "object",
                 "properties": {

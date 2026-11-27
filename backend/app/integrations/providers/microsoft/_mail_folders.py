@@ -214,7 +214,7 @@ class FolderDirectory:
             paths = "; ".join(f"'{f.path}'" for f in matches)
             return None, (
                 f"Error: more than one mail folder is named '{text}': {paths}. "
-                "Pass the path of the one to read (e.g. 'Inbox/<name>') or its id from list_microsoft_mail_folders."
+                "Pass the path of the one to read (one of the paths above) or its id from list_microsoft_mail_folders."
             )
         return None, self._unknown(text, folders)
 
@@ -258,7 +258,7 @@ def render_folders(folders: list[MailFolder], *, truncated: bool, under: str = "
     lines = [header]
     lines.extend(f"{f.path} | {f.id} | {f.child_count} | {f.total} | {f.unread}" for f in folders)
     lines.append(
-        "Read one with list_microsoft_emails(folder=<path or id>), or search it with search_microsoft_emails(folder=...)."
+        "Read one with list_microsoft_emails(folder=PATH_OR_ID), or search it with search_microsoft_emails(folder=...)."
     )
     if truncated:
         lines.append(f"Listed in part: the walk stops at {MAX_FOLDERS} folders or {MAX_DEPTH} levels.")
