@@ -1019,14 +1019,10 @@ def build_work_item_tools(
         )
     else:
         _owner_help = (
-            " No peer roster is configured, so owner_agent_id is not validated: "
-            "set it to the agent that acts, your own id to keep the item in your "
-            "own backlog."
+            " No peer roster: owner_agent_id is not validated; your own id "
+            "keeps the item in your own backlog."
         )
-    _owner_help += (
-        " An item with no owner and no needs_human is routed to nobody: only an "
-        "owner whose work-item inbox takes it, or needs_human with an ask, gets it done."
-    )
+    _owner_help += " With no owner and no needs_human, nobody takes it."
 
     async def _create_work_item(
         title: str,

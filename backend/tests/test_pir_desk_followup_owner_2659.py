@@ -129,8 +129,8 @@ def test_the_tool_description_no_longer_reads_empty_owner_as_own_backlog():
     defs, _ = build_work_item_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
     create = next(d for d in defs if d.name == "create_work_item")
     assert "leave it empty to keep the item in your own backlog" not in create.description
-    assert "your own id to keep the item in your own backlog" in create.description
-    assert "routed to nobody" in create.description
+    assert "your own id keeps the item in your own backlog" in create.description
+    assert "With no owner and no needs_human, nobody takes it." in create.description
     assert wi_tools._NO_OWNER_NO_INBOX_WARNING.startswith("  - Warning:")
 
 
