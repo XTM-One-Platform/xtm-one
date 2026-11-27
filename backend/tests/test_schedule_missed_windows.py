@@ -219,9 +219,15 @@ async def test_the_overlap_guard_still_records_its_own_skipped_run(monkeypatch):
 
     trigger.assert_not_awaited()
     skipped = _added(db)
-    assert len(skipped) == 1
-    assert skipped[0].result_summary.startswith("Scheduled fire skipped: previous run")
-    assert schedule_overlap.MISSED_WINDOW_KEY not in skipped[0].trigger_context
+    # One row per slot behind the active run, stamped on it (#2582).
+    assert [run.trigger_context["scheduled_at"] for run in skipped] == [
+        _at(5, 0).isoformat(),
+        _at(5, 15).isoformat(),
+        _at(5, 30).isoformat(),
+    ]
+    assert all(run.result_summary.startswith("Scheduled fire skipped: previous run") for run in skipped)
+    assert all(schedule_overlap.MISSED_WINDOW_KEY not in run.trigger_context for run in skipped)
+    assert _assignment.last_triggered_at == _at(5, 30)
 
 
 # ── the tick overrun ───────────────────────────────────────────────────────

@@ -46,6 +46,7 @@ import functools
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -247,12 +248,17 @@ async def _record_skipped_fire(
     assignment: Assignment,
     cron_expr: object,
     now: datetime,
-) -> None:
-    """Record a due fire the overlap guard dropped as a ``skipped`` run.
+) -> str:
+    """Record the due slots the overlap guard dropped as ``skipped`` runs (#2582).
 
-    Its summary names the active run in the way and since when. Best effort:
-    a failure to record it is logged and never blocks the tick (the caller
-    still stamps ``last_triggered_at``).
+    One run per slot after the schedule base, stamped on it and naming the
+    active run in the way and since when (one summary run past
+    ``schedule_overlap.MISSED_RECORD_CAP``); ``last_triggered_at`` moves to the
+    latest slot in the caller's commit, with the rows. Answers ``"recorded"``;
+    ``"vanished"`` when the active run ended since ``has_active_run`` read it
+    (the caller fires as usual, nothing is written); ``"failed"`` when the rows
+    could not be built (logged; the caller rolls back and the base stays, so
+    the next tick records the slots).
     """
     from app.services import schedule_overlap
     from app.services.assignment_engine import find_active_run
@@ -260,21 +266,80 @@ async def _record_skipped_fire(
     try:
         active = await find_active_run(db, assignment.id)
         if active is None:
-            return
-        fields = schedule_overlap.skipped_fire_run(assignment, active, cron=str(cron_expr), now=now)
-        db.add(AssignmentRun(**fields))
+            return "vanished"
+        zone, _ = schedule_timezone(assignment.trigger_config)
+        served, slots, truncated = schedule_overlap.due_slots(str(cron_expr), schedule_base(assignment), now, tz=zone)
+        runs = schedule_overlap.skipped_fire_runs(
+            assignment, active, cron=str(cron_expr), now=now, slots=slots, truncated=truncated
+        )
+        for fields in runs:
+            db.add(AssignmentRun(**fields))
+        assignment.last_triggered_at = served if served is not None and served <= now else now
         logger.info(
             "Scheduled assignment '%s' (%s): fire skipped, %s",
             assignment.name,
             assignment.id,
-            fields["result_summary"],
+            runs[-1]["result_summary"] if len(runs) == 1 else f"{len(runs)} windows recorded skipped",
         )
+        return "recorded"
     except Exception as exc:
         logger.warning(
             "Scheduled assignment '%s' (%s): skipped fire not recorded: %s",
             assignment.name,
             assignment.id,
             format_exception_message(exc),
+        )
+        return "failed"
+
+
+async def _record_lost_fire(
+    assignment: Assignment, cron_expr: object, slot: datetime, now: datetime, *, reason: str
+) -> None:
+    """Record *slot* as a ``skipped`` run when its fire's run was never created (#2582).
+
+    The schedule base was committed past *slot* before ``trigger_assignment``;
+    a creation that did not complete (the tick was stopped, a non-refusal
+    error) would otherwise leave the slot consumed with no row. Written in a
+    session of its own, shielded from a second cancellation, and only when no
+    run of the assignment was created since the tick read *now* (a creation
+    that committed before the stop needs no record). Never raises.
+    """
+    from app.services import schedule_overlap
+
+    async def _write() -> None:
+        async with async_session() as own:
+            landed = (
+                await own.execute(
+                    select(func.count())
+                    .select_from(AssignmentRun)
+                    .where(AssignmentRun.assignment_id == assignment.id, AssignmentRun.created_at >= now)
+                )
+            ).scalar()
+            if landed:
+                return
+            own.add(
+                AssignmentRun(
+                    **schedule_overlap.lost_fire_run(assignment, slot, cron=str(cron_expr), now=now, reason=reason)
+                )
+            )
+            await own.commit()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): fire of %s lost, recorded skipped (%s)",
+            assignment.name,
+            assignment.id,
+            slot.isoformat(),
+            reason,
+        )
+
+    try:
+        await asyncio.shield(_write())
+    except BaseException as exc:  # never masks the error being handled
+        logger.warning(
+            "Scheduled assignment '%s' (%s): lost fire of %s not recorded: %s",
+            assignment.name,
+            assignment.id,
+            slot.isoformat(),
+            format_exception_message(exc) if isinstance(exc, Exception) else type(exc).__name__,
         )
 
 
@@ -1626,6 +1691,38 @@ class _TickClock:
 _tick_clock = _TickClock()
 
 
+#: The time one housekeeping step of a tick may take (#2582): a third of the
+#: tick window, so schedule evaluation is never more than one window late.
+_HOUSEKEEPING_BUDGET_SECONDS = 20.0
+
+#: Past its budget, how long a step is given to commit what it released before
+#: it is cancelled (a cancelled step rolls back; the next tick does it again).
+_HOUSEKEEPING_GRACE_SECONDS = 10.0
+
+
+async def _within_housekeeping_budget(step: str, call: Callable[[float], Awaitable[int | None]]) -> int:
+    """Run one housekeeping *call* of the tick within its time budget (#2582).
+
+    *call* takes a ``time.monotonic()`` deadline and stops its own batch there,
+    committing what it did; a call still running past the deadline and the
+    grace (a read stuck on the pool) is cancelled and answers ``0``: the rest
+    waits for the next tick, with one WARNING naming the step.
+    """
+    deadline = time.monotonic() + _HOUSEKEEPING_BUDGET_SECONDS
+    try:
+        return (
+            await asyncio.wait_for(call(deadline), timeout=_HOUSEKEEPING_BUDGET_SECONDS + _HOUSEKEEPING_GRACE_SECONDS)
+            or 0
+        )
+    except TimeoutError:
+        logger.warning(
+            "Scheduler housekeeping step '%s' cancelled past its %ds budget: the rest waits for the next tick",
+            step,
+            int(_HOUSEKEEPING_BUDGET_SECONDS + _HOUSEKEEPING_GRACE_SECONDS),
+        )
+        return 0
+
+
 def _warn_if_tick_overran() -> None:
     """One WARNING for a tick past its window, naming its duration and slowest step (#2562).
 
@@ -1883,10 +1980,16 @@ async def _run_autonomous_tick_inner() -> int:
         # failed, timed out, dead-lettered after a rollout) leaves it held:
         # released here, before the inbox dispatch below, so the same tick
         # hands it out again. Not gated on AI: it only frees rows.
+        # Time-budgeted (#2582): a slow pass under pool pressure stops at its
+        # budget and the rest waits for the next tick, its events published off
+        # the tick, so no schedule waits behind it for more than one window.
         try:
             from app.services.work_item import release_ended_run_claims
 
-            released = await release_ended_run_claims()
+            released = await _within_housekeeping_budget(
+                "work item claim release",
+                lambda deadline: release_ended_run_claims(deadline=deadline, background_events=True),
+            )
             if released:
                 logger.info("Released %d work item(s) held by runs that ended", released)
         except Exception as e:
@@ -1896,7 +1999,10 @@ async def _run_autonomous_tick_inner() -> int:
         try:
             from app.services.shared_state import release_ended_run_holds
 
-            freed = await release_ended_run_holds()
+            freed = await _within_housekeeping_budget(
+                "shared-state hold release",
+                lambda deadline: release_ended_run_holds(deadline=deadline),
+            )
             if freed:
                 logger.info("Released %d shared-state hold(s) of runs that ended", freed)
         except Exception as e:
@@ -4308,15 +4414,21 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             # while a previous run is still pending, delayed, running, or
             # awaiting human input.
             if await has_active_run(db, assignment.id) and not await _supersede_stale_fires(db, assignment, now):
-                # Never silent: the dropped fire is a ``skipped`` run
-                # naming the run in its way, so a run stuck across resumes
-                # shows in the run list instead of starving the schedule.
-                await _record_skipped_fire(db, assignment, cron_expr, now)
-                # Still update last_triggered_at so we don't pile up a backlog
-                # of "overdue" ticks that would all fire once the active run finishes.
-                assignment.last_triggered_at = now
-                await db.commit()
-                continue
+                # Never silent: each slot the dropped fire covers is a
+                # ``skipped`` run stamped on it, naming the run in its way, so
+                # a run stuck across resumes shows in the run list instead of
+                # starving the schedule. The base moves past the slots in the
+                # same commit as their rows, never without them (#2582), so no
+                # backlog of "overdue" ticks fires once the active run ends.
+                outcome = await _record_skipped_fire(db, assignment, cron_expr, now)
+                if outcome == "recorded":
+                    await db.commit()
+                    continue
+                if outcome == "failed":
+                    # Nothing recorded: the base stays, the next tick tries again.
+                    await db.rollback()
+                    continue
+                # The active run ended between the two reads: fire as usual.
 
             # The cron slot this fire serves and the earlier windows no sweep
             # reached (#2562): the late fire serves the latest due slot and is
@@ -4335,7 +4447,10 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 if slot is not None and slot <= now:
                     served_at = slot
 
-            # Mark as triggered FIRST to prevent re-triggering on next tick
+            # Mark as triggered FIRST to prevent re-triggering on next tick.
+            # A run creation that does not complete past this commit (the tick
+            # stopped, a non-refusal error) records the slot as a lost fire
+            # below, so the base never moves past a slot without a row (#2582).
             previous_triggered_at = assignment.last_triggered_at
             assignment.last_triggered_at = served_at
             await db.commit()
@@ -4362,6 +4477,9 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                         "_first_run": first_run,
                     },
                 )
+            except asyncio.CancelledError:
+                await _record_lost_fire(assignment, cron_expr, served_at, now, reason="the scheduler tick was stopped")
+                raise
             except AssignmentOwnerDeactivatedError:
                 # Its owner was deactivated since the query picked it:
                 # the pause, not an error. The window stays open, as for an
@@ -4375,6 +4493,9 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
 
                 refusal = refusal_code(exc)
                 if refusal is None:
+                    await _record_lost_fire(
+                        assignment, cron_expr, served_at, now, reason=format_exception_message(exc)[:200]
+                    )
                     raise
                 if refusal_is_personal(exc):
                     # AI is off for a group of the person it runs as: this
