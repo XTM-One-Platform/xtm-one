@@ -42,6 +42,7 @@ import { Link } from "react-router-dom";
 import { isRunAsModule, ModuleRunAsField, RUN_AS_MODULE_NAME } from "@/components/module-run-as/ModuleRunAsField";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Badge } from "@/components/ui/badge";
+import { formatList } from "@/lib/format-list";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DashboardNotice, NoticeAction } from "@/components/ui/dashboard-notice";
@@ -147,6 +148,7 @@ export function FleetSetupWizard({
   useEffect(() => setLeft(null), [runAsByModule]);
   const modules = useMemo(() => (plan.data?.modules ?? []).filter(isRunAsModule), [plan.data]);
   const unchosen = plan.data?.unchosen ?? [];
+  const unchosenModules = unchosen.filter(isRunAsModule).map((module) => RUN_AS_MODULE_NAME[module]);
   const chooseRunAs = useCallback((module: string, userId: string) => setRunAsByModule((prev) => (prev[module] === userId ? prev : { ...prev, [module]: userId })), []);
   const leftOut = useMemo(() => left ?? initiallyLeftOut(items), [left, items]);
   const pick = useMemo(() => pickedPlan(items, leftOut), [items, leftOut]);
@@ -344,6 +346,7 @@ export function FleetSetupWizard({
                       active={open}
                       disabled={enable.isPending}
                       helper={t_i18n("The fleet's automations act in {module} with this user's connection.", { module: RUN_AS_MODULE_NAME[module] })}
+                      error={unchosen.includes(module) ? t_i18n("Choose who XTM One acts as in {module}.", { module: RUN_AS_MODULE_NAME[module] }) : undefined}
                     />
                   ))}
                 </div>
@@ -437,6 +440,15 @@ export function FleetSetupWizard({
                   <Badge variant="warning">{t_i18n("{count, plural, one {# stays off} other {# stay off}}", { count: blocked.length })}</Badge>
                 )}
               </li>
+              {unchosenModules.length > 0 && (
+                <li className="flex flex-wrap items-center gap-2" role="alert" data-testid="fleet-setup-review-unchosen">
+                  <span className="w-40 shrink-0 font-medium">{t_i18n("Acts as")}</span>
+                  <span className="text-feedback-error-primary">{t_i18n("Nobody chosen for {modules}", { modules: formatList(unchosenModules, intl.locale) })}</span>
+                  <Button variant="link" onClick={() => moveTo("automations")} data-testid="fleet-setup-review-unchosen-fix">
+                    {t_i18n("Choose who XTM One acts as")}
+                  </Button>
+                </li>
+              )}
               {hasSlots && (
                 <li className="flex flex-wrap items-center gap-2" data-testid="fleet-setup-review-slots">
                   <span className="w-40 shrink-0 font-medium">{t_i18n("Integrations")}</span>

@@ -22183,5 +22183,11 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
-  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
+  "Choose who XTM One acts as in {module}.": "Choose who XTM One acts as in {module}.",
+  "Acts as": "Acts as",
+  "Nobody chosen for {modules}": "Nobody chosen for {modules}",
+  "Choose who XTM One acts as": "Choose who XTM One acts as",
+  "Data is read from the source platform with the permissions of the user this sync runs as. The source platform's access rules, including organization segregation and markings, are not carried over.": "Data is read from the source platform with the permissions of the user this sync runs as. The source platform's access rules, including organization segregation and markings, are not carried over.",
+  "XTM One rows are written to the target platform with the permissions of the user this sync runs as. Who can see them there follows that platform's own access rules, not XTM One's.": "XTM One rows are written to the target platform with the permissions of the user this sync runs as. Who can see them there follows that platform's own access rules, not XTM One's."
 }

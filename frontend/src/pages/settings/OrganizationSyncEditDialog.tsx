@@ -183,6 +183,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
           <OrganizationSharedContextNotice
             elevation={1}
             direction={sectionSync ? direction : "inbound"}
+            runsAsPicked={moduleSync}
             actor={sync && !moduleSync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null}
           />
           {sync && isRunAsModule(sync.source) && (

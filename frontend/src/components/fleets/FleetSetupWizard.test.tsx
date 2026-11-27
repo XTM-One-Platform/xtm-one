@@ -157,6 +157,9 @@ describe("FleetSetupWizard", () => {
     api.plan = plan({ modules: ["opencti"], unchosen: ["opencti"] });
     open("review");
     expect(screen.getByRole("button", { name: "Enable 2 automations" })).toBeDisabled();
+    expect(screen.getByTestId("fleet-setup-review-unchosen")).toHaveTextContent("Nobody chosen for OpenCTI");
+    fireEvent.click(screen.getByRole("button", { name: "Choose who XTM One acts as" }));
+    expect(screen.getByTestId("fleet-setup-automations")).toHaveTextContent("Choose who XTM One acts as in OpenCTI.");
   });
 
   it("shows the expected runs a day and cost of the pick, and follows the pick (#1538)", () => {
