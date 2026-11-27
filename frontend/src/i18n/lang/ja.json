@@ -20693,6 +20693,7 @@
   "Agents and API only": "エージェントと API のみ",
   "Live listener": "ライブリスナー",
   "Scheduled pass": "定期パス",
+  "Cases recompute": "ケースの再計算",
   "PIR playbook": "PIR プレイブック",
   "What your own tools see in your environment": "自社のツールが環境内で検知するもの",
   "What an attacker sees of you from the internet": "攻撃者がインターネットから見えるもの",
@@ -22110,5 +22111,12 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "資産グループまたは主要資産の担当者が見つかりません。CTEM を決定するグループがないため、管理者です。",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "アカウント作成順で{count, plural, other {#人の候補}}の最初の人です。",
   "No owner was found: the current owner is kept.": "担当者が見つかりません。現在の担当者を維持します。",
-  "Set by a person.": "ユーザーが設定しました。"
+  "Set by a person.": "ユーザーが設定しました。",
+  "The cases recompute reads a vulnerability on your inventory software": "ケースの再計算がインベントリのソフトウェアの脆弱性を読み取る",
+  "The cases recompute reads a CVE finding on one of your assets": "ケースの再計算が資産の CVE 検出結果を読み取る",
+  "Open the notifier in {platform}": "{platform} で通知先を開く",
+  "Open the triggers in {platform}": "{platform} でトリガーを開く",
+  "Open the playbook in {platform}": "{platform} でプレイブックを開く",
+  "The resync reads every source again, with the paths and sources that are on.": "再同期では、有効なパスとソースですべてのソースを再度読み取ります。",
+  "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "再同期しない場合、ケースの再計算は 1 間隔のあいだ保留されます。再同期するか再計算を実行するまで、一覧は空のままです。"
 }
