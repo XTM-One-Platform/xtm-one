@@ -746,6 +746,7 @@ github:search_github_repositories
 github:search_github_users
 gitlab:get_gitlab_file
 gitlab:get_gitlab_issue
+gitlab:get_gitlab_issue_note
 gitlab:get_gitlab_merge_request
 gitlab:get_gitlab_project
 gitlab:get_gitlab_release
