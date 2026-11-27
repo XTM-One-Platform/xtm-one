@@ -93,6 +93,7 @@ _COMPACT_FIELDS: tuple[str, ...] = (
     "kev",
     "open",
     "details_unavailable",
+    "restricted",
 )
 #: What ``issue_fields`` takes.
 _ISSUE_FIELDS: tuple[str, ...] = ("full", "compact")
@@ -228,7 +229,9 @@ def _cve_rollups(rendered: dict[str, Any], issues: list[dict[str, Any]]) -> dict
     ``cve_ids`` and ``kev_cve_ids`` list the CVEs of the open rows, ``lead_cve`` the KEV one
     first then the highest CVSS and EPSS. When the signal facts were not read
     (``members_facts_unread``) and nothing restricts the aggregates, ``kev_count``,
-    ``max_cvss`` and ``max_epss`` are filled from the rows and ``facts_from`` says so.
+    ``max_cvss`` and ``max_epss`` stay null (#2225: unknown, never a number read as exact)
+    and the rows answer ``rows_kev_count``, ``rows_max_cvss`` and ``rows_max_epss``,
+    lower bounds of the case that ``rows_facts`` names as such.
     """
     open_rows = [r for r in issues if r.get("open") and r.get("cve")]
     cves = sorted({str(r["cve"]) for r in open_rows})
@@ -244,10 +247,13 @@ def _cve_rollups(rendered: dict[str, Any], issues: list[dict[str, Any]]) -> dict
         epss = [float(r["epss"]) for r in open_rows if r.get("epss") is not None]
         out.update(
             {
-                "kev_count": len(kev) if rendered.get("kev_count") is None else rendered["kev_count"],
-                "max_cvss": (max(cvss) if cvss else None) if rendered.get("max_cvss") is None else rendered["max_cvss"],
-                "max_epss": (max(epss) if epss else None) if rendered.get("max_epss") is None else rendered["max_epss"],
-                "facts_from": "the issue rows (the signal facts are unread)",
+                "rows_kev_count": len(kev),
+                "rows_max_cvss": max(cvss) if cvss else None,
+                "rows_max_epss": max(epss) if epss else None,
+                "rows_facts": (
+                    "lower bounds from the open issue rows; the unread signal CVEs may raise them, "
+                    "so kev_count, max_cvss and max_epss stay unknown"
+                ),
             }
         )
     return out

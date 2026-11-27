@@ -106,15 +106,25 @@ def test_the_rollups_list_every_kev_cve_on_page_one_whatever_the_cut() -> None:
     first = tools_module._bounded_issues(rendered, limit=1)
     assert first["kev_cve_ids"] == kev and len(first["cve_ids"]) == 320
     assert first["lead_cve"] in kev
-    # The signal facts are unread: the case-level facts come from the rows, and say so.
-    assert first["kev_count"] == len(kev) and first["max_cvss"] == max(r["cvss"] for r in rendered["issues"])
-    assert first["facts_from"]
+    # The signal facts are unread: the case facts stay unknown (#2225), the rows answer lower bounds.
+    assert first["kev_count"] is None and first["max_cvss"] is None and first["max_epss"] is None
+    assert first["rows_kev_count"] == len(kev)
+    assert first["rows_max_cvss"] == max(r["cvss"] for r in rendered["issues"])
+    assert "lower bounds" in first["rows_facts"]
 
 
 def test_restricted_aggregates_stay_null() -> None:
     rendered = {**_heavy_case(n=10), "aggregates_restricted": True}
     page = tools_module._bounded_issues(rendered)
-    assert page["kev_count"] is None and page["max_cvss"] is None and "facts_from" not in page
+    assert page["kev_count"] is None and page["max_cvss"] is None
+    assert "rows_kev_count" not in page and "rows_facts" not in page
+
+
+def test_a_restricted_row_stays_restricted_in_a_compact_page() -> None:
+    rendered = _heavy_case(n=3)
+    rendered["issues"].append({"restricted": True})
+    page = tools_module._bounded_issues(rendered, fields="compact")
+    assert page["issues"][-1] == {"restricted": True}
 
 
 def test_the_page_options_are_checked() -> None:
