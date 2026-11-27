@@ -444,9 +444,14 @@ export function FleetSetupWizard({
                 <li className="flex flex-wrap items-center gap-2" role="alert" data-testid="fleet-setup-review-unchosen">
                   <span className="w-40 shrink-0 font-medium">{t_i18n("Acts as")}</span>
                   <span className="text-feedback-error-primary">{t_i18n("Nobody chosen for {modules}", { modules: formatList(unchosenModules, intl.locale) })}</span>
-                  <Button variant="link" onClick={() => moveTo("automations")} data-testid="fleet-setup-review-unchosen-fix">
+                  <button
+                    type="button"
+                    className="rounded-sm text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                    onClick={() => moveTo("automations")}
+                    data-testid="fleet-setup-review-unchosen-fix"
+                  >
                     {t_i18n("Choose who XTM One acts as")}
-                  </Button>
+                  </button>
                 </li>
               )}
               {hasSlots && (
