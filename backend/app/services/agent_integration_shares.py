@@ -123,15 +123,94 @@ def add_grant(integration: Any, key: str, agent_id: str) -> bool:
     return True
 
 
+def drop_stale_origins(integration: Any) -> None:
+    """Forget the origin of every grant a hand edit of *integration* removed.
+
+    Called after a share write that is not an agent share (the integration's
+    REST update and ``update_integration``): a grant removed by hand loses its
+    agent origin, so one given again by hand later is the owner's and no agent
+    unshare takes it away.
+    """
+    origins = getattr(integration, "agent_share_origins", None) or {}
+    kept = {k: v for k, v in origins.items() if has_grant(integration, k)}
+    if kept != origins:
+        integration.agent_share_origins = kept or None
+
+
+def _stored_tier(integration: Any, key: str) -> str | None:
+    """The tier *integration* stores for *key*, None when it names no grant."""
+    if not has_grant(integration, key):
+        return None
+    kind, ident = _split(key)
+    column = "shared_user_permissions" if kind == "user" else "shared_group_permissions"
+    perms: dict[str | None, str] = {
+        _canonical(k): str(v) for k, v in (getattr(integration, column, None) or {}).items()
+    }
+    return perms.get(ident, GRANT_TIER)
+
+
+def _snapshot(integration: Any) -> dict[str, Any]:
+    return {name: getattr(integration, name, None) for name in _GRANT_COLUMNS}
+
+
+_GRANT_COLUMNS = (
+    "shared_user_ids",
+    "shared_user_permissions",
+    "shared_group_ids",
+    "shared_group_permissions",
+    "agent_share_origins",
+)
+
+
+async def _normalise(db: AsyncSession, integration: Any, before: dict[str, Any]) -> str | None:
+    """Write the grants through the shared normalizers; the refusal, or None.
+
+    :func:`app.api.v1.helpers.normalize_user_grants` and
+    :func:`~app.api.v1.helpers.normalize_group_grants` are the one writer of
+    the share columns: canonical ids, newly added people active and locked
+    ``FOR KEY SHARE``, groups existing. On a refusal the integration is put
+    back as it was (*before*, from :func:`_snapshot`) and the reason returned.
+    """
+    from fastapi import HTTPException
+
+    from app.api.v1.helpers import normalize_group_grants, normalize_user_grants
+
+    try:
+        integration.shared_user_ids, integration.shared_user_permissions = await normalize_user_grants(
+            db,
+            integration.shared_user_ids,
+            integration.shared_user_permissions,
+            existing_ids=before["shared_user_ids"],
+            owner_id=getattr(integration, "user_id", None),
+        )
+        integration.shared_group_ids, integration.shared_group_permissions = await normalize_group_grants(
+            db,
+            integration.shared_group_ids,
+            integration.shared_group_permissions,
+            existing_ids=before["shared_group_ids"],
+        )
+    except HTTPException as exc:
+        for name, value in before.items():
+            setattr(integration, name, value)
+        return str(exc.detail)
+    return None
+
+
 def remove_grant(integration: Any, key: str, agent_id: str) -> bool:
     """Withdraw *agent_id*'s share of *key*; True when the grant itself was removed.
 
     Only a grant whose origin names the agent is touched, and it goes only when
-    no other agent's share keeps it.
+    no other agent's share keeps it. A grant the owner changed by hand since
+    (raised above "use", or removed then given again) is the owner's now: its
+    origin is dropped and the grant stays.
     """
     origins = dict(getattr(integration, "agent_share_origins", None) or {})
     holders = [a for a in origins.get(key, []) if a != agent_id]
     if key not in origins or len(holders) == len(origins[key]):
+        return False
+    if _stored_tier(integration, key) != GRANT_TIER:
+        origins.pop(key)
+        integration.agent_share_origins = origins or None
         return False
     if holders:
         origins[key] = holders
@@ -232,8 +311,13 @@ async def sync_agent_integration_shares(
             for key in sorted(after):
                 add_grant(integ, key, agent_id)
             continue
+        stored = _snapshot(integ)
         granted = [k for k in sorted(after) if add_grant(integ, k, agent_id)]
         withdrawn = [k for k in tracked if remove_grant(integ, k, agent_id)]
+        refused = await _normalise(db, integ, stored) if granted else None
+        if refused:
+            result.not_shared.append((integ.name, refused))
+            continue
         if granted:
             result.shared.append(integ.name)
         if withdrawn:
@@ -275,7 +359,8 @@ async def agent_share_drift(db: AsyncSession, agents: Iterable[Any]) -> list[Dri
     A person is judged by the visibility rule itself
     (:func:`app.services.integration_credentials.users_seeing_integration`: own,
     a person grant, one of their groups); a group by a grant naming it. A
-    company-managed integration is everyone's and never drifts.
+    company-managed integration never drifts: everyone uses it, or an
+    administrator narrowed it on purpose, and the safe fix never touches it.
     """
     from app.services.integration_credentials import users_seeing_integration
 
@@ -290,7 +375,7 @@ async def agent_share_drift(db: AsyncSession, agents: Iterable[Any]) -> list[Dri
     if not wanted:
         return drift
     for integ in await _load_integrations(db, wanted):
-        if getattr(integ, "is_company_managed", False) and not getattr(integ, "access_restricted", False):
+        if getattr(integ, "is_company_managed", False):
             continue
         iid = str(integ.id)
         people = {k for _a, keys in wanted[iid] for k in keys if k.startswith("user:")}
@@ -331,9 +416,12 @@ async def grant_missing_shares(
             continue
         if not can_manage_as(_canonical_uuid(actor_id), actor_is_admin, integ, actor_group_ids):
             continue
+        stored = _snapshot(integ)
         changed = 0
         for d in by_integration[str(integ.id)]:
             changed += int(add_grant(integ, d.principal, d.agent_id))
+        if changed and await _normalise(db, integ, stored):
+            continue
         if changed and is_per_user(integ):
             await db.flush()
             await prune_unreachable_user_credentials(db, integ)

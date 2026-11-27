@@ -154,6 +154,7 @@ from app.models.custom_integration_definition import CustomIntegrationDefinition
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
 from app.models.user import User
+from app.services.agent_integration_shares import drop_stale_origins
 from app.services.audit import log_audit
 from app.services.email import is_email_configured
 from app.services.hitl_whitelist import platform_approval_by_provider
@@ -3056,6 +3057,8 @@ async def update_integration(
     # the final grant state: sharing with Alice is a share like sharing with
     # Alice's group.
     await apply_user_share_fields(db, integration, body, partial=True)
+    # A grant removed by hand is no agent's any more (#2715).
+    drop_stale_origins(integration)
 
     # One decision over the fully-updated state, whichever field above shared
     # the integration: a shared OAuth integration shares its

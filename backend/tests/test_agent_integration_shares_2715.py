@@ -29,6 +29,7 @@ OWNER = str(uuid.uuid4())
 OTHER_OWNER = str(uuid.uuid4())
 PERSON = str(uuid.uuid4())
 GROUP = str(uuid.uuid4())
+INACTIVE = str(uuid.uuid4())
 
 
 def _integration(owner: str = OWNER, **kw: Any) -> Any:
@@ -81,6 +82,32 @@ class _Db:
 
     async def flush(self) -> None:
         pass
+
+
+NORMALISED: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def _normalizers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared normalizers, as pass-through: the fake session holds no user."""
+    from app.api.v1 import helpers
+
+    NORMALISED.clear()
+
+    async def _users(_db: Any, ids: Any, perms: Any, **_kw: Any) -> tuple[Any, Any]:
+        NORMALISED.append("users")
+        if ids and INACTIVE in ids:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=422, detail="Cannot share with unknown or inactive user(s): " + INACTIVE)
+        return ids, perms
+
+    async def _groups(_db: Any, ids: Any, perms: Any, **_kw: Any) -> tuple[Any, Any]:
+        NORMALISED.append("groups")
+        return ids, perms
+
+    monkeypatch.setattr(helpers, "normalize_user_grants", _users)
+    monkeypatch.setattr(helpers, "normalize_group_grants", _groups)
 
 
 async def _sync(db: Any, agent: Any, before: set[str], actor: str = OWNER, admin: bool = False) -> shares.ShareSync:
@@ -189,6 +216,60 @@ async def test_the_drift_names_a_group_without_access_and_clears_after_the_safe_
     assert await shares.agent_share_drift(db, [agent]) == []
     # The fix records the origin, so the agent's unshare takes it back.
     assert integ.agent_share_origins == {f"group:{GROUP}": [str(agent.id)]}
+
+
+@pytest.mark.asyncio
+async def test_a_grant_raised_by_hand_since_is_kept_by_the_unshare() -> None:
+    integ = _integration()
+    agent = _agent(integ)
+    db = _Db([integ])
+    agent.shared_user_ids = [PERSON]
+    await _sync(db, agent, set())
+    integ.shared_user_permissions = {PERSON: "config"}  # raised by the owner
+    agent.shared_user_ids = None
+    result = await _sync(db, agent, {f"user:{PERSON}"})
+    assert not result.removed
+    assert integ.shared_user_permissions == {PERSON: "config"}
+    assert integ.agent_share_origins is None
+
+
+@pytest.mark.asyncio
+async def test_a_grant_removed_then_given_again_by_hand_is_kept_by_the_unshare() -> None:
+    integ = _integration()
+    agent = _agent(integ)
+    db = _Db([integ])
+    agent.shared_user_ids = [PERSON]
+    await _sync(db, agent, set())
+    integ.shared_user_ids, integ.shared_user_permissions = None, None  # removed by hand
+    shares.drop_stale_origins(integ)
+    assert integ.agent_share_origins is None
+    integ.shared_user_ids, integ.shared_user_permissions = [PERSON], {PERSON: "read_only"}  # given again
+    agent.shared_user_ids = None
+    result = await _sync(db, agent, {f"user:{PERSON}"})
+    assert not result.removed and integ.shared_user_ids == [PERSON]
+
+
+@pytest.mark.asyncio
+async def test_grants_go_through_the_shared_normalizers_and_a_refusal_is_named() -> None:
+    integ = _integration(name="Jira")
+    agent = _agent(integ)
+    agent.shared_user_ids = [PERSON]
+    await _sync(_Db([integ]), agent, set())
+    assert NORMALISED == ["users", "groups"]
+    other = _integration(name="Grafana")
+    agent = _agent(other)
+    agent.shared_user_ids = [INACTIVE]
+    result = await _sync(_Db([other]), agent, set())
+    assert not result.shared
+    assert [name for name, _why in result.not_shared] == ["Grafana"]
+    assert other.shared_user_ids is None and other.agent_share_origins is None
+
+
+@pytest.mark.asyncio
+async def test_a_restricted_company_managed_integration_reports_no_drift() -> None:
+    integ = _integration(is_company_managed=True, access_restricted=True)
+    agent = _agent(integ, groups=[GROUP])
+    assert await shares.agent_share_drift(_Db([integ]), [agent]) == []  # type: ignore[arg-type]
 
 
 def test_update_integration_declares_person_level_sharing() -> None:

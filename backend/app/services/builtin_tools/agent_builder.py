@@ -13411,6 +13411,10 @@ def build_agent_builder_tool(
                     return f"Integration not updated - {people_err}"
                 if people_updated and "sharing" not in updated:
                     updated.append("sharing")
+            if "sharing" in updated:
+                from app.services.agent_integration_shares import drop_stale_origins
+
+                drop_stale_origins(integ)
 
             # Company-managed status: the REST update's write, through the
             # same helper (grants cleared going company-managed, agents of
