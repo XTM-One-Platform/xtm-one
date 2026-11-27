@@ -32,7 +32,7 @@ _TABLE = "browser_profiles"
 _COLUMN = "apps"
 
 
-def _column_exists(conn) -> bool:
+def _column_exists(conn: sa.engine.Connection) -> bool:
     return bool(
         conn.execute(
             sa.text(

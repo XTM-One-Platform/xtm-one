@@ -206,7 +206,7 @@ def clean_apps(value: Any) -> list[dict[str, str]]:
     return apps
 
 
-def app_hosts(apps: list | None) -> list[str]:
+def app_hosts(apps: Iterable[dict[str, Any]] | None) -> list[str]:
     """The hosts of a profile's declared applications."""
     return normalise_hosts([str(app.get("url") or "") for app in apps or [] if isinstance(app, dict)])
 
@@ -527,16 +527,16 @@ class ProfileSnapshot:
     #: (``BrowserProfile.signs_in_unattended``).
     signs_in_unattended: bool | None = None
     #: The other applications the session signs in (``BrowserProfile.apps``), ``{name, url}`` each.
-    apps: tuple[dict, ...] = ()
+    apps: tuple[dict[str, str], ...] = ()
 
-    def app_for(self, url: str | None) -> dict | None:
+    def app_for(self, url: str | None) -> dict[str, str] | None:
         """The declared application whose host *url* is on, or ``None`` (the profile's own application, or none)."""
         host = (urlparse(url or "").hostname or "").lower().rstrip(".")
         if not host or host == self.app_host:
             return None
         return next((app for app in self.apps if app_hosts([app]) == [host]), None)
 
-    def as_app(self, app: dict) -> ProfileSnapshot:
+    def as_app(self, app: dict[str, str]) -> ProfileSnapshot:
         """This session judged as the declared application *app*: its URL is the start URL, nothing to sign in at.
 
         The profile signs in at its own application; another one opens signed in through the same

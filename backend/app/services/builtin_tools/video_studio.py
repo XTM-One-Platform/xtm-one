@@ -1439,7 +1439,7 @@ def build_video_studio_tools(
         )
         return _result(f"{verdict}{per_app}{renewal}{no_password}\n{json.dumps(check)}")
 
-    async def _check_apps(snap: Any) -> list[dict]:
+    async def _check_apps(snap: Any) -> list[dict[str, Any]]:
         """Each application the profile declares, opened in its saved session: signed in or not, per application."""
         from app.services.browser_profiles import signin
 
@@ -1448,11 +1448,21 @@ def build_video_studio_tools(
             try:
                 probe = await asyncio.wait_for(signin.probe_profile(snap.as_app(app)), timeout=_wait_budget(60.0))
             except TimeoutError:
-                checked.append({"name": app["name"], "url": app["url"], "authenticated": False, "landed_url": "", "reason": "timed out"})
+                checked.append(
+                    {
+                        "name": app["name"],
+                        "url": app["url"],
+                        "authenticated": False,
+                        "landed_url": "",
+                        "reason": "timed out",
+                    }
+                )
                 continue
             except Exception as exc:
                 reason = format_exception_message(exc)
-                checked.append({"name": app["name"], "url": app["url"], "authenticated": False, "landed_url": "", "reason": reason})
+                checked.append(
+                    {"name": app["name"], "url": app["url"], "authenticated": False, "landed_url": "", "reason": reason}
+                )
                 continue
             checked.append(
                 {
