@@ -22165,5 +22165,9 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Les déclencheurs, playbooks et notificateurs laissés dans OpenCTI par les anciennes automatisations Threat response. Les sources Signals les remplacent ; rien d'autre n'est modifié.",
   "Reading OpenCTI...": "Lecture d'OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Aucune intégration OpenCTI n'a de source Signals activée.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}",
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
 }

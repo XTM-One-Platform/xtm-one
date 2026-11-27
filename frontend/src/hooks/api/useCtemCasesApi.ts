@@ -60,7 +60,12 @@ export interface CtemCaseSummary {
   aggregates_restricted?: boolean;
   aggregates_reason?: string | null;
   asset_count: number | null;
+  /** The primary assets a manual or OpenCRQ link proves (#2396). */
   primary_asset_count: number | null;
+  /** The primary assets only an inventory rule, a name match or the evidence infers (#2396, #2635). */
+  inferred_primary_asset_count?: number | null;
+  /** No asset and no primary asset matched: the kinds of scope source that opened the case (#2635), else []. */
+  opened_on?: string[];
   kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;

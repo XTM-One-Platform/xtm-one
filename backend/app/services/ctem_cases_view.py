@@ -223,6 +223,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out["assets"] = list(issue.assets)
     out["primary_assets"] = list(issue.primary_assets)
     out["inferred_primary_assets"] = list(issue.inferred_primary_assets)
+    out["scope_kinds"] = list(issue.scope_kinds)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -232,6 +233,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data["assets"] = tuple(data.get("assets") or ())
     data["primary_assets"] = tuple(data.get("primary_assets") or ())
     data["inferred_primary_assets"] = tuple(data.get("inferred_primary_assets") or ())
+    data["scope_kinds"] = tuple(data.get("scope_kinds") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
@@ -979,6 +981,9 @@ def _visible_issue(
         if issue is not None:  # #2396: the primary assets its gate decision reached, which the case counts
             out["primary_assets"] = list(issue.primary_assets)
             out["primary_asset_links"] = primary_asset_links(issue)
+            # #2635: the inventory assets its gate decision matched, so the case lists and counts them.
+            if issue.assets:
+                out["assets"] = list(issue.assets)
         return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
@@ -1199,6 +1204,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "primary_asset_count": agg["primary_asset_count"],
         "inferred_primary_asset_count": agg["inferred_primary_asset_count"],
         "primary_asset_basis": PRIMARY_ASSET_BASIS,
+        # #2635: no asset and no primary asset matched: what put the case in scope (scope source kinds).
+        "opened_on": agg["opened_on"],
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],
