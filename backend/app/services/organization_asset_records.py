@@ -2010,9 +2010,11 @@ async def changes(
         query = query.where(chg.at >= since)
     if before_id is not None:
         query = query.where(chg.id < before_id)
-    rows = (await db.execute(query.order_by(chg.id.desc()).limit(max(1, min(limit, 200))))).scalars()
-    return [
-        {
+    rows = list((await db.execute(query.order_by(chg.id.desc()).limit(max(1, min(limit, 200))))).scalars())
+    assets = await _record_assets(db, organization_id, {c.entity_id for c in rows if c.entity == "record"})
+    out: list[dict[str, Any]] = []
+    for c in rows:
+        row: dict[str, Any] = {
             "id": c.id,
             "entity": c.entity,
             "entity_id": str(c.entity_id),
@@ -2023,8 +2025,46 @@ async def changes(
             "after": c.after,
             "at": c.at.isoformat(),
         }
-        for c in rows
-    ]
+        if c.entity == "record":
+            row.update(assets.get(c.entity_id) or _gone_record_asset(c.before))
+        out.append(row)
+    return out
+
+
+async def _record_assets(
+    db: AsyncSession, organization_id: uuid.UUID, record_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """The merged asset each live record belongs to: ``asset_id``, ``asset_name``, ``source``, ``external_id`` (#2702)."""
+    if not record_ids:
+        return {}
+    rec = OrganizationAssetRecord
+    rows = (
+        await db.execute(
+            select(rec.id, rec.asset_id, rec.name, rec.source, rec.external_id, OrganizationAsset.name)
+            .outerjoin(OrganizationAsset, OrganizationAsset.id == rec.asset_id)
+            .where(rec.organization_id == organization_id, rec.id.in_(list(record_ids)))
+        )
+    ).all()
+    return {
+        record_id: {
+            "asset_id": str(asset_id) if asset_id is not None else None,
+            "asset_name": asset_name or record_name,
+            "source": source,
+            "external_id": external_id,
+        }
+        for record_id, asset_id, record_name, source, external_id, asset_name in rows
+    }
+
+
+def _gone_record_asset(before: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What a deleted record's change still names: no asset id, the name, source and external id it had."""
+    held = before or {}
+    return {
+        "asset_id": None,
+        "asset_name": held.get("name"),
+        "source": held.get("source"),
+        "external_id": held.get("external_id"),
+    }
 
 
 async def restore(

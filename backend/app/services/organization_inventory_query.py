@@ -220,10 +220,18 @@ async def _resolve_asset(db: AsyncSession, organization_id: uuid.UUID, ref: str)
     text = str(ref or "").strip()
     if not text:
         return None
-    try:
-        return uuid.UUID(text)
-    except ValueError:
-        pass
+    if (exact := store.record_reference(text)) is not None:
+        # An asset id answers as is; a source record id (what the change log names) answers its merged asset (#2702).
+        is_asset = (
+            await db.execute(
+                select(OrganizationAsset.id).where(
+                    OrganizationAsset.organization_id == organization_id, OrganizationAsset.id == exact
+                )
+            )
+        ).first()
+        if is_asset is not None:
+            return exact
+        return (await store.assets_of_records(db, organization_id, [exact])).get(exact)
     prefix = store.id_prefix(text)
     if prefix is not None:
         rows = (
@@ -259,7 +267,7 @@ async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: 
 
 
 async def lookup_assets(db: AsyncSession, organization_id: uuid.UUID, values: Sequence[str]) -> dict[str, Any]:
-    """The asset each value names (hostname, FQDN, IP, MAC, ``source:external_id`` or exact name)."""
+    """The asset each value names (hostname, FQDN, IP, MAC, ``source:external_id``, a record id or exact name)."""
     asked = [str(v).strip() for v in values if str(v or "").strip()][: store.MAX_LOOKUP_KEYS]
     found = await store.find_assets_by_identifier(db, organization_id, asked)
     return {"found": found, "not_found": [v for v in asked if v not in found]}
