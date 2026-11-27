@@ -32,7 +32,7 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
@@ -955,6 +955,37 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
     return [r for r in rows if view.sees(_member_id(r))]
 
 
+#: The ``signal_type`` filter value of a case no signal member of which the viewer sees (split, legacy).
+NO_SIGNAL_TYPE = "none"
+
+
+def signal_types(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> list[str]:
+    """The trigger paths of the signals behind *case* this viewer sees, sorted (#2556).
+
+    Read from ``view.signal_details``, already read for the row: no query. A visible
+    signal member whose details were unreadable falls back to the case's own trigger
+    path; a case with no visible signal member answers ``[]`` (the "No signal" value).
+    """
+    members = [_member_id(r) for r in rows if r.source == SIGNAL_SOURCE and view.sees(_member_id(r))]
+    if not members:
+        return []
+    paths = {str(path) for m in members if (path := (view.signal_details.get(m) or {}).get("trigger_path"))}
+    if not paths and case.trigger_path:
+        paths.add(case.trigger_path)
+    return sorted(paths)
+
+
+def matches_signal_types(row: dict[str, Any], wanted: Iterable[str]) -> bool:
+    """Whether a list row carries one of *wanted* (a trigger path, or ``none`` for no signal; OR inside the filter)."""
+    wanted = set(wanted)
+    if not wanted:
+        return True
+    types = row.get("signal_types") or []
+    if not types:
+        return NO_SIGNAL_TYPE in wanted
+    return any(t in wanted for t in types)
+
+
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
@@ -1085,6 +1116,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "updated_at": case.updated_at.isoformat() if case.updated_at else None,
         # The signals that opened or joined the case, counted on every member, seen or not.
         "signal_count": sum(1 for r in rows if r.source == SIGNAL_SOURCE),
+        # The trigger paths of the signals this viewer sees (#2556): the list's Signal type filter.
+        "signal_types": signal_types(case, rows, view),
         "details_unavailable": unavailable,
         # The loop (#857): ids, enums, dates and references only, the same for every viewer.
         "trigger_path": case.trigger_path,
@@ -1531,6 +1564,7 @@ def list_for_viewer(
     priority: str | None = None,
     asset: str | None = None,
     primary_asset: str | None = None,
+    signal_type: Iterable[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -1541,6 +1575,9 @@ def list_for_viewer(
     (case-insensitive), the counts included: the cases on one asset.
     *primary_asset* keeps the cases one of whose visible issues reaches that
     primary asset (#1980 S2): the primary asset page's cases.
+    *signal_type* keeps the cases one of whose visible signals has one of those
+    trigger paths, ``none`` the cases with no visible signal (#2556); like *state*,
+    it narrows the page, not the counts by state.
     """
     if asset and asset.strip():
         cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
@@ -1556,6 +1593,8 @@ def list_for_viewer(
         rows = [r for r in rows if r["owner_user_id"] == owner_user_id]
     if priority:
         rows = [r for r in rows if r["priority"] == priority]
+    if signal_type:
+        rows = [r for r in rows if matches_signal_types(r, signal_type)]
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts
