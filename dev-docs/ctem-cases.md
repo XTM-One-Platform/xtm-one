@@ -824,6 +824,14 @@ then the existing AI assessment and facts grid unchanged.
   route (or routed to a fallback before an asset group or the profile changed), one `owner` event each, no
   platform event, no agent run; a case where a person ever set or cleared the owner is never touched. A team
   (platform group) as owner is a follow-up.
+- **Why this owner (#2571)**: the `owner` event's evidence also carries `basis`, the routing reason as data
+  (`ctem_case_owner.basis_of`): `{kind: asset_group, name, assets, affected}`, `{kind: primary_asset, name}`,
+  `{kind: default}`, `{kind: decider, source: decide_group | administrator, candidates}` or `{kind: kept}`; an
+  event written before it is read from its reason, and a person's change answers `{kind: person}`. The case read
+  answers it as `owner_basis` and each contributor's asset group as `group`. The case header draws an info button
+  next to the owner (`ctem/CaseOwnerWhy.tsx`) that words the basis in the reader's language, never the stored
+  sentence, lists the other asset group owners by name, and on a fallback says to set owners on the asset groups
+  in Inventory.
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.

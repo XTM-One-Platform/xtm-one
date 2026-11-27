@@ -22096,5 +22096,19 @@
   "Also signs in": "ほかにサインインするアプリ",
   "Also signs in: {names}": "ほかにサインイン: {names}",
   "{name} - {url}": "{name} - {url}",
-  "Enter an http or https address with a host, for example https://app.example.com/.": "ホストを含む http または https のアドレスを入力してください (例: https://app.example.com/)。"
+  "Enter an http or https address with a host, for example https://app.example.com/.": "ホストを含む http または https のアドレスを入力してください (例: https://app.example.com/)。",
+  "Why this owner": "この担当者の理由",
+  "Also involved": "その他の関係者",
+  "A person you cannot see": "表示できないユーザー",
+  "{name}, owner of the asset group {group}": "{name}（資産グループ {group} の担当者）",
+  "Set an owner on the asset groups in Inventory to route cases to the teams that fix them.": "インベントリの資産グループに担当者を設定すると、ケースは修正するチームに割り当てられます。",
+  "Owner of the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "資産グループ {group} の担当者です。影響を受ける{affected, plural, other {#件の資産}}のうち {assets} 件を含みます。",
+  "Owner of the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "資産グループ {group} の担当者です。影響を受ける{assets, plural, other {#件の資産}}を含みます。",
+  "Accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "ケースが及ぶ主要資産 {name} の責任者です。影響を受ける資産グループに担当者がいません。",
+  "No asset group or primary asset owner was found: the instance default owner.": "資産グループまたは主要資産の担当者が見つかりません。インスタンスの既定の担当者です。",
+  "No asset group or primary asset owner was found: a member of a group that decides CTEM.": "資産グループまたは主要資産の担当者が見つかりません。CTEM を決定するグループのメンバーです。",
+  "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "資産グループまたは主要資産の担当者が見つかりません。CTEM を決定するグループがないため、管理者です。",
+  "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "アカウント作成順で{count, plural, other {#人の候補}}の最初の人です。",
+  "No owner was found: the current owner is kept.": "担当者が見つかりません。現在の担当者を維持します。",
+  "Set by a person.": "ユーザーが設定しました。"
 }

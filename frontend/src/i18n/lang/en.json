@@ -22096,5 +22096,19 @@
   "Also signs in": "Also signs in",
   "Also signs in: {names}": "Also signs in: {names}",
   "{name} - {url}": "{name} - {url}",
-  "Enter an http or https address with a host, for example https://app.example.com/.": "Enter an http or https address with a host, for example https://app.example.com/."
+  "Enter an http or https address with a host, for example https://app.example.com/.": "Enter an http or https address with a host, for example https://app.example.com/.",
+  "Why this owner": "Why this owner",
+  "Also involved": "Also involved",
+  "A person you cannot see": "A person you cannot see",
+  "{name}, owner of the asset group {group}": "{name}, owner of the asset group {group}",
+  "Set an owner on the asset groups in Inventory to route cases to the teams that fix them.": "Set an owner on the asset groups in Inventory to route cases to the teams that fix them.",
+  "Owner of the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "Owner of the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.",
+  "Owner of the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "Owner of the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.",
+  "Accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "Accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.",
+  "No asset group or primary asset owner was found: the instance default owner.": "No asset group or primary asset owner was found: the instance default owner.",
+  "No asset group or primary asset owner was found: a member of a group that decides CTEM.": "No asset group or primary asset owner was found: a member of a group that decides CTEM.",
+  "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.",
+  "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.",
+  "No owner was found: the current owner is kept.": "No owner was found: the current owner is kept.",
+  "Set by a person.": "Set by a person."
 }

@@ -22096,5 +22096,19 @@
   "Also signs in": "Connecte aussi à",
   "Also signs in: {names}": "Connecte aussi à : {names}",
   "{name} - {url}": "{name} - {url}",
-  "Enter an http or https address with a host, for example https://app.example.com/.": "Saisissez une adresse http ou https avec un hôte, par exemple https://app.example.com/."
+  "Enter an http or https address with a host, for example https://app.example.com/.": "Saisissez une adresse http ou https avec un hôte, par exemple https://app.example.com/.",
+  "Why this owner": "Pourquoi ce responsable",
+  "Also involved": "Également concernés",
+  "A person you cannot see": "Une personne que vous ne pouvez pas voir",
+  "{name}, owner of the asset group {group}": "{name}, responsable du groupe d'actifs {group}",
+  "Set an owner on the asset groups in Inventory to route cases to the teams that fix them.": "Définissez un responsable sur les groupes d'actifs dans l'inventaire pour router les cas vers les équipes qui les corrigent.",
+  "Owner of the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "Responsable du groupe d'actifs {group}, qui contient {assets} des {affected, plural, one {# actif concerné} other {# actifs concernés}}.",
+  "Owner of the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "Responsable du groupe d'actifs {group}, qui contient {assets, plural, one {# actif concerné} other {# actifs concernés}}.",
+  "Accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "Responsable de l'actif principal {name}, que le cas atteint. Aucun groupe d'actifs concerné n'a de responsable.",
+  "No asset group or primary asset owner was found: the instance default owner.": "Aucun responsable de groupe d'actifs ou d'actif principal trouvé : le responsable par défaut de l'instance.",
+  "No asset group or primary asset owner was found: a member of a group that decides CTEM.": "Aucun responsable de groupe d'actifs ou d'actif principal trouvé : un membre d'un groupe qui décide en CTEM.",
+  "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "Aucun responsable de groupe d'actifs ou d'actif principal trouvé : un administrateur, car aucun groupe ne décide en CTEM.",
+  "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "Le premier des {count, plural, one {# candidat} other {# candidats}} par date de création du compte.",
+  "No owner was found: the current owner is kept.": "Aucun responsable trouvé : le responsable actuel est conservé.",
+  "Set by a person.": "Défini par une personne."
 }

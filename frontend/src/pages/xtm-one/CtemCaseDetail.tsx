@@ -89,6 +89,7 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
+import { CaseOwnerWhy } from "./ctem/CaseOwnerWhy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, CaseToValidateChip } from "./ctem/cases-shared";
 import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entity-page-header";
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
@@ -314,6 +315,8 @@ export default function CtemCaseDetail() {
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
     if (kase?.owner_user_id) ids.add(kase.owner_user_id);
+    // The other asset group owners the owner explanation names (#2571).
+    for (const c of kase?.owner_contributors ?? []) if (isUserId(c.user_id)) ids.add(c.user_id);
     for (const e of kase?.history ?? []) {
       if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
       // A gate answered by a person names them by id in its reason.
@@ -776,7 +779,10 @@ export default function CtemCaseDetail() {
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseToValidateChip unverified={kase.version_unverified} />
-            <CaseOwner name={ownerName} />
+            <span className="flex min-w-0 items-center gap-1">
+              <CaseOwner name={ownerName} />
+              <CaseOwnerWhy basis={kase.owner_basis} contributors={kase.owner_contributors} personName={personName} />
+            </span>
             <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />
             <CaseTicketChip tickets={kase.tickets} ticketing={kase.ticketing} showNotConnected />
