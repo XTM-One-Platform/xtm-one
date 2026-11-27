@@ -219,6 +219,30 @@ def database_unavailable_reason(exc: BaseException) -> str | None:
     return None
 
 
+#: What a tool answers when no pooled connection became free in time (#2561): busy, never a failure.
+POOL_BUSY_ANSWER = "Busy: the platform is under load; nothing was read. Retry this call in a few seconds."
+#: The same for a write that failed before its commit.
+POOL_BUSY_WRITE_ANSWER = "Busy: the platform is under load; nothing was changed. Retry this call in a few seconds."
+
+
+def is_pool_timeout(exc: BaseException) -> bool:
+    """Whether *exc* is a pool checkout that timed out (``sqlalchemy.exc.TimeoutError``, #2561).
+
+    Reads the error, the driver error a wrapper carries (``.orig``) and its causes,
+    as ``ctem_cases_store.is_lock_wait`` does, so a pool timeout re-raised by a
+    service is still found. A statement or lock timeout is not one: those are
+    PostgreSQL errors, answered by their own paths.
+    """
+    seen: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in seen and len(seen) < 5:
+        seen.append(current)
+        if isinstance(current, sa_exc.TimeoutError):
+            return True
+        current = getattr(current, "orig", None) or current.__cause__
+    return False
+
+
 async def database_unavailable_handler(conn: HTTPConnection, exc: Exception) -> Response | None:
     """503 + ``Retry-After`` for a request the database could not serve; anything else re-raised."""
     reason = database_unavailable_reason(exc)

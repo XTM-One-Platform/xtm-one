@@ -34,8 +34,6 @@ from typing import Any
 
 from app.tools.base import ToolDefinition
 
-from ._shared import logger
-
 #: History events one ``get_ctem_case`` answer carries (as the case tools).
 _HISTORY_PAGE = 20
 
@@ -186,9 +184,11 @@ def build_case_read(*, user_id: str, agent_id: str) -> tuple[ToolDefinition, Any
                         "scope": await case_signal_scope(db, scope, view.signals, case_id=case.id),
                     }
                 )
-        except Exception:
-            logger.warning("CTEM case read failed", exc_info=True)
-            return "Error: the case could not be read right now. Say so; do not guess it."
+        except Exception as exc:
+            from .ctem_cases import CASE_READ_FAILED, case_read_failed
+
+            # A pool timeout answers busy, retry (#2561); any other failure the generic answer.
+            return case_read_failed(exc, "CTEM case read failed", CASE_READ_FAILED)
 
     by_name = {d.name: d for d in case_defs}
     definition = dataclasses.replace(

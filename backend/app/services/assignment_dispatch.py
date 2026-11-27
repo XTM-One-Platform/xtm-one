@@ -158,19 +158,38 @@ def default_concurrency_cap() -> int:
     return _clamp_cap(settings.assignment_max_concurrent_runs)
 
 
-def assignment_concurrency_cap(trigger_config: dict | None) -> int:
+#: Share of the request pool (``DB_POOL_SIZE + DB_MAX_OVERFLOW``) one platform-event
+#: assignment may hold by default (#2561): one run per this many connections.
+PLATFORM_EVENT_POOL_SHARE_DIVISOR = 5
+
+
+def platform_event_default_cap() -> int:
+    """The default cap of a ``platform_event`` assignment, bounded by the request pool (#2561).
+
+    ``min(ASSIGNMENT_MAX_CONCURRENT_RUNS, max(1, (DB_POOL_SIZE + DB_MAX_OVERFLOW) // 5))``:
+    a burst of one event (100 cases opened in an hour) never lets one
+    assignment's runs take the connections every request needs.
+    """
+    pool = int(settings.db_pool_size) + int(settings.db_max_overflow)
+    return min(default_concurrency_cap(), _clamp_cap(max(1, pool // PLATFORM_EVENT_POOL_SHARE_DIVISOR)))
+
+
+def assignment_concurrency_cap(trigger_config: dict[str, Any] | None, trigger_type: str | None = None) -> int:
     """How many runs of one assignment may be in flight at once.
 
     ``trigger_config.max_concurrent_runs`` when it is a whole number, else
-    ``ASSIGNMENT_MAX_CONCURRENT_RUNS``; clamped to 1..``MAX_CONCURRENCY_CAP``.
+    ``ASSIGNMENT_MAX_CONCURRENT_RUNS`` (for a ``platform_event`` trigger, that
+    bounded by the pool: :func:`platform_event_default_cap`); clamped to
+    1..``MAX_CONCURRENCY_CAP``.
     """
+    default = platform_event_default_cap() if trigger_type == "platform_event" else default_concurrency_cap()
     raw = (trigger_config or {}).get(MAX_CONCURRENT_RUNS_KEY) if isinstance(trigger_config, dict) else None
     if raw is None or isinstance(raw, bool):
-        return default_concurrency_cap()
+        return default
     try:
         return _clamp_cap(int(raw))
     except (TypeError, ValueError):
-        return default_concurrency_cap()
+        return default
 
 
 #: Ceiling of a ``work_item`` inbox's ``max_concurrent_runs``: each
@@ -321,7 +340,7 @@ def concurrency_cap(trigger_type: str | None, trigger_config: dict | None) -> in
     """An assignment's concurrency cap, read the way its trigger type reads it."""
     if trigger_type == "work_item":
         return work_item_inbox_cap(trigger_config)
-    return assignment_concurrency_cap(trigger_config)
+    return assignment_concurrency_cap(trigger_config, trigger_type)
 
 
 def ordering_key_path(trigger_config: dict | None) -> str | None:

@@ -152,12 +152,35 @@ def _write_failed(exc: BaseException, case_id: object, what: str) -> str:
     """
     from sqlalchemy.exc import SQLAlchemyError
 
+    from app.core.db_availability import POOL_BUSY_WRITE_ANSWER, is_pool_timeout
     from app.services import ctem_cases_store as store
 
     if store.is_lock_wait(exc):
         return store.busy_answer(case_id)
+    # No pooled connection became free in time (#2561): busy too, never a failure.
+    if is_pool_timeout(exc):
+        return POOL_BUSY_WRITE_ANSWER
     kind = "a database error" if isinstance(exc, SQLAlchemyError) else "an unexpected error"
     return f"Error: {what} right now ({kind}). Say so; nothing was changed."
+
+
+#: What a case read answers on a failure that is not a pool timeout.
+CASE_READ_FAILED = "Error: the case could not be read right now. Say so; do not guess it."
+
+
+def case_read_failed(exc: BaseException, log_line: str, generic: str) -> str:
+    """The answer of a case read that failed (#2561): busy on a pool timeout, else *generic*.
+
+    A pool checkout timeout is transient load, so the agent is told to retry
+    rather than report a failure; anything else keeps the generic answer.
+    """
+    from app.core.db_availability import POOL_BUSY_ANSWER, is_pool_timeout
+
+    if is_pool_timeout(exc):
+        logger.info("%s: no pooled connection became free in time", log_line)
+        return POOL_BUSY_ANSWER
+    logger.warning(log_line, exc_info=True)
+    return generic
 
 
 def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
@@ -418,9 +441,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "scope": scope_block,
                     }
                 )
-        except Exception:
-            logger.warning("CTEM case list failed", exc_info=True)
-            return "Error: the cases could not be read right now. Say so; do not guess them."
+        except Exception as exc:
+            return case_read_failed(
+                exc, "CTEM case list failed", "Error: the cases could not be read right now. Say so; do not guess them."
+            )
 
     async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
@@ -484,9 +508,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "CTEM case read of %s took %.1f s (%d issues)", wanted, elapsed, rendered["issues_total"]
                     )
                 return _dump({**rendered, "running_versions": running, "version_match": match})
-        except Exception:
-            logger.warning("CTEM case read failed", exc_info=True)
-            return "Error: the case could not be read right now. Say so; do not guess it."
+        except Exception as exc:
+            return case_read_failed(exc, "CTEM case read failed", CASE_READ_FAILED)
 
     async def _create(title: str = "", issue_ids: list[str] | None = None, reason: str = "") -> str:
         from app.core.database import async_session
