@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CtemDecisionRecord } from "@/hooks/api/useCtemSignalsApi";
-import { decisionInputs, decisionSentence, listSummary, lookupRetry, nextStepSentence } from "./DecisionReason";
+import { decisionInputs, decisionSentence, gateStep, listSummary, lookupRetry, nextStepSentence, signalStateLabel } from "./DecisionReason";
 
 const t = (id: string) => id;
 
@@ -86,12 +86,18 @@ describe("Lookup retry", () => {
     expect(lookupRetry(record)).toBe("scheduled");
     expect(decisionSentence(record, t)).toBe("OpenCTI software not read, will retry");
     expect(nextStepSentence(record, t)).toBe("Decided again once OpenCTI answers");
+    // UX r1 B1 on #2548: the chip and the trace Decision say the state, not Unmatched.
+    expect(signalStateLabel("to_validate", record)).toBe("Waiting for OpenCTI");
+    expect(gateStep("scope", "stopped", "to_validate", record, t)?.decision).toBe("Waiting for OpenCTI");
   });
 
   it("keeps the failure visible once retries stopped", () => {
     const record = decision({ incomplete: true, lookup_retry: "exhausted", lookup_attempts: 6, reconcile: { assets: [], cve_lookup: "no OpenCTI access" } });
     expect(decisionSentence(record, t)).toBe("OpenCTI software not read, retries stopped");
-    expect(nextStepSentence(record, t)).toBe("Recheck it once OpenCTI answers");
+    // UX r1 B2 on #2548: the next step names the list action by its label.
+    expect(nextStepSentence(record, t)).toBe("Once OpenCTI answers, select it and choose Check again");
+    expect(signalStateLabel("to_validate", record)).toBe("OpenCTI not read");
+    expect(gateStep("scope", "stopped", "to_validate", record, t)?.decision).toBe("OpenCTI not read");
   });
 
   it("reads a record of an older build from its failed lookup", () => {
@@ -103,5 +109,6 @@ describe("Lookup retry", () => {
     const record = decision({ incomplete: false, reconcile: { assets: [], threat_lookup: "read" } });
     expect(lookupRetry(record)).toBeNull();
     expect(decisionSentence(record, t)).toBe("Not in your inventory");
+    expect(signalStateLabel("to_validate", record)).toBe("Unmatched");
   });
 });

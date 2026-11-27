@@ -159,9 +159,23 @@ function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): str
   return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
 }
 
-function SignalStateChip({ state }: { state: CtemSignalState }) {
+/**
+ * The English label of a signal's state, read with its decision: an Unmatched decision
+ * taken while OpenCTI did not answer is not final and says so (UX r1 B1 on #2548):
+ * "Waiting for OpenCTI" while a retry is scheduled, "OpenCTI not read" once retries stopped.
+ */
+export function signalStateLabel(state: CtemSignalState, decision: CtemDecisionRecord | null | undefined): string {
+  if (state === "to_validate") {
+    const lookup = lookupRetry(decision);
+    if (lookup === "scheduled") return "Waiting for OpenCTI";
+    if (lookup === "exhausted") return "OpenCTI not read";
+  }
+  return SIGNAL_STATE_LABEL[state] ?? state;
+}
+
+function SignalStateChip({ state, decision }: { state: CtemSignalState; decision?: CtemDecisionRecord | null }) {
   const { t_i18n } = useFormatter();
-  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(SIGNAL_STATE_LABEL[state] ?? state)}</ToneBadge>;
+  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(signalStateLabel(state, decision))}</ToneBadge>;
 }
 
 /**
@@ -211,7 +225,8 @@ export function nextStepSentence(
 ): string | null {
   if (!decision?.reason_code || decision.outcome === "case") return null;
   if (lookupRetry(decision) === "scheduled") return t_i18n("Decided again once OpenCTI answers");
-  if (lookupRetry(decision) === "exhausted") return t_i18n("Recheck it once OpenCTI answers");
+  // The control is named by its label in the signals list (UX r1 B2 on #2548).
+  if (lookupRetry(decision) === "exhausted") return t_i18n("Once OpenCTI answers, select it and choose Check again");
   const sentence = NEXT_STEPS[decision.reason_code];
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
@@ -246,7 +261,7 @@ export function gateStep(
   if (stage !== "reconcile" && stage !== "scope") return null;
   if (status === "stopped" || status === "parked") {
     return {
-      decision: t_i18n(SIGNAL_STATE_LABEL[state] ?? state),
+      decision: t_i18n(signalStateLabel(state, decision)),
       reason: decisionSentence(decision, t_i18n, formatDay),
       next: nextStepSentence(decision, t_i18n, formatDay),
     };
@@ -513,7 +528,7 @@ export function DecisionReason({
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
-        <SignalStateChip state={state} />
+        <SignalStateChip state={state} decision={decision} />
         {/* Cut with an ellipsis and named whole by the tooltip in a narrow column (UX r1 B2 on #1272). */}
         <TruncatedText text={decisionSentence(decision, t_i18n, formatDay)} className="content-compact text-default-secondary" />
       </div>
