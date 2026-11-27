@@ -21908,6 +21908,7 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Solo las personas y los grupos de abajo pueden verlo. El acceso a un agente integrado no se puede cambiar.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible para todos en la plataforma. El acceso a un agente integrado no se puede restringir.",
   "Partners read this agent's fleet": "Los socios leen la flota de este agente",
+  "Partners read fleets and runs as the owner": "Los socios leen flotas y ejecuciones como el propietario",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tarea de un socio también lee la flota de origen de este agente, su salud, sus elementos de trabajo y la versión en ejecución. Nunca otra flota, nunca una escritura.",
   "Could not change the partner fleet reads": "No se pudo cambiar la lectura de la flota por los socios",
   "Defender XDR alert raised": "Alerta de Defender XDR generada",
@@ -22163,5 +22164,6 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Los disparadores, playbooks y notificadores que las antiguas automatizaciones Threat response dejaron en OpenCTI. Las fuentes Signals los sustituyen; no se toca nada más.",
   "Reading OpenCTI...": "Leyendo OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Ninguna integración de OpenCTI tiene una fuente Signals activada.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "La tarea de un socio lee las flotas, su estado y las ejecuciones que el propietario puede leer, y la versión en ejecución. Nunca una escritura; cada lectura se audita con la tarea del socio."
 }

@@ -21908,6 +21908,7 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Seuls les personnes et groupes ci-dessous peuvent le voir. L'accès à un agent intégré ne peut pas être modifié.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible par tous les utilisateurs de la plateforme. L'accès à un agent intégré ne peut pas être restreint.",
   "Partners read this agent's fleet": "Les partenaires lisent la flotte de cet agent",
+  "Partners read fleets and runs as the owner": "Les partenaires lisent les flottes et les exécutions comme le propriétaire",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tâche d'un partenaire lit aussi la flotte d'origine de cet agent, sa santé, ses éléments de travail et la version en service. Jamais une autre flotte, jamais une écriture.",
   "Could not change the partner fleet reads": "Impossible de modifier la lecture de la flotte par les partenaires",
   "Defender XDR alert raised": "Alerte Defender XDR levée",
@@ -22163,5 +22164,6 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Les déclencheurs, playbooks et notificateurs laissés dans OpenCTI par les anciennes automatisations Threat response. Les sources Signals les remplacent ; rien d'autre n'est modifié.",
   "Reading OpenCTI...": "Lecture d'OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Aucune intégration OpenCTI n'a de source Signals activée.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "La tâche d'un partenaire lit les flottes, leur santé et les exécutions que le propriétaire peut lire, et la version en service. Jamais d'écriture ; chaque lecture est auditée avec la tâche du partenaire."
 }
