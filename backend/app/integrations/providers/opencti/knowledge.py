@@ -300,6 +300,37 @@ def _offers_file_download(surface: tuple[ToolDefinition, ...] | list[ToolDefinit
     return any(tool.name == _DOWNLOAD_FILE_TOOL for tool in surface or ())
 
 
+#: The most objects one ``get_opencti_container_full`` page holds; the rest
+#: of a larger container is read by cursor (``after``).
+_CONTAINER_PAGE_MAX = 1000
+
+
+def _container_page_summary(
+    *,
+    shown: int,
+    total: int,
+    first: int,
+    after: str | None,
+    next_cursor: str | None,
+    type_filter: list[str] | None,
+) -> str:
+    """The closing line of a ``get_opencti_container_full`` page.
+
+    It names the next call when OpenCTI has more objects: the cursor, and
+    a larger ``limit`` only while the limit is under the page maximum, so
+    the hint never asks for a value the tool refuses.
+    """
+    scope = f" of type {', '.join(type_filter)}" if type_filter else ""
+    if next_cursor is None:
+        if not after and shown >= total:
+            return f"\nTotal objects{scope}: {total}"
+        if after:
+            return f"\n(Showing {shown} objects{scope}: the last page of {total}.)"
+        return f"\n(Showing {shown} of {total} objects{scope}.)"
+    larger = f", limit={_CONTAINER_PAGE_MAX} for fewer pages" if first < _CONTAINER_PAGE_MAX else ""
+    return f'\n(Showing {shown} of {total} objects{scope}. Next page: call again with after="{next_cursor}"{larger}.)'
+
+
 def _container_full_description(file_download_offered: bool) -> str:
     """The ``get_opencti_container_full`` description for a surface."""
     files = (
@@ -2538,6 +2569,35 @@ def register_knowledge(
             "value": [_custom_field_edit_value(definition, values)],
         }, None
 
+    async def _stored_updated_at(client: Any, root: str, object_id: str) -> str | None:
+        """The object's ``updated_at`` before a field patch, None when it cannot be read.
+
+        OpenCTI drops an edit input equal to the stored value and returns the
+        element untouched (``rebuildAndMergeInputFromExistingData``), so an
+        ``updated_at`` that did not move across the patch is a write that
+        changed nothing.
+        """
+        data, err = await _graphql(
+            client,
+            base_url,
+            headers,
+            f"query StoredUpdatedAt($id: String!) {{ {root}(id: $id) {{ updated_at }} }}",
+            {"id": object_id},
+        )
+        if err:
+            return None
+        stamp = (data.get(root) or {}).get("updated_at")
+        return str(stamp) if stamp else None
+
+    def _patch_answer(key: str, target: str, before: str | None, result: dict[str, Any]) -> str:
+        """``Updated`` for a write that moved ``updated_at``, ``No change`` for one OpenCTI skipped."""
+        after = result.get("updated_at")
+        if before and after and str(after) == before:
+            return (
+                f"No change: '{key}' already holds this value on {target}. OpenCTI skipped the write; do not repeat it."
+            )
+        return f"Updated '{key}' on {target}."
+
     async def update_opencti_field(
         entity_id: str,
         key: str,
@@ -2547,24 +2607,15 @@ def register_knowledge(
         query = """
         mutation UpdateSDO($id: ID!, $input: [EditInput]!) {
             stixDomainObjectEdit(id: $id) {
-                fieldPatch(input: $input) { id entity_type }
+                fieldPatch(input: $input) { id entity_type updated_at }
             }
         }
         """
         edit, refused = await _field_edit("stixCoreObject", entity_id, key, value)
         if refused:
             return refused
-        draft = headers.get("opencti-draft-id", "")
-        if not key.startswith(_CUSTOM_FIELD_PREFIX) and await _field_holds(entity_id, key, value):
-            # A patch to the stored value is a no-op on the OpenCTI side: say
-            # so, never "Updated", or the agent retries a write that does
-            # nothing (#2686).
-            return (
-                f"Unchanged: '{key}' on {entity_id} already holds this value"
-                + (f" in draft {draft}" if draft else "")
-                + ". Nothing was written."
-            )
         async with _client(headers, timeout=30) as client:
+            before = await _stored_updated_at(client, "stixCoreObject", entity_id)
             data, err = await _graphql(
                 client,
                 base_url,
@@ -2577,44 +2628,9 @@ def register_knowledge(
             )
         if err:
             return err
-        result = data.get("stixDomainObjectEdit", {}).get("fieldPatch", {})
-        return (
-            f"Updated '{key}' on [{result.get('entity_type', '?')}] {result.get('id', entity_id)}"
-            + (f" (recorded in draft {draft})" if draft else "")
-            + "."
-        )
-
-    async def _field_holds(object_id: str, key: str, value: Any) -> bool:
-        """True when the object's STIX form already holds *value* under *key*.
-
-        Best effort: an unreadable object or a key its STIX form does not carry
-        answers False, and the patch is sent as before.
-        """
-        async with _client(headers, timeout=30) as client:
-            data, err = await _graphql(
-                client,
-                base_url,
-                headers,
-                "query FieldValue($id: String!) { stixCoreObject(id: $id) { toStix } }",
-                {"id": object_id},
-            )
-        if err:
-            return False
-        raw = (data.get("stixCoreObject") or {}).get("toStix")
-        if not isinstance(raw, str):
-            return False
-        try:
-            stix = json.loads(raw)
-        except ValueError:
-            return False
-        if not isinstance(stix, dict) or key not in stix:
-            return False
-        stored = stix[key]
-        if isinstance(value, list) or isinstance(stored, list):
-            wanted = value if isinstance(value, list) else [value]
-            held = stored if isinstance(stored, list) else [stored]
-            return [str(v) for v in held] == [str(v) for v in wanted]
-        return str(stored) == str(value)
+        result = (data.get("stixDomainObjectEdit") or {}).get("fieldPatch") or {}
+        target = f"[{result.get('entity_type', '?')}] {result.get('id', entity_id)}"
+        return _patch_answer(key, target, before, result)
 
     # ── 11. Update relationship field(s) ─────────────────────────────
 
@@ -2627,7 +2643,7 @@ def register_knowledge(
         query = """
         mutation UpdateRel($id: ID!, $input: [EditInput]!) {
             stixCoreRelationshipEdit(id: $id) {
-                fieldPatch(input: $input) { id entity_type }
+                fieldPatch(input: $input) { id entity_type updated_at }
             }
         }
         """
@@ -2635,6 +2651,7 @@ def register_knowledge(
         if refused:
             return refused
         async with _client(headers, timeout=30) as client:
+            before = await _stored_updated_at(client, "stixCoreRelationship", relationship_id)
             data, err = await _graphql(
                 client,
                 base_url,
@@ -2647,8 +2664,8 @@ def register_knowledge(
             )
         if err:
             return err
-        result = data.get("stixCoreRelationshipEdit", {}).get("fieldPatch", {})
-        return f"Updated '{key}' on relationship {result.get('id', relationship_id)}."
+        result = (data.get("stixCoreRelationshipEdit") or {}).get("fieldPatch") or {}
+        return _patch_answer(key, f"relationship {result.get('id', relationship_id)}", before, result)
 
     # ── 12. Delete entity ────────────────────────────────────────────
 
@@ -3186,13 +3203,22 @@ def register_knowledge(
     async def get_opencti_container_full(
         container_id: str,
         limit: int = 200,
+        after: str | None = None,
+        types: list[str] | None = None,
+        compact: bool = False,
     ) -> str | ToolResult:
         """Fetch a container and resolve all entities and relationships.
 
+        The objects come by page of at most ``_CONTAINER_PAGE_MAX``: ``after``
+        (the cursor a previous page named) reads the next one, ``types``
+        keeps the objects of those types, ``compact`` drops the object
+        descriptions so a whole page fits the tool-output cap.
+
         The container also comes back structured: its own scalar fields, the
         object count, ``entities`` and ``relationships`` (each record as
-        OpenCTI answered it), so a ``to_workset`` JSON split on either list
-        stores one workset item per object.
+        OpenCTI answered it), ``next_cursor`` and ``has_more``, so a
+        ``to_workset`` JSON split on either list stores one workset item per
+        object.
         """
         # Compact from/to resolution for relationship endpoints
         ft = (
@@ -3276,9 +3302,9 @@ def register_knowledge(
         )
         # Objects connection block (reused for each container type)
         oc = (
-            "objects(first: $first) { edges { node { "
+            "objects(first: $first, after: $after, types: $types) { edges { node { "
             + nd
-            + " } } pageInfo { globalCount } }"
+            + " } } pageInfo { endCursor hasNextPage globalCount } }"
         )
         # Author resolution
         cb = (
@@ -3292,7 +3318,7 @@ def register_knowledge(
             "} } }"
         )
         query = (
-            "query ContainerFull($id: String!, $first: Int) { "
+            "query ContainerFull($id: String!, $first: Int, $after: ID, $types: [String]) { "
             "stixDomainObject(id: $id) { "
             "id entity_type standard_id created_at "
             "... on Report { name description report_types published "
@@ -3316,14 +3342,20 @@ def register_knowledge(
             + cb + " " + fi + " " + oc + " } "
             "} }"
         )
-        first = min(max(limit, 1), 1000)
+        first = min(max(limit, 1), _CONTAINER_PAGE_MAX)
+        type_filter = [t for t in (types or []) if t] or None
         async with _client(headers, timeout=60) as client:
             data, err = await _graphql(
                 client,
                 base_url,
                 headers,
                 query,
-                {"id": container_id, "first": first},
+                {
+                    "id": container_id,
+                    "first": first,
+                    "after": after or None,
+                    "types": type_filter,
+                },
             )
         if err:
             return err
@@ -3412,11 +3444,10 @@ def register_knowledge(
         if not isinstance(obj_data, dict):
             obj_data = {}
         edges = obj_data.get("edges", [])
-        total = (obj_data.get("pageInfo") or {}).get(
-            "globalCount",
-            len(edges),
-        )
+        page_info = obj_data.get("pageInfo") or {}
+        total = page_info.get("globalCount", len(edges))
         nodes = [e["node"] for e in edges if e.get("node")]
+        next_cursor = page_info.get("endCursor") if page_info.get("hasNextPage") else None
 
         # Separate entities from relationships
         ent_list: list[dict] = []
@@ -3453,7 +3484,7 @@ def register_knowledge(
                 or ent.get("content")
                 or ""
             )
-            if ed:
+            if ed and not compact:
                 ed = clip_text(ed, LISTING_CONTAINER_ITEM_TEXT_LIMIT, _entity_read_call(ent))
                 line += f"\n    Description: {ed}"
             lines.append(line)
@@ -3473,7 +3504,7 @@ def register_knowledge(
             )
             line += f"\n    From: [{fr.get('entity_type', '?')}] {fn} (ID: {fr.get('id', 'N/A')})"
             line += f"\n    To: [{to.get('entity_type', '?')}] {tn} (ID: {to.get('id', 'N/A')})"
-            if rel.get("description"):
+            if rel.get("description") and not compact:
                 rd = clip_text(
                     rel["description"],
                     LISTING_CONTAINER_ITEM_TEXT_LIMIT,
@@ -3483,12 +3514,16 @@ def register_knowledge(
             lines.append(line)
 
         # ── Summary ──
-        if total > first:
-            lines.append(
-                f"\n(Showing {len(nodes)} of {total} objects. Increase limit to see more.)"
+        lines.append(
+            _container_page_summary(
+                shown=len(nodes),
+                total=total,
+                first=first,
+                after=after,
+                next_cursor=next_cursor,
+                type_filter=type_filter,
             )
-        else:
-            lines.append(f"\nTotal objects: {total}")
+        )
         structured = {
             "id": sdo_id,
             "entity_type": etype,
@@ -3496,6 +3531,8 @@ def register_knowledge(
             "standard_id": sdo.get("standard_id"),
             "total_objects": total,
             "shown_objects": len(nodes),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
             "entities": ent_list,
             "relationships": rel_list,
         }
@@ -6875,6 +6912,20 @@ def register_knowledge(
                             "Start with small limits and increase only if needed."
                         ),
                         "default": 200,
+                    },
+                    "after": {
+                        "type": "string",
+                        "description": "Cursor of the next page, as the previous answer names it.",
+                    },
+                    "types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Only the objects of these types, e.g. ["Indicator"].',
+                    },
+                    "compact": {
+                        "type": "boolean",
+                        "description": "Leave out object descriptions (type, name, ID only).",
+                        "default": False,
                     },
                 },
                 "required": ["container_id"],
