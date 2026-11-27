@@ -548,18 +548,20 @@ async def resync_aikido(
     return out
 
 
-def github_organizations(integration: Any) -> list[str]:
+async def github_organizations(integration: Any) -> list[str]:
     """The organization logins a GitHub integration is installed on, read per installation.
 
     Each installation's login and account type are read together (the binding metadata
     sorts the two lists apart, so pairing them would mismatch); ``[]`` on any read failure.
+    The column may hold vault references, so it is read through ``reveal_json_field``.
     """
-    from app.services.integration_tools import _decrypt_dict
+    from app.services.vault import reveal_json_field
 
     if not getattr(integration, "extra_config_enc", None):
         return []
     try:
-        installs = _decrypt_dict(integration.extra_config_enc).get("installations") or []
+        extra = await reveal_json_field(integration, "extra_config_enc")
+        installs = (extra.get("installations") if isinstance(extra, dict) else None) or []
     except Exception:
         logger.info("CTEM resync: GitHub installations not read", exc_info=True)
         return []
@@ -593,7 +595,7 @@ async def resync_github(
         out["skipped"] = "no GitHub integration is visible to the administrator who started the purge"
         return out
     for integration in integrations:
-        logins = github_organizations(integration)
+        logins = await github_organizations(integration)
         if not logins:
             out["errors"].append(f"GitHub {integration.name}: installed on no organization")
             continue

@@ -288,16 +288,20 @@ def test_an_inside_item_outside_the_window_is_left_and_an_undated_one_kept() -> 
     assert resync._in_window({"created_at": "2020-01-01T00:00:00Z"}, None, ("created_at",))
 
 
-def test_github_organizations_pair_each_login_with_its_own_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A user account sorted before an organization never takes its place."""
+async def test_github_organizations_pair_each_login_with_its_own_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A user account sorted before an organization never takes its place; the column is read through the vault."""
     installs = [
         {"account_login": "zeta-org", "account_type": "Organization"},
         {"account_login": "alice", "account_type": "User"},
         {"account_login": "zeta-org", "account_type": "Organization"},
     ]
-    monkeypatch.setattr("app.services.integration_tools._decrypt_dict", lambda _enc: {"installations": installs})
-    assert resync.github_organizations(SimpleNamespace(extra_config_enc="x")) == ["zeta-org"]
-    assert resync.github_organizations(SimpleNamespace(extra_config_enc=None)) == []
+
+    async def _reveal(_entity: object, _column: str, **_kw: object) -> dict[str, object]:
+        return {"installations": installs}
+
+    monkeypatch.setattr("app.services.vault.reveal_json_field", _reveal)
+    assert await resync.github_organizations(SimpleNamespace(extra_config_enc="x")) == ["zeta-org"]
+    assert await resync.github_organizations(SimpleNamespace(extra_config_enc=None)) == []
 
 
 def test_a_pass_says_why_it_raised_nothing() -> None:
