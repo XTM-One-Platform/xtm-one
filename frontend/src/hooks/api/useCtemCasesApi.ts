@@ -59,6 +59,9 @@ export interface CtemCaseSummary {
   members_without_details?: number;
   aggregates_restricted?: boolean;
   aggregates_reason?: string | null;
+  /** Open signal members whose CVE facts (KEV, CVSS, EPSS) were not read for this reader (#2225): then the fact aggregates are null, unknown, never 0. */
+  members_facts_unread?: number;
+  facts_reason?: string | null;
   asset_count: number | null;
   primary_asset_count: number | null;
   kev_count: number | null;
@@ -784,6 +787,8 @@ const CTEM_CASE_ENRICHMENT_POLL_MS = 3_000;
  * a case created less than {@link CTEM_CASE_ENRICHMENT_WINDOW_MS} ago with no
  * `max_cvss` yet is read every {@link CTEM_CASE_ENRICHMENT_POLL_MS}, so the CVSS
  * written after the creation shows without a reload. Any other case is not polled.
+ * A case whose CVE facts are unread for this reader is polled the same way, inside the
+ * same bounded window: the enrichment can still make them readable (UX round 1 on #2645, B1).
  */
 export function ctemCasePollInterval(
   data: Pick<CtemCaseSummary, "max_cvss" | "created_at" | "aggregates_restricted"> | undefined,
@@ -794,6 +799,28 @@ export function ctemCasePollInterval(
   const created = Date.parse(data.created_at);
   if (Number.isNaN(created)) return false;
   return now - created < CTEM_CASE_ENRICHMENT_WINDOW_MS ? CTEM_CASE_ENRICHMENT_POLL_MS : false;
+}
+
+/** Why the Max CVSS card shows what it shows (UX round 1 on #2645, B1). */
+export type CtemCaseMaxCvssBasis = "case" | "visible_issues" | "restricted" | "facts_unread" | "not_scored";
+
+/**
+ * The Max CVSS of the case page, always in agreement with the issues drawn on the same page
+ * (UX round 1 on #2645, B1): the case's own `max_cvss` when it is written; else, with readable
+ * aggregates, the highest CVSS of the open visible issues; else "-" with its reason. "Not scored"
+ * is said only when no open visible issue carries a CVSS and no member's CVE facts are unread.
+ */
+export function ctemCaseMaxCvss(
+  kase: Pick<CtemCaseDetail, "max_cvss" | "aggregates_restricted" | "members_facts_unread" | "issues">,
+): { value: number | null; basis: CtemCaseMaxCvssBasis } {
+  if (kase.max_cvss != null) return { value: kase.max_cvss, basis: "case" };
+  if (kase.aggregates_restricted === true) return { value: null, basis: "restricted" };
+  const visible = (kase.issues ?? [])
+    .filter((issue): issue is CtemCaseVisibleIssue => !isRestrictedIssue(issue) && issue.open)
+    .map((issue) => issue.cvss)
+    .filter((cvss): cvss is number => typeof cvss === "number");
+  if (visible.length > 0) return { value: Math.max(...visible), basis: "visible_issues" };
+  return { value: null, basis: (kase.members_facts_unread ?? 0) > 0 ? "facts_unread" : "not_scored" };
 }
 
 export function useCtemCase(id: string | undefined) {

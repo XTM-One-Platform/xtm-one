@@ -9,10 +9,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { QueryClient } from "@tanstack/react-query";
 import { renderWithProviders } from "@/testing/providers";
-import { CTEM_CASE_LIST_KEY, ctemCasePollInterval } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_CASE_LIST_KEY, ctemCaseMaxCvss, ctemCasePollInterval } from "@/hooks/api/useCtemCasesApi";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false, noCvss: false }));
+const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false, noCvss: false, issuesCvss: true, factsUnread: 0 }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -87,13 +87,13 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
                   max_cvss: null,
                   max_epss: null,
                 }
-              : { restricted_count: 1, asset_count: 2, primary_asset_count: 1, kev_count: 1, max_cvss: state.noCvss ? null : 9.8, max_epss: 0.94 }),
+              : { restricted_count: 1, asset_count: 2, primary_asset_count: 1, kev_count: 1, max_cvss: state.noCvss ? null : 9.8, max_epss: 0.94, members_facts_unread: state.factsUnread }),
             first_seen_at: null,
             details_unavailable: [],
             keys: [],
             issues: [
-              { source: "opencti", external_id: "v1", open: true, name: "CVE-2024-0001", cve: "CVE-2024-0001", cvss: 9.8, epss: 0.94, kev: true, assets: ["a"] },
-              { source: "openaev", external_id: "f2", open: true, name: "CVE-2024-0002", cve: "CVE-2024-0002", cvss: 7.5, epss: 0.1, kev: false, assets: ["b"] },
+              { source: "opencti", external_id: "v1", open: true, name: "CVE-2024-0001", cve: "CVE-2024-0001", cvss: state.issuesCvss ? 9.8 : null, epss: 0.94, kev: true, assets: ["a"] },
+              { source: "openaev", external_id: "f2", open: true, name: "CVE-2024-0002", cve: "CVE-2024-0002", cvss: state.issuesCvss ? 7.5 : null, epss: 0.1, kev: false, assets: ["b"] },
               { restricted: true },
             ],
             history: [{ at: "2026-11-13T10:00:00Z", actor: "system", kind: "issue_added", issue: "Restricted", from: null, to: null, reason: null, evidence: null }],
@@ -178,9 +178,34 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
   it("says a case whose visible issues carry no CVSS is not scored (#2630)", () => {
     state.notFound = false;
     state.noCvss = true;
+    state.issuesCvss = false;
     page();
     expect(screen.getByText("Not scored")).toBeInTheDocument();
     state.noCvss = false;
+    state.issuesCvss = true;
+  });
+
+  it("agrees with the issues table when the case has no max_cvss but a visible issue has a CVSS (UX round 1 on #2645, B1)", () => {
+    state.notFound = false;
+    state.noCvss = true;
+    page();
+    expect(screen.queryByText("Not scored")).not.toBeInTheDocument();
+    // KEV and Max CVSS both carry the scope subtitle: the card reads the issues' 9.8, never "-".
+    expect(screen.getAllByText("On the issues you can see")).toHaveLength(2);
+    state.noCvss = false;
+  });
+
+  it("says the CVSS is unknown, never not scored, when CVE facts are unread for the reader (UX round 1 on #2645, B1)", () => {
+    state.notFound = false;
+    state.noCvss = true;
+    state.issuesCvss = false;
+    state.factsUnread = 4;
+    page();
+    expect(screen.queryByText("Not scored")).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown: CVE facts not readable for you")).toBeInTheDocument();
+    state.noCvss = false;
+    state.issuesCvss = true;
+    state.factsUnread = 0;
   });
 
   it("keeps the scope subtitle when the case has a CVSS (#2630)", () => {
@@ -193,6 +218,35 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
     state.notFound = true;
     page();
     expect(screen.getByText("Case not found")).toBeInTheDocument();
+  });
+});
+
+describe("ctemCaseMaxCvss: the Max CVSS card agrees with the issues of the page (UX round 1 on #2645, B1)", () => {
+  const open = (cvss: number | null) => ({ source: "opencti", external_id: `v${cvss}`, open: true, cvss });
+
+  it("reads the case's own max_cvss first", () => {
+    expect(ctemCaseMaxCvss({ max_cvss: 8.8, issues: [open(9.8)] })).toEqual({ value: 8.8, basis: "case" });
+  });
+
+  it("falls back to the highest CVSS of the open visible issues", () => {
+    const closed = { source: "opencti", external_id: "c", open: false, cvss: 10 };
+    expect(ctemCaseMaxCvss({ max_cvss: null, issues: [open(9.3), open(9.8), closed, { restricted: true }], members_facts_unread: 4 })).toEqual({
+      value: 9.8,
+      basis: "visible_issues",
+    });
+  });
+
+  it("says unknown when facts are unread and no visible issue carries a CVSS", () => {
+    expect(ctemCaseMaxCvss({ max_cvss: null, issues: [open(null)], members_facts_unread: 1 })).toEqual({ value: null, basis: "facts_unread" });
+  });
+
+  it("says not scored only with no visible CVSS and nothing unread", () => {
+    expect(ctemCaseMaxCvss({ max_cvss: null, issues: [open(null)], members_facts_unread: 0 })).toEqual({ value: null, basis: "not_scored" });
+    expect(ctemCaseMaxCvss({ max_cvss: null, issues: [] })).toEqual({ value: null, basis: "not_scored" });
+  });
+
+  it("keeps restricted aggregates unknown, never computed from the visible issues", () => {
+    expect(ctemCaseMaxCvss({ max_cvss: null, aggregates_restricted: true, issues: [open(9.8)] })).toEqual({ value: null, basis: "restricted" });
   });
 });
 
