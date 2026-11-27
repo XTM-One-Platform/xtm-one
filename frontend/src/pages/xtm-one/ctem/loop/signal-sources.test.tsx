@@ -16,6 +16,7 @@ import {
   connectedCount,
   connectedProviders,
   pathStatus,
+  sourceIntegrationNames,
   sourceState,
   splitSources,
 } from "./signal-sources";
@@ -209,6 +210,15 @@ describe("SignalSourcesPanel", () => {
     const connected = connectedProviders(all);
     expect(sourceState(vuln.sources![1], connected)).toBe("not_set_up");
     expect(sourceState(outside.sources![1], connected)).toBe("not_connected");
+    // UX advisory A2 of #2592: the cases recompute names the integrations it reads, never "None".
+    const lines = [
+      { provider: "opencti", kind: "listener", integration_name: "OpenCTI prod" },
+      { provider: "opencti", kind: "pir_playbook", integration_name: "OpenCTI prod" },
+      { provider: "openaev", kind: "listener", integration_name: "OpenAEV" },
+    ];
+    expect(sourceIntegrationNames({ provider: "opencti", kind: "cases_reader" }, lines)).toBe("OpenCTI prod");
+    expect(sourceIntegrationNames({ provider: "opencti", kind: "pir_playbook" }, lines)).toBe("OpenCTI prod");
+    expect(sourceIntegrationNames({ provider: "opencti", kind: "webhook" }, lines)).toBe("");
     expect(splitSources(outside, connected).live.map((s) => s.provider)).toEqual(["shodan"]);
     expect(splitSources(outside, connected).possible.map((s) => s.provider)).toEqual(["gti"]);
     expect(splitSources(vuln, connected).possible).toHaveLength(0);

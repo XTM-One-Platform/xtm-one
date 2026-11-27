@@ -90,6 +90,8 @@ PROVIDER = "openaev"
 PROVISION_KEY = "provision"
 STATE_KEY = "openaev_provisioning"
 NAME_PREFIX = "XTM One"
+#: The last line of every provisioned object's description (#2583.1).
+EDITS_LINE = "Edits are reverted; turn it off in XTM One."
 AUTH_HEADER = "X-OpenAEV-Token"
 RECHECK_SECONDS = 900
 
@@ -165,13 +167,15 @@ def object_description(spec: dict[str, Any], kind: str) -> str:
 
     origin = spec.get("origin") or {}
     lines = [
-        f"Provisioned by XTM One ({settings.base_url.rstrip('/')}); edits are reverted.",
+        f"Provisioned by XTM One ({settings.base_url.rstrip('/')}).",
         f"Fleet: {spec['fleet']}. Path: {spec['purpose']}. Kind: {OBJECT_KINDS[kind]}.",
     ]
     if origin.get("assignment_id"):
         lines.append(f"Assignment: {origin.get('assignment') or 'unnamed'} ({origin['assignment_id']}).")
     if origin.get("source_id"):
         lines.append(f"Signal source: {origin['source_id']}.")
+    # #2583.1: the description ends with what an edit does and where the object is turned off.
+    lines.append(EDITS_LINE)
     return "\n".join(lines)
 
 

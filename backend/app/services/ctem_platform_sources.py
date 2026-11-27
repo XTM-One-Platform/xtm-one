@@ -86,6 +86,13 @@ PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
 )
 
 
+def path_label(path: str) -> str:
+    """The label of a trigger path as the Sources view shows it (``ctem_signals.PATH_CATALOG``)."""
+    from app.services.ctem_signals import PATH_CATALOG
+
+    return PATH_CATALOG.get(path, (path, ""))[0]
+
+
 def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
     """The PIR playbook spec; for *path* (#2436), the playbook of that path alone, over its entity types."""
     from app.services import opencti_trigger_provisioning as prov
@@ -96,7 +103,8 @@ def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
             "provider": "opencti",
             "provision": {
                 "fleet": OBJECT_FLEET,
-                "purpose": f"OpenCTI PIR playbook - {path}" if path else "OpenCTI PIR playbook",
+                # #2583.1: <Path> is the path label the Sources view shows, never its internal key.
+                "purpose": f"OpenCTI PIR playbook - {path_label(path)}" if path else "OpenCTI PIR playbook",
                 "mode": prov.PIR_PLAYBOOK_MODE,
                 "pir_relation": PIR_PATH_RELATIONS.get(path, prov.PIR_FLAGGED),
                 "entity_types": list(PIR_PATHS[path] if path else PIR_PLAYBOOK_ENTITY_TYPES),

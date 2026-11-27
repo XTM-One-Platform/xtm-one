@@ -195,6 +195,8 @@ def test_the_description_names_the_instance_fleet_path_and_assignment():
     assert "Fleet: Threat response. Path: New threats. Kind: Trigger." in text
     assert "Assignment: Watch (a1)." in text
     assert text.startswith("Provisioned by XTM One (http")
+    # #2583.1: the last line says what an edit does and where to turn the object off.
+    assert text.endswith("Edits are reverted; turn it off in XTM One.")
 
 
 @pytest.mark.asyncio
