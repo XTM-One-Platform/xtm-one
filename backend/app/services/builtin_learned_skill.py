@@ -48,6 +48,10 @@ LEARNED_SKILL_MAX_CHARS = 12000
 SECTION_MAX_CHARS = 1500
 #: Upper bound of a section title.
 TITLE_MAX_CHARS = 80
+#: Share of the cap from which an answer tells the agent to consolidate (#2697).
+NEAR_CAP_RATIO = 0.9
+#: Sections a cap refusal lists, largest first, so the refusal stays short.
+_CAP_SECTIONS_LISTED = 10
 
 _EMPTY_BODY = (
     "Lessons this agent learned while working for this organization. "
@@ -57,6 +61,32 @@ _EMPTY_BODY = (
 
 class LessonError(ValueError):
     """A lesson the rules refuse; the message says why."""
+
+
+class LessonCapError(LessonError):
+    """A lesson refused because the whole skill would pass :data:`LEARNED_SKILL_MAX_CHARS` (#2697).
+
+    The message carries what the agent needs to make room in the same turn:
+    the current size, the cap, the characters the lesson needs, the room left
+    and the sections largest first, with the way to consolidate.
+    """
+
+    def __init__(self, *, size: int, needed: int, sections: list[tuple[str, int]]) -> None:
+        self.size = size
+        self.needed = needed
+        self.room = max(0, LEARNED_SKILL_MAX_CHARS - size)
+        self.sections = sections
+        listed = ", ".join(f"{title!r} {chars}" for title, chars in sections[:_CAP_SECTIONS_LISTED])
+        more = len(sections) - _CAP_SECTIONS_LISTED
+        if more > 0:
+            listed += f" and {more} more"
+        super().__init__(
+            f"the skill would pass {LEARNED_SKILL_MAX_CHARS} characters: it holds {size} of "
+            f"{LEARNED_SKILL_MAX_CHARS}, this lesson needs {needed} more, {self.room} are free. "
+            f"Sections, largest first (characters): {listed or 'none'}. "
+            "Make room: merge or shorten sections with mode revise, drop obsolete ones with mode remove, "
+            "then retry"
+        )
 
 
 def agent_tag(agent_id: Any) -> str:
@@ -88,6 +118,22 @@ def _section_spans(body: str) -> list[tuple[str, int, int]]:
         end = heads[i + 1][1] if i + 1 < len(heads) else len(body)
         spans.append((title, start, end))
     return spans
+
+
+def section_sizes(body: str | None) -> list[tuple[str, int]]:
+    """``(title, characters)`` of every ``## `` section of *body*, largest first."""
+    spans = _section_spans(body or "")
+    return sorted(((title, end - start) for title, start, end in spans), key=lambda s: (-s[1], s[0].lower()))
+
+
+def size_report(body: str | None) -> dict[str, Any]:
+    """The size of a learned skill body against the cap: ``size``, ``max_chars``, ``near_cap``."""
+    size = len(body or "")
+    return {
+        "size": size,
+        "max_chars": LEARNED_SKILL_MAX_CHARS,
+        "near_cap": size >= LEARNED_SKILL_MAX_CHARS * NEAR_CAP_RATIO,
+    }
 
 
 def apply_lesson(body: str | None, title: str, text: str, *, mode: str = "append") -> str:
@@ -125,9 +171,7 @@ def apply_lesson(body: str | None, title: str, text: str, *, mode: str = "append
         gap = "\n" if section else ""
         updated = f"{current[:start]}{section}{gap}{current[end:].lstrip()}".rstrip() + "\n"
     if len(updated) > LEARNED_SKILL_MAX_CHARS:
-        raise LessonError(
-            f"the skill would pass {LEARNED_SKILL_MAX_CHARS} characters: revise or remove a section first"
-        )
+        raise LessonCapError(size=len(current), needed=len(updated) - len(current), sections=section_sizes(current))
     return updated
 
 
@@ -204,7 +248,7 @@ async def record_lesson(
     head = _clean_title(title)
     updated = apply_lesson(skill.content, head, text, mode=mode)
     if updated == skill.content:
-        return {"skill_id": str(skill.id), "changed": False}
+        return {"skill_id": str(skill.id), "changed": False, **size_report(updated)}
     skill.content = updated
     message = f"{mode} {head!r}" + (f" (run {run_id})" if run_id else "")
     version = await create_skill_version(db, skill, author_id=author_id, commit_message=message)
@@ -215,4 +259,5 @@ async def record_lesson(
         "version": version.version_number,
         "section": head,
         "mode": mode,
+        **size_report(updated),
     }

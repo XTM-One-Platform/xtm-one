@@ -68,7 +68,14 @@ def build_learned_lesson_tool(
                 await db.commit()
                 return json.dumps(outcome, ensure_ascii=False)
         except learned.LessonError as exc:
-            return f"Refused: {exc}. Nothing was written."
+            refusal = f"Refused: {exc}. Nothing was written."
+            if isinstance(exc, learned.LessonCapError):
+                # A full skill loses every later lesson: leave it on the run's
+                # frictions so the owner sees it, not only in the run's text (#2697).
+                from app.services.frictions import note_friction
+
+                note_friction("tool_error", LEARNED_LESSON_TOOL, refusal)
+            return refusal
         except Exception:
             logger.warning("Learned lesson write failed", exc_info=True)
             return "Error: the lesson could not be written right now. Say so; nothing was written."
@@ -79,7 +86,8 @@ def build_learned_lesson_tool(
         name=LEARNED_LESSON_TOOL,
         description=(
             "Write a durable lesson for this organization into your learned skill (an asset owner, a false "
-            "positive pattern, a routing rule). Versioned with this run. Profile changes: propose them instead."
+            "positive pattern, a routing rule). Versioned with this run. Profile changes: propose them instead. "
+            "At most 12000 characters: when near_cap, revise or remove sections first."
         ),
         input_schema={
             "type": "object",
