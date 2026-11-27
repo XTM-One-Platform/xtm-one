@@ -368,6 +368,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
     monkeypatch.setattr(resync, "resync_third_party", _route("third_party", 0))
     monkeypatch.setattr(resync, "resync_aikido", _boom)
     monkeypatch.setattr(resync, "resync_github", _route("github", 5))
+    monkeypatch.setattr(resync, "resync_openaev_findings", _route("openaev_findings", 3))
     monkeypatch.setattr(resync, "resync_passes", _passes)
     monkeypatch.setattr(resync, "by_trigger_path", _by_path)
     progress: dict[str, int] = {}
@@ -377,7 +378,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
 
     out = await resync.resync(sessions=None, actor_id="admin-1", progress=_progress, windows={"vulnerability": 3})  # type: ignore[arg-type]
     # The inside-state routes read as the administrator who started the purge; the others as their sources.
-    assert actors == {"pir": None, "third_party": None, "github": "admin-1"}
+    assert actors == {"pir": None, "third_party": None, "github": "admin-1", "openaev_findings": None}
     routes = out["routes"]
     assert out["windows"]["vulnerability"] == 3
     assert routes["aikido"]["errors"] == ["RuntimeError: Aikido 503"]
@@ -389,6 +390,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
         "third_party": 0,
         "aikido": 0,
         "github": 5,
+        "openaev_findings": 3,
         "attack_surface": 2,
         "evidence_health": 0,
     }

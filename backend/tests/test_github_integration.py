@@ -2531,3 +2531,60 @@ async def test_list_github_prs_unfiltered_keeps_one_page_of_count():
     assert len(calls) == 1
     assert calls[0]["per_page"] == 5
     assert "Body text" in result
+
+
+# ---------------------------------------------------------------------------
+# search_github_issues: its matches are structured, so an activation check
+# skips the run when nothing matches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_github_issues_with_no_match_lets_an_activation_check_skip_the_run():
+    from app.services.assignment_activation_check import condition_met, structured_result
+
+    fn = _get_fn(_executor(), "search_github_issues")
+    request = AsyncMock(return_value=(_mock_response({"items": [], "total_count": 0}), None))
+    with patch("app.integrations.providers.github._common.safe_request", request):
+        result = await fn(repo="acme/api", query="is:pr label:agent:auto-merge")
+
+    assert result.content == "No issues found."
+    data, readable = structured_result(result)
+    assert readable is True
+    assert condition_met(data, "non_empty") is False
+
+
+@pytest.mark.asyncio
+async def test_search_github_issues_structures_each_match():
+    from app.services.assignment_activation_check import condition_met, structured_result
+
+    item = {
+        "number": 42,
+        "title": "Fix the drawer",
+        "state": "open",
+        "user": {"login": "octocat"},
+        "labels": [{"name": "agent:auto-merge"}],
+        "assignees": [],
+        "pull_request": {"url": "https://api.github.com/repos/acme/api/pulls/42"},
+        "html_url": "https://github.com/acme/api/pull/42",
+        "body": "",
+    }
+    fn = _get_fn(_executor(), "search_github_issues")
+    request = AsyncMock(return_value=(_mock_response({"items": [item], "total_count": 1}), None))
+    with patch("app.integrations.providers.github._common.safe_request", request):
+        result = await fn(repo="acme/api", query="is:pr")
+
+    assert "#42 Fix the drawer" in result.content
+    assert result.structured == [
+        {
+            "number": 42,
+            "title": "Fix the drawer",
+            "state": "open",
+            "author": "octocat",
+            "labels": ["agent:auto-merge"],
+            "is_pull_request": True,
+            "url": "https://github.com/acme/api/pull/42",
+        }
+    ]
+    data, readable = structured_result(result)
+    assert readable is True and condition_met(data, "non_empty") is True
