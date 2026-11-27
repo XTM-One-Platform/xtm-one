@@ -293,7 +293,68 @@ def _generic_cpe(ref: str) -> tuple[str, str] | None:
     return vendor, product
 
 
-def product_matches(product: str, ref: str, *, family_exact: bool = True) -> bool:
+#: #2711: a version token that closes a reference (``1.3.0``, ``v2``, ``1.0.0-1.0.4``, ``120``).
+_VERSION_TOKEN = re.compile(r"v?\d[0-9a-z.+~:_-]*")
+#: #2711: a reference of more name words than this (versions left out) is a long product title.
+LONG_TITLE_WORDS = 3
+
+
+def _compound_token(token: str) -> bool:
+    """Whether *token* is a package name joined by ``-`` (two words or more) or ``_`` (three or more).
+
+    ``mail-mcp-bridge``, ``mcp-dnstwist``, ``xcode_mcp_server``; a CPE-style two-word name
+    (``nginx_plus``, ``internet_explorer``) and a version or architecture (``x86-64``) are not.
+    """
+    token = token.strip("()[]{},;")
+    if "-" not in token and "_" not in token:
+        return False
+    words = [w for w in re.split(r"[-_]+", token) if any("a" <= ch <= "z" for ch in w)]
+    return len(words) >= (2 if "-" in token else 3)
+
+
+@lru_cache(maxsize=65536)
+def _name_words(value: str) -> tuple[tuple[str, ...], bool]:
+    """``(words, compound)`` of a software name, its closing version tokens left out (#2711)."""
+    tokens = value.strip().lower().split()
+    while len(tokens) > 1 and _VERSION_TOKEN.fullmatch(tokens[-1]):
+        tokens.pop()
+    # Only a reference that is one joined package token is a package name (``mail-mcp-bridge``):
+    # ``Microsoft Edge (Chromium-based)`` stays a product title.
+    return tuple(_TOKEN.findall(" ".join(tokens))), len(tokens) == 1 and _compound_token(tokens[0])
+
+
+def reference_names(product: str, ref: str) -> bool | None:
+    """Whether a compound package name or long title *ref* names *product*; ``None`` for any other *ref* (#2711).
+
+    A reference that is one joined package name (``mail-mcp-bridge 1.3.0``) names a product only by
+    its full name: ``Mail`` is not ``mail-mcp-bridge``, nor ``mcp`` ``mcp-dnstwist``. A title of more
+    than :data:`LONG_TITLE_WORDS` name words names a product by its full name, its words after the
+    vendor (``AnyConnect Secure Mobility Client`` in ``Cisco AnyConnect Secure Mobility Client``), or a
+    run of two words or more that opens it, vendor and product (``Microsoft Office`` in ``Microsoft
+    Office 2019 for Mac``); never by one of its words (``analytics`` in a nine-word title) nor by words
+    deep inside it. A CPE, or a short name (``Google Chrome 120``, ``nginx_plus``), answers ``None``:
+    the whole-word rule applies.
+    """
+    text = str(ref or "")
+    if text.strip().lower().startswith("cpe:"):
+        return None
+    words, compound = _name_words(text)
+    if not compound and sum(1 for w in words if not w.isdigit()) <= LONG_TITLE_WORDS:
+        return None
+    named = _name_words(str(product or ""))[0]
+    if not named:
+        return False
+    if named == words:
+        return True
+    if compound:
+        return False
+    if named == words[1:]:
+        return True
+    size = len(named)
+    return size >= 2 and (words[:size] == named or words[1 : 1 + size] == named)
+
+
+def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
     The same rule as the gate's software match: equal, or *product* as a whole
@@ -302,6 +363,9 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True) -> boo
     a device whose OS family is ``Windows`` never runs ``Windows Server 2019`` by that word.
     *family_exact* False lets a family reference name a product of that family (a CVE
     naming only ``Windows`` reaches ``Windows 11``): a family-only match, never proven.
+    A compound package name or long title *ref* names *product* only by its full name
+    (:func:`reference_names`, #2711); *ref_exact* False skips that rule when *ref* is an
+    inventory label and *product* the reference (the reverse direction of a match).
     A URL or host name label (:func:`is_url_like`, a web-app shortcut such as
     ``tenant-my.sharepoint.com-1A2B``) matches only itself (#2679): ``SharePoint`` is a
     word of it, yet the device runs no SharePoint.
@@ -318,6 +382,10 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True) -> boo
     if generic is not None:
         vendor, word = generic
         return contains_word(vendor, p) and contains_word(word, p)
+    if ref_exact:
+        named = reference_names(str(product or ""), str(ref or ""))
+        if named is not None:
+            return named
     if p in GENERIC_PRODUCT_WORDS:
         return p == r
     if family_exact and p in FAMILY_WORDS and p != r:
@@ -441,9 +509,10 @@ class ProductIndex:
         ]
 
     def _match(self, value: str, text: str) -> bool:
+        # #2711: the reference is always the haystack the compound rule reads, never the label.
         if self._values_are_refs:
-            return product_matches(value, text, family_exact=False) or product_matches(text, value)
-        return product_matches(value, text) or product_matches(text, value, family_exact=False)
+            return product_matches(value, text, family_exact=False, ref_exact=False) or product_matches(text, value)
+        return product_matches(value, text) or product_matches(text, value, family_exact=False, ref_exact=False)
 
     def any_match(self, ref: Any) -> bool:
         """Whether one value matches *ref* in either direction."""
@@ -488,10 +557,21 @@ class PrimaryAssetIndex:
     truncated: bool = False
     _cache: dict[str, frozenset[int]] = field(default_factory=dict, repr=False)
     _labels: tuple[ProductIndex, dict[str, set[int]]] | None = field(default=None, repr=False)
+    _label_cache: dict[str, frozenset[str]] = field(default_factory=dict, repr=False)
 
     def _running(self, ref: str) -> frozenset[int]:
         """Indexes of the reachers running software *ref*, cached per reference."""
         hit = self._cache.get(ref)
+        if hit is None:
+            labels = self._labels_of(ref)
+            holders = self._labels[1] if self._labels else {}
+            hit = frozenset(i for label in labels for i in holders[label])
+            self._cache[ref] = hit
+        return hit
+
+    def _labels_of(self, ref: str) -> frozenset[str]:
+        """The inventory labels software *ref* names, cached per reference (#2711)."""
+        hit = self._label_cache.get(ref)
         if hit is None:
             if self._labels is None:
                 holders: dict[str, set[int]] = {}
@@ -499,10 +579,16 @@ class PrimaryAssetIndex:
                     for label in r.products.values():
                         holders.setdefault(str(label), set()).add(i)
                 self._labels = (ProductIndex(holders), holders)
-            labels, holders = self._labels
-            hit = frozenset(i for label in labels.matching(ref) for i in holders[label])
-            self._cache[ref] = hit
+            hit = frozenset(self._labels[0].matching(ref))
+            self._label_cache[ref] = hit
         return hit
+
+    def _label(self, reacher: Reacher, ref: str) -> str:
+        """The label *reacher* runs that *ref* names (#2711: the hop says what the asset runs), else ``""``."""
+        if not ref:
+            return ""
+        named = self._labels_of(ref)
+        return next((str(label) for label in reacher.products.values() if str(label) in named), "")
 
     def _matching(
         self, software: list[str], keys: list[str] | None, *, keys_only: bool = False
@@ -543,9 +629,11 @@ class PrimaryAssetIndex:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
-        ``{primary_asset_key, software, version_verified, family_only, asset, through, through_kind,
-        source, roles, via}``. ``version_verified`` holds over every asset the chain reaches (a group
-        of many devices included), not only the first one met: one versioned installed row is enough.
+        ``{primary_asset_key, software, reference, version_verified, family_only, asset, through,
+        through_kind, source, roles, via}``: ``software`` is the inventory label the asset runs,
+        ``reference`` the software reference (a CVE's software) that named it (#2711).
+        ``version_verified`` holds over every asset the chain reaches (a group of many devices
+        included), not only the first one met: one versioned installed row is enough.
         ``family_only`` (#2680) holds when every asset of the chain is reached only by a bare OS
         family reference (``Windows``): a possible exposure, never a running product.
         """
@@ -558,17 +646,20 @@ class PrimaryAssetIndex:
         for reacher, matched in self._matching(ordered, keys, keys_only=keys_only):
             verified = matched not in generic and runs_versioned(reacher, matched)
             family_only = bool(matched) and is_family_word(matched)
+            label = self._label(reacher, matched) or matched
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
                     if not found[key]["version_verified"] and verified:
                         found[key]["version_verified"] = True
                     if found[key]["family_only"] and not family_only:
-                        found[key]["family_only"], found[key]["software"] = False, matched
+                        found[key]["family_only"] = False
+                        found[key]["software"], found[key]["reference"] = label, matched
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
-                    "software": matched,
+                    "software": label,
+                    "reference": matched,
                     "version_verified": verified,
                     "family_only": family_only,
                     "asset": reacher.name,
@@ -689,7 +780,9 @@ def runs_versioned(reacher: Reacher, ref: str) -> bool:
     """
     if not ref or is_family_word(ref) or is_generic_word(ref):
         return False
-    return any(product_matches(label, ref) or product_matches(ref, label) for label in reacher.versioned)
+    return any(
+        product_matches(label, ref) or product_matches(ref, label, ref_exact=False) for label in reacher.versioned
+    )
 
 
 #: Versions an installed software row stores when the source reported none.

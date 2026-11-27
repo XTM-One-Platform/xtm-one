@@ -42,6 +42,7 @@ from app.services.ctem_primary_assets import (
     is_generic_word,
     is_url_like,
     link_basis,
+    reference_names,
 )
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
@@ -408,6 +409,11 @@ def _product_matches(product: str, ref: str) -> bool:
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
         return False
+    # #2711: a compound package name or long title names a profile product only by its full name,
+    # else ``Mail`` (a profile product) would join the references through ``mail-mcp-bridge``.
+    named = reference_names(product, ref)
+    if named is not None:
+        return named
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r

@@ -22,11 +22,14 @@ from app.services.ctem_funnel import funnel_scope
 from app.services.ctem_scope_gate import _product_matches as gate_product_matches
 
 
-def _former_rule(product: str, ref: str, *, family_exact: bool = True) -> bool:
-    """The regex rule of ``product_matches`` before #2032, the reference, with the #2628 and #2685 guards."""
+def _former_rule(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
+    """The regex rule of ``product_matches`` before #2032, the reference, with the #2628, #2685 and #2711 guards."""
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
     if not p or not r:
         return False
+    named = pa.reference_names(product, ref) if ref_exact else None
+    if named is not None:
+        return named
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
@@ -83,7 +86,9 @@ def test_product_matches_keeps_the_former_rule() -> None:
     for p in _SAMPLES:
         for r in _SAMPLES:
             assert pa.product_matches(p, r) == _former_rule(p, r), (p, r)
-            assert gate_product_matches(p, r) == (bool(p.strip()) and bool(r.strip()) and _gate_former(p, r)), (p, r)
+            named = pa.reference_names(p, r) if p.strip() and r.strip() else None
+            gate_expected = named if named is not None else (bool(p.strip()) and bool(r.strip()) and _gate_former(p, r))
+            assert gate_product_matches(p, r) == gate_expected, (p, r)
 
 
 def _gate_former(product: str, ref: str) -> bool:
@@ -101,7 +106,9 @@ def _gate_former(product: str, ref: str) -> bool:
 def test_product_index_answers_what_a_full_scan_answers() -> None:
     index = pa.ProductIndex(_SAMPLES)
     for ref in _SAMPLES:
-        expected = [v for v in index.values if _former_rule(v, ref) or _former_rule(ref, v, family_exact=False)]
+        expected = [
+            v for v in index.values if _former_rule(v, ref) or _former_rule(ref, v, family_exact=False, ref_exact=False)
+        ]
         assert index.matching(ref) == expected, ref
 
 
@@ -132,7 +139,7 @@ def test_labels_match_a_full_scan_on_a_random_inventory() -> None:
     expected = [
         e["label"]
         for e in stack
-        if any(_former_rule(p, e["product"]) or _former_rule(e["product"], p) for p in products)
+        if any(_former_rule(p, e["product"]) or _former_rule(e["product"], p, ref_exact=False) for p in products)
     ]
     assert scope["business"]["labels"] == (expected or None)
     for e in stack[:50]:
@@ -140,7 +147,10 @@ def test_labels_match_a_full_scan_on_a_random_inventory() -> None:
         assert running == frozenset(
             i
             for i, r in enumerate(reachers)
-            if any(_former_rule(v, e["product"]) or _former_rule(e["product"], v) for v in r.products.values())
+            if any(
+                _former_rule(v, e["product"]) or _former_rule(e["product"], v, ref_exact=False)
+                for v in r.products.values()
+            )
         )
 
 
