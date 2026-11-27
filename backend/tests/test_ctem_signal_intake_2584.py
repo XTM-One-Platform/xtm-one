@@ -18,7 +18,7 @@ from app.services import ctem_signal_inbox as inbox
 from app.services.ctem_signal_listeners import OPENCTI_EXTENSION
 
 
-def _row(object_id: str, description: str, *, provider: str = "opencti", event_key: str = "update") -> tuple:
+def _row(object_id: str, description: str, *, provider: str = "opencti", event_key: str = "update") -> tuple[Any, ...]:
     payload: dict[str, Any] = {
         "data": {
             "type": "vulnerability",
@@ -60,8 +60,9 @@ def test_the_intake_engine_is_its_own_pool() -> None:
 
     session = database.intake_session()
     try:
-        assert session.bind is not database.engine
-        assert session.bind.pool.size() >= 1
-        assert session.bind.pool._max_overflow == 0
+        bind: Any = session.bind
+        assert bind is not database.engine
+        assert bind.pool.size() >= 1
+        assert bind.pool._max_overflow == 0
     finally:
         session.sync_session.close()

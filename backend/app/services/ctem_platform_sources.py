@@ -39,14 +39,39 @@ logger = logging.getLogger(__name__)
 #: The name a platform source gives its objects in the source platform.
 OBJECT_FLEET = "Signals"
 
+#: The state of an enabled source whose paths are all off: no object held, rechecked at every pass.
+IDLE = "idle"
+
 #: The run-as a source needs when it has none (a row enabled before the run-as was required).
 NO_RUN_AS = "no run-as user: enable the source again and pick the user it provisions as"
 
 
-def _openaev_spec() -> dict[str, Any]:
-    from app.agents.builtin_agents import CTEM_OPENAEV_LOOP_EVENTS
+#: The OpenAEV events provisioned whatever path is on: they move an open case (validation, re-test).
+OPENAEV_CASE_EVENTS: tuple[str, ...] = ("simulation_finished", "finding_updated", "finding_deleted")
 
-    return {"fleet": OBJECT_FLEET, "purpose": "OpenAEV listener", "events": sorted(CTEM_OPENAEV_LOOP_EVENTS)}
+
+def _listened(excluded: dict[str, set[tuple[str, ...]]] | None, path: str, provider: str, name: str) -> bool:
+    """Whether the ``provider:listener`` source named *name* records on *path*; ``None``: every source is on."""
+    from app.services.ctem_signal_sources import is_excluded
+
+    return excluded is None or not is_excluded(excluded, path, provider, "listener", name)
+
+
+def openaev_events(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> list[str]:
+    """The OpenAEV events the listener source provisions: the case events, plus each listener row's events
+    while its source is on its path (#2583, Sam 27 Nov 2026). *excluded* is ``excluded_sources``."""
+    from app.agents.builtin_agents import CTEM_OPENAEV_LOOP_EVENTS
+    from app.services.ctem_signal_listeners import LISTENERS
+
+    wanted = set(OPENAEV_CASE_EVENTS)
+    for row in LISTENERS:
+        if row.provider == "openaev" and _listened(excluded, row.trigger_path, "openaev", row.source):
+            wanted.update(row.event_keys)
+    return sorted(wanted & set(CTEM_OPENAEV_LOOP_EVENTS))
+
+
+def _openaev_spec(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> dict[str, Any]:
+    return {"fleet": OBJECT_FLEET, "purpose": "OpenAEV listener", "events": openaev_events(excluded)}
 
 
 #: The entity types the OpenCTI PIR playbook delivers: the vulnerability and the threat paths.
@@ -100,16 +125,48 @@ LIVE_LISTENER_ENTITY_TYPES: tuple[str, ...] = (
 )
 
 
-def _opencti_listener_spec() -> dict[str, Any]:
+#: The OpenCTI entity types the live listener delivers for each source it feeds, ``(path, source name)``:
+#: the trigger's filter is the union of the sources that are on (#2583 point 7, Sam 27 Nov 2026).
+LIVE_LISTENER_TYPES_BY_SOURCE: dict[tuple[str, str], tuple[str, ...]] = {
+    ("new_vulnerability", ""): ("Vulnerability", "has", "stix-sighting-relationship"),
+    ("relevant_threat", ""): (
+        "Intrusion-Set",
+        "Threat-Actor-Group",
+        "Threat-Actor-Individual",
+        "Campaign",
+        "Malware",
+    ),
+    ("relevant_threat", "indicator_sighting"): ("stix-sighting-relationship",),
+    ("credential_leak", ""): ("User-Account", "Email-Addr"),
+}
+
+
+def opencti_listener_types(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> list[str]:
+    """The entity types of the live listener trigger: those of the sources that are on, in table order."""
+    on = {
+        t
+        for (path, name), types in LIVE_LISTENER_TYPES_BY_SOURCE.items()
+        if _listened(excluded, path, "opencti", name)
+        for t in types
+    }
+    return [t for t in LIVE_LISTENER_ENTITY_TYPES if t in on]
+
+
+def _opencti_listener_spec(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> dict[str, Any]:
     from app.services import opencti_trigger_provisioning as prov
 
+    entity_types = opencti_listener_types(excluded)
+    if not entity_types:
+        raise NothingToListenError(
+            "every path the OpenCTI live listener feeds is set to Not used here: nothing to listen to"
+        )
     spec = prov.read_provision_spec(
         {
             "provider": "opencti",
             "provision": {
                 "fleet": OBJECT_FLEET,
                 "purpose": "OpenCTI live listener",
-                "entity_types": list(LIVE_LISTENER_ENTITY_TYPES),
+                "entity_types": entity_types,
                 "event_types": ["create", "update"],
             },
         }
@@ -128,13 +185,17 @@ class Provisioned:
     label: str
     #: One set of objects per trigger path and PIR selection (#2436): ``spec(path)`` builds each.
     per_pir_path: bool = False
+    #: What it provisions follows the sources on per path (#2583): ``spec(excluded=...)`` builds it.
+    follows_paths: bool = False
 
 
 #: ``(provider, kind)`` -> how it is provisioned.
 PROVISIONED: dict[tuple[str, str], Provisioned] = {
-    ("openaev", "listener"): Provisioned("app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV"),
+    ("openaev", "listener"): Provisioned(
+        "app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV", follows_paths=True
+    ),
     ("opencti", "listener"): Provisioned(
-        "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI"
+        "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI", follows_paths=True
     ),
     ("opencti", "pir_playbook"): Provisioned(
         "app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI", per_pir_path=True
@@ -144,6 +205,10 @@ PROVISIONED: dict[tuple[str, str], Provisioned] = {
 
 class SourceRefusedError(ValueError):
     """The source cannot be enabled; the message is the exact reason shown to the administrator."""
+
+
+class NothingToListenError(SourceRefusedError):
+    """Every path the source feeds is off: its objects are removed so the platform stops delivering."""
 
 
 def receiver_url(base_url: str, integration_id: str, source_id: str) -> str:
@@ -164,6 +229,9 @@ def is_connected(state: Any) -> bool:
 def status_of(row: Any) -> tuple[str, str | None]:
     """``(status, reason)`` of a row: ``connected``, ``off`` or ``error`` with its reason."""
     state = row.state if isinstance(getattr(row, "state", None), dict) else {}
+    if row.enabled and state.get("status") == IDLE:
+        # Switched on, every path it feeds off: it holds nothing and is never an error (#2583 point 7).
+        return "off", state.get("error")
     if not row.enabled:
         return ("error", state.get("error")) if state.get("status") == "error" else ("off", None)
     if is_connected(state):
@@ -228,7 +296,15 @@ async def _spec(
     *path* and *pir_ids* build one PIR playbook of a per-path source (#2436): its
     PIRs are that selection, each at its Intelligence policy minimum.
     """
-    spec = PROVISIONED[(provider, kind)].spec(path) if path else PROVISIONED[(provider, kind)].spec()
+    entry = PROVISIONED[(provider, kind)]
+    if path:
+        spec = entry.spec(path)
+    elif entry.follows_paths:
+        from app.services.ctem_signal_sources import excluded_sources
+
+        spec = entry.spec(excluded=await excluded_sources(db, None))
+    else:
+        spec = entry.spec()
     if pir_ids is not None:
         spec = {**spec, "pir_subset": sorted(pir_ids)}
     if spec.get("organization_context"):
@@ -345,11 +421,17 @@ async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
         return {**state, "status": "error", "error": conn, "checked_at": stamp}
     if PROVISIONED[(row.provider, row.kind)].per_pir_path:
         return await _reconcile_pir_paths(db, row, conn, now)
+    client, integration_id, secret = conn
     try:
         spec = await _spec(db, row.provider, row.kind)
+    except NothingToListenError as exc:
+        # Every path is off: the objects go, so the source platform stops delivering (#2583 point 7).
+        leftover = await module.remove(client, state) if _held(state) else None
+        if leftover:
+            return {**state, "status": "error", "error": f"{exc}; objects not removed: {leftover}", "checked_at": stamp}
+        return {"status": IDLE, "error": str(exc), "checked_at": stamp, "integration_id": integration_id}
     except SourceRefusedError as exc:
         return {**state, "status": "error", "error": str(exc), "checked_at": stamp}
-    client, integration_id, secret = conn
     url = receiver_url(settings.base_url, integration_id, str(row.id))
     spec = {**spec, "origin": {"source_id": str(row.id)}}
     new_state = await module.reconcile(client, spec, state, url=url, secret=secret, now=now)
