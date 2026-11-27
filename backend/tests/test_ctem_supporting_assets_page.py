@@ -38,7 +38,9 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     class Index:
         truncated = False
 
-        def supporting(self, refs: list[str], keys: list[str], key: str) -> list[dict[str, Any]]:
+        def supporting(
+            self, refs: list[str], keys: list[str], key: str, *, keys_only: bool = False
+        ) -> list[dict[str, Any]]:
             return _rows(10_000)
 
     async def profile(db: Any, organization_id: Any) -> None:
@@ -54,7 +56,7 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     monkeypatch.setattr(
         store.gate,
         "resolve",
-        lambda profile, facts, _: SimpleNamespace(software_refs=["Windows"], products=[], keys=[]),
+        lambda profile, facts, _: SimpleNamespace(software_refs=["Windows"], products=[], keys=[], scope=""),
     )
     yield calls
     store._supporting_cache.clear()
@@ -103,7 +105,9 @@ async def test_the_first_read_takes_the_references_from_the_record(monkeypatch: 
     class Index:
         truncated = False
 
-        def supporting(self, refs: list[str], keys: list[str], key: str) -> list[dict[str, Any]]:
+        def supporting(
+            self, refs: list[str], keys: list[str], key: str, *, keys_only: bool = False
+        ) -> list[dict[str, Any]]:
             seen["supporting"] = (refs, keys, key)
             return _rows(3)
 

@@ -504,16 +504,22 @@ class PrimaryAssetIndex:
             self._cache[ref] = hit
         return hit
 
-    def _matching(self, software: list[str], keys: list[str] | None) -> list[tuple[Reacher, str]]:
+    def _matching(
+        self, software: list[str], keys: list[str] | None, *, keys_only: bool = False
+    ) -> list[tuple[Reacher, str]]:
         """The reachers *software* or subject *keys* name, each with the software reference it runs.
 
         A named product is preferred over a bare family reference; a family reference
         reaches only a device of that known OS family, never a repository (#2680).
+        With *keys_only* (#2701: the evidence names its assets), only the reachers *keys*
+        name are kept; *software* still says which reference each of them runs.
         """
         wanted = {k for k in (keys or []) if k}
         refs = [(ref, is_family_word(ref)) for ref in software if ref]
         out: list[tuple[Reacher, str]] = []
         for i, reacher in enumerate(self.reachers):
+            if keys_only and not wanted & reacher.keys:
+                continue
             named = family = ""
             for ref, is_family in refs:
                 if (family if is_family else named) or i not in self._running(ref):
@@ -531,7 +537,9 @@ class PrimaryAssetIndex:
                 out.append((reacher, matched))
         return out
 
-    def reach(self, software: list[str], keys: list[str] | None = None) -> list[dict[str, Any]]:
+    def reach(
+        self, software: list[str], keys: list[str] | None = None, *, keys_only: bool = False
+    ) -> list[dict[str, Any]]:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
@@ -547,7 +555,7 @@ class PrimaryAssetIndex:
         # The specific references first, so a device matched by both reports the specific one.
         ordered = [r for r in software if r not in generic] + [r for r in software if r in generic]
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for reacher, matched in self._matching(ordered, keys):
+        for reacher, matched in self._matching(ordered, keys, keys_only=keys_only):
             verified = matched not in generic and runs_versioned(reacher, matched)
             family_only = bool(matched) and is_family_word(matched)
             for link, kind, through in reacher.links:
@@ -575,7 +583,9 @@ class PrimaryAssetIndex:
             found.values(), key=lambda h: (h["primary_asset_key"], rank.get(h["source"], 9), h["through"], h["asset"])
         )
 
-    def supporting(self, software: list[str], keys: list[str] | None, primary_asset_key: str) -> list[dict[str, Any]]:
+    def supporting(
+        self, software: list[str], keys: list[str] | None, primary_asset_key: str, *, keys_only: bool = False
+    ) -> list[dict[str, Any]]:
         """Every inventory asset *software* or *keys* name that reaches *primary_asset_key*, one entry per asset.
 
         Unlike :meth:`reach`, which keeps one chain per (through, source), this lists each
@@ -584,7 +594,7 @@ class PrimaryAssetIndex:
         """
         rank = {s: n for n, s in enumerate(SOURCE_ORDER)}
         out: list[dict[str, Any]] = []
-        for reacher, matched in self._matching(software, keys):
+        for reacher, matched in self._matching(software, keys, keys_only=keys_only):
             links = [
                 (link, kind, through)
                 for link, kind, through in reacher.links
@@ -605,7 +615,9 @@ class PrimaryAssetIndex:
             )
         return sorted(out, key=lambda e: (e["asset"].casefold(), e["asset"]))
 
-    def totals(self, software: list[str], keys: list[str] | None = None) -> dict[str, dict[str, int]]:
+    def totals(
+        self, software: list[str], keys: list[str] | None = None, *, keys_only: bool = False
+    ) -> dict[str, dict[str, int]]:
         """Per primary asset key, how many inventory assets reach it: ``{assets, direct, via_group}``.
 
         The decision record stores these next to the first chains, so a primary asset
@@ -614,7 +626,7 @@ class PrimaryAssetIndex:
         ``family_only``, never in ``assets`` (#2680): it inflates no scope.
         """
         out: dict[str, dict[str, int]] = {}
-        for reacher, matched in self._matching(software, keys):
+        for reacher, matched in self._matching(software, keys, keys_only=keys_only):
             family_only = bool(matched) and is_family_word(matched)
             kinds: dict[str, set[str]] = {}
             for link, kind, _through in reacher.links:
