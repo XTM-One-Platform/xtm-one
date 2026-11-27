@@ -167,10 +167,6 @@ export interface CtemSignalPathSource {
   not_set_up?: boolean;
   /** The integrations on which this source XTM One provisions is in error (#2434). */
   error_count?: number;
-  /** Per integration in error: its reason, last attempt and fix (#2637). */
-  errors?: CtemSourceErrorDetail[];
-  /** Switched off after a refused enable for a missing setting: Not configured, never Error (#2637). */
-  not_configured?: boolean;
   /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
   excluded?: boolean;
   /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
@@ -293,23 +289,8 @@ export function useTestCtemWebhookSource() {
   });
 }
 
-/** One source in error on one integration (#2637): its reason, last attempt and the fix. */
-interface CtemSourceErrorDetail {
-  integration_id: string;
-  enabled: boolean;
-  reason: string | null;
-  reason_code: CtemPlatformSourceReasonCode | null;
-  reason_params: Record<string, string>;
-  last_attempt_at: string | null;
-  fix: string;
-  fix_route: string;
-}
-
-/**
- * A source XTM One provisions in its platform: off, connected, in error with its reason (#2434), or not
- * configured: switched off for a missing setting, never an error (#2637).
- */
-export type CtemPlatformSourceStatus = "off" | "connected" | "error" | "not_configured";
+/** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
+export type CtemPlatformSourceStatus = "off" | "connected" | "error";
 
 /** Why a platform source cannot run, as data: the UI renders the code, never the English `reason` (#2434). */
 export type CtemPlatformSourceReasonCode =
@@ -340,15 +321,14 @@ export interface CtemPlatformSource {
   reason_code: CtemPlatformSourceReasonCode | null;
   reason_params: Record<string, string>;
   checked_at: string | null;
-  /** What fixes the reason and where (#2637); `null` when there is no reason. */
-  fix?: string | null;
-  fix_route?: string | null;
   /** The objects it holds in its platform (#2583 point 2), for the Open in links. */
   objects?: CtemPlatformSourceObject[];
   /** The platform's web UI host, `null` when the integration stores none. */
   integration_url?: string | null;
   /** The trigger paths it feeds (#2583 point 6): turning it off stops them all. */
   feeds?: { path: string; label: string }[];
+  /** OpenCTI only: the legacy Threat response objects XTM One still holds on this integration (#2627). */
+  legacy_pending?: number;
 }
 
 /** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
@@ -357,6 +337,9 @@ export interface CtemPlatformSourceObject {
   id: string;
   /** Its name in its platform ("XTM One - Signals - ... - Trigger"); empty when not known. */
   name?: string;
+  /** The trigger path a per-path object serves (the PIR playbooks, #2627), and its label. */
+  path?: string;
+  path_label?: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */
