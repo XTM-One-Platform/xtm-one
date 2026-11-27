@@ -20811,7 +20811,7 @@
   "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.",
   "About signals": "About signals",
   "Where this signal is in the exposure management loop, and why.": "Where this signal is in the exposure management loop, and why.",
-  "Search signal, path or source": "Search signal, path or source",
+  "Search signal, type or source": "Search signal, type or source",
   "No signal seen yet: your sources are connected and nothing reached the loop.": "No signal seen yet: your sources are connected and nothing reached the loop.",
   "No signal yet: no source is connected.": "No signal yet: no source is connected.",
   "No signal matches these filters": "No signal matches these filters",

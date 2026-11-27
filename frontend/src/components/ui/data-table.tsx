@@ -404,6 +404,8 @@ export interface DataTableProps<T> {
    * a 1080p viewport, each value shows how many rows it would keep (counted on the rows
    * the table holds, given the other filters and the search), and the active filters show
    * as removable chips under the toolbar. Client mode only: a `server` table keeps the stack.
+   * On by default (#2573, Design standards s.3: one Filters panel on every records table);
+   * `facetGrid={false}` opts out.
    */
   facetGrid?: boolean;
   /**
@@ -597,7 +599,7 @@ function DataTableView<T>({
   showToolbar = true,
   compactSearch = false,
   filtersInPill = false,
-  facetGrid = false,
+  facetGrid = true,
   onRowClick,
   rowOpens,
   rowHref,

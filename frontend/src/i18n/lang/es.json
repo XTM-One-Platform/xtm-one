@@ -20811,7 +20811,7 @@
   "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "Los cambios de exposición que inician el ciclo de gestión de la exposición, su origen y lo que el ciclo decidió para cada uno.",
   "About signals": "Acerca de las señales",
   "Where this signal is in the exposure management loop, and why.": "Dónde está esta señal en el ciclo de gestión de la exposición, y por qué.",
-  "Search signal, path or source": "Buscar señal, ruta u origen",
+  "Search signal, type or source": "Buscar señal, tipo u origen",
   "No signal seen yet: your sources are connected and nothing reached the loop.": "Aún no hay señales: sus orígenes están conectados y nada ha llegado al ciclo.",
   "No signal yet: no source is connected.": "Aún no hay señales: ningún origen está conectado.",
   "No signal matches these filters": "Ninguna señal coincide con estos filtros",

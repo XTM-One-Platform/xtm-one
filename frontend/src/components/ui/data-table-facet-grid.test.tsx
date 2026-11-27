@@ -31,7 +31,8 @@ function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
 
-function renderTable(url = "/", facetGrid = true) {
+// "default" leaves the prop out, so the DataTable's own default is what renders.
+function renderTable(url = "/", facetGrid: boolean | "default" = true) {
   return renderWithProviders(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
@@ -45,7 +46,7 @@ function renderTable(url = "/", facetGrid = true) {
                 rowKey={(row) => row.id}
                 filters={FILTERS}
                 filtersInPill
-                facetGrid={facetGrid}
+                {...(facetGrid === "default" ? {} : { facetGrid })}
                 emptyLabel="None"
                 urlKey=""
               />
@@ -105,7 +106,14 @@ describe("DataTable facetGrid (#2556)", () => {
     expect(chip.querySelector("[title]")?.getAttribute("title")).toBe("Status: active and paused");
   });
 
-  it("draws no chip and no count without facetGrid", () => {
+  it("is the default of a client-mode filtersInPill table (#2573)", () => {
+    renderTable("/?f_status=active", "default");
+    expect(screen.getByTestId("data-table-filter-chips")).toBeTruthy();
+    const panel = openPanel();
+    expect(panel.querySelectorAll("[data-facet]")).toHaveLength(2);
+  });
+
+  it("draws no chip and no count with facetGrid={false}", () => {
     renderTable("/?f_status=active", false);
     expect(screen.queryByTestId("data-table-filter-chips")).toBeNull();
     openPanel();
