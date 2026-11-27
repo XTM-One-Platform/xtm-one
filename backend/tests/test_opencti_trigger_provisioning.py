@@ -28,6 +28,7 @@ class FakeOpenCTI:
         self.triggers: dict[str, dict] = {}
         self.playbooks: dict[str, dict[str, Any]] = {}
         self.calls: list[str] = []
+        self.notifier_patches: list[list[dict[str, Any]]] = []
         self._next = 0
 
     def _id(self) -> str:
@@ -124,6 +125,13 @@ class FakeOpenCTI:
             }
             return {"notifierAdd": {"id": nid}}, None
         if op == "XtmNotifierPatch":
+            self.notifier_patches.append(v["input"])
+            # OpenCTI notifierEdit validates both keys read from the edit input, absent = '' (#2632).
+            given = {e["key"]: e["value"][0] for e in v["input"]}
+            if given.get("notifier_connector_id", "") != prov.WEBHOOK_CONNECTOR_ID:
+                return {}, "GraphQL error in 'XtmNotifierPatch': Invalid notifier connector"
+            if not given.get("notifier_configuration"):
+                return {}, "GraphQL error in 'XtmNotifierPatch': This configuration is invalid"
             for e in v["input"]:
                 self.notifiers[v["id"]][e["key"]] = e["value"][0]
             return {"notifierFieldPatch": {"id": v["id"]}}, None
@@ -217,6 +225,56 @@ async def test_a_recheck_renames_the_objects_in_place_keeping_their_ids():
     assert gql.notifiers["n-old"]["name"] == "XTM One - Threat response - New threats - Notifier"
     assert gql.triggers["t-old"]["name"] == "XTM One - Threat response - New threats - Trigger"
     assert "Kind: Trigger." in gql.triggers["t-old"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_a_description_only_recheck_sends_the_connector_and_the_full_configuration() -> None:
+    """#2632: OpenCTI validates the connector and configuration on every notifier patch."""
+    gql = FakeOpenCTI(labels={"ai": "label-ai"})
+    spec = prov.read_provision_spec(SPEC_CONFIG)
+    assert spec is not None
+    first = await prov.reconcile(gql, spec, None, url=URL, secret="s")
+    assert first["status"] == "provisioned", first
+    notifier_id = first["notifier_id"]
+    config = gql.notifiers[notifier_id]["notifier_configuration"]
+    gql.notifiers[notifier_id]["description"] = "an older description line"
+    again = await prov.reconcile(gql, spec, first, url=URL, secret="s")
+    assert again["status"] == "provisioned", again
+    assert again["notifier_id"] == notifier_id
+    [patch] = gql.notifier_patches
+    sent = {e["key"]: e["value"] for e in patch}
+    assert sent["notifier_connector_id"] == [prov.WEBHOOK_CONNECTOR_ID]
+    assert sent["notifier_configuration"] == [config]
+    assert "description" in sent and "name" not in sent
+
+
+@pytest.mark.asyncio
+async def test_a_refused_notifier_patch_names_the_fields_and_is_retried_at_the_next_pass() -> None:
+    """#2632: the row names the patched fields and OpenCTI's answer; an error state is due again."""
+    gql = FakeOpenCTI(labels={"ai": "label-ai"})
+    spec = prov.read_provision_spec(SPEC_CONFIG)
+    assert spec is not None
+    first = await prov.reconcile(gql, spec, None, url=URL, secret="s")
+    gql.notifiers[first["notifier_id"]]["name"] = "renamed in OpenCTI"
+
+    async def refusing(query: str, variables: dict[str, Any] | None = None) -> tuple[dict[str, Any], str | None]:
+        if "XtmNotifierPatch" in query:
+            return {}, "GraphQL error in 'XtmNotifierPatch': Invalid notifier connector"
+        answer: tuple[dict[str, Any], str | None] = await gql(query, variables)
+        return answer
+
+    state = await prov.reconcile(refusing, spec, first, url=URL, secret="s")
+    assert state["status"] == "error"
+    assert state["error"].startswith("notifier patch of name refused: ")
+    assert "Invalid notifier connector" in state["error"]
+    assert prov.due_for_check(state, datetime.now(UTC))
+
+
+def test_notifier_edit_input_keeps_one_connector_and_configuration_entry() -> None:
+    edits = [{"key": "name", "value": ["n"]}, {"key": "notifier_configuration", "value": ["old"]}]
+    sent = prov.notifier_edit_input(edits, "new")
+    assert [e["key"] for e in sent] == ["name", "notifier_connector_id", "notifier_configuration"]
+    assert sent[-1]["value"] == ["new"]
 
 
 @pytest.mark.parametrize(

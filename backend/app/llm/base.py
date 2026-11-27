@@ -1951,31 +1951,39 @@ def declined_error(model: str | None, stop_details: object, usage: dict | None) 
     return error
 
 
-def overflow_friendly_message(exc: ContextOverflowError) -> str:
-    """User-facing message for chat contexts (streamed to the user)."""
-    if exc.is_tool_dominated:
-        return (
-            "This agent has too many tools configured for the AI model's "
-            "context window. An administrator may need to reduce the number "
-            "of bound tools or switch to a model with a larger context."
-        )
-    return (
+#: The chat text of a context overflow, by ``overflow_error_type``: what a
+#: person reads in a chat.
+OVERFLOW_FRIENDLY_MESSAGES: dict[str, str] = {
+    "tool_overflow": (
+        "This agent has too many tools configured for the AI model's "
+        "context window. An administrator may need to reduce the number "
+        "of bound tools or switch to a model with a larger context."
+    ),
+    "context_overflow": (
         "I'm sorry, the conversation has grown too large for the AI model "
         "to process. Please start a new conversation or ask a shorter question."
-    )
+    ),
+}
+#: The terse text of a context overflow, by ``overflow_error_type``: what a
+#: calling program reads in an API error body.
+OVERFLOW_API_MESSAGES: dict[str, str] = {
+    "tool_overflow": (
+        "This agent has too many tools for the model's context window. Reduce bound tools or use a larger model."
+    ),
+    "context_overflow": (
+        "This request exceeds the model's context window. Reduce the conversation length or attached content."
+    ),
+}
+
+
+def overflow_friendly_message(exc: ContextOverflowError) -> str:
+    """User-facing message for chat contexts (streamed to the user)."""
+    return OVERFLOW_FRIENDLY_MESSAGES[overflow_error_type(exc)]
 
 
 def overflow_api_message(exc: ContextOverflowError) -> str:
     """Terse message for OpenAI-compatible API error responses."""
-    if exc.is_tool_dominated:
-        return (
-            "This agent has too many tools for the model's context window. "
-            "Reduce bound tools or use a larger model."
-        )
-    return (
-        "This request exceeds the model's context window. "
-        "Reduce the conversation length or attached content."
-    )
+    return OVERFLOW_API_MESSAGES[overflow_error_type(exc)]
 
 
 def overflow_error_type(exc: ContextOverflowError) -> str:

@@ -396,6 +396,8 @@ def test_aggregates_count_distinct_assets_and_primary_assets():
         "asset_count": 2,
         "primary_asset_count": 1,
         "inferred_primary_asset_count": 0,
+        # #2635: assets matched, so no scope reason is named.
+        "opened_on": [],
         "kev_count": 1,
         "max_cvss": 9.8,
         "max_epss": 0.9,

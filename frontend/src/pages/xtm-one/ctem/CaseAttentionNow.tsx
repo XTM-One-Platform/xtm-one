@@ -32,7 +32,7 @@ function Fact({ label, children, testId }: { label: string; children: ReactNode;
 
 export function CaseAttentionNow({ c, now, onChanged }: { c: CtemCaseSummary; now: number; onChanged: () => void }) {
   const { t_i18n } = useFormatter();
-  const whyOf = useAttentionWhy();
+  const whyOf = useAttentionWhy(now);
   const attention = caseAttention(c, now, useCaseAttentionWeights());
   const open = isOpenCaseState(c.state);
   const opened = caseOpenedAt(c);

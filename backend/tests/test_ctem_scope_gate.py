@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -244,6 +245,77 @@ def test_cve_thresholds_route_to_the_watchlist_and_kev_passes_them():
         today=TODAY,
     )
     assert kev.outcome == "case" and kev.record["policy_checks"][0]["rule"] == "kev_always_in"
+
+
+def _cve(**evidence):
+    return _facts(
+        path="new_vulnerability", lens="world", kind="vulnerability", ref="CVE-2026-21762", software="nginx", **evidence
+    )
+
+
+def test_2631_a_cvss_in_the_listener_evidence_key_passes_and_is_recorded():
+    # The OpenCTI listener writes cvss_base_score (x_opencti_ prefix removed): the gate read null before #2631.
+    decision = gate.decide(_profile(cvss_min=7.0), _cve(cvss_base_score=8.8), today=TODAY)
+    assert decision.outcome == "case"
+    check = next(c for c in decision.record["policy_checks"] if c["rule"] == "cvss_min")
+    assert check == {"rule": "cvss_min", "value": 8.8, "threshold": 7.0, "passed": True, "source": "evidence"}
+    advisory = gate.decide(_profile(cvss_min=7.0), _cve(cvss={"score": 8.8}), today=TODAY)
+    assert advisory.outcome == "case"
+
+
+def test_2631_a_score_below_the_minimum_opens_no_case_and_names_it():
+    decision = gate.decide(_profile(cvss_min=7.0), _cve(cvss_base_score=5.3), today=TODAY)
+    assert decision.outcome == "watchlist" and decision.state == "watchlist"
+    assert decision.reason == "CVSS 5.3 below the policy minimum 7.0"
+    assert decision.record["reason_code"] == "score_below_policy"
+    epss = gate.decide(_profile(epss_min=0.1), _cve(epss_score=0.02), today=TODAY)
+    assert epss.outcome == "watchlist" and epss.record["reason_params"]["score"] == "EPSS"
+
+
+def test_2631_the_opencti_score_is_read_when_the_evidence_has_none():
+    facts = replace(_cve(), cve_cvss=5.3, score_lookup=gate.LOOKUP_READ)
+    decision = gate.decide(_profile(cvss_min=7.0), facts, today=TODAY)
+    assert decision.outcome == "watchlist"
+    check = decision.record["policy_checks"][0]
+    assert check["value"] == 5.3 and check["source"] == "opencti" and check["passed"] is False
+    assert decision.record["reconcile"]["score_lookup"] == gate.LOOKUP_READ
+    # The evidence wins over OpenCTI.
+    first = replace(_cve(cvss=8.8), cve_cvss=5.3)
+    assert gate.decide(_profile(cvss_min=7.0), first, today=TODAY).outcome == "case"
+    # A KEV flag OpenCTI holds passes the thresholds like one in the evidence.
+    kev = replace(_cve(), cve_cvss=5.3, cve_kev=True)
+    assert gate.decide(_profile(cvss_min=7.0), kev, today=TODAY).outcome == "case"
+
+
+def test_2631_no_score_anywhere_is_held_for_validation_never_a_silent_pass():
+    held = gate.decide(_profile(cvss_min=7.0), _cve(), today=TODAY)
+    assert held.outcome == "watchlist" and held.record["reason_code"] == "score_missing"
+    assert held.reason.startswith("no score read")
+    check = held.record["policy_checks"][0]
+    assert check["note"] == "no score read" and check["passed"] is False and check["missing_score"] == "hold"
+    passed = gate.decide(_profile(cvss_min=7.0, missing_score="pass"), _cve(), today=TODAY)
+    assert passed.outcome == "case"
+    check = passed.record["policy_checks"][0]
+    assert check["note"] == "no score read" and check["passed"] is True
+
+
+def test_2631_no_minimum_set_reads_nothing_and_holds_nothing():
+    assert oc.PrioritizationPolicy().missing_score == "hold"
+    assert gate.decide(_profile(), _cve(), today=TODAY).outcome == "case"
+    assert store._needs_scores(_profile(), _cve()) == []
+    assert store._needs_scores(_profile(cvss_min=7.0), _cve(cvss=8.8, epss=0.3)) == []
+    assert store._needs_scores(_profile(cvss_min=7.0), _cve()) == ["CVE-2026-21762"]
+
+
+def test_2631_the_highest_opencti_score_of_the_named_cves_is_kept():
+    from app.services import ctem_cve_software
+
+    nodes: list[dict[str, object]] = [
+        {"x_opencti_cvss_base_score": 5.3, "x_opencti_epss_score": None, "x_opencti_cisa_kev": False},
+        {"x_opencti_cvss_base_score": "8.8", "x_opencti_epss_score": 0.4, "x_opencti_cisa_kev": True},
+    ]
+    assert ctem_cve_software.highest_scores(nodes) == (8.8, 0.4, True)
+    assert ctem_cve_software.highest_scores([]) == (None, None, False)
 
 
 def test_internet_exposure_and_primary_asset_minimum_are_honoured():

@@ -52,7 +52,8 @@ describe("case attention (#1176)", () => {
   it("counts an overdue or SLA-breached case and a case due soon", () => {
     expect(caseAttention(kase({ due_at: new Date(NOW - DAY).toISOString() }), NOW).reasons).toContainEqual({ kind: "overdue" });
     expect(caseAttention(kase({ sla_breached_at: new Date(NOW).toISOString() }), NOW).reasons).toContainEqual({ kind: "overdue" });
-    expect(caseAttention(kase({ due_at: new Date(NOW + 2 * DAY).toISOString() }), NOW).reasons).toContainEqual({ kind: "due_soon", days: 2 });
+    const due = new Date(NOW + 2 * DAY).toISOString();
+    expect(caseAttention(kase({ due_at: due }), NOW).reasons).toContainEqual({ kind: "due_soon", due });
   });
 
   it("caps the age points", () => {
