@@ -23,6 +23,7 @@ import { CasesBulkActions } from "./CasesBulkActions";
 import { CasePriorityChip } from "./cases-shared";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
 import { CaseAttentionWeightsDialog } from "./CaseAttentionWeightsDialog";
+import { slaCountdown, slaSentence } from "./case-loop";
 import { rankByAttention, type CaseAttention, type CaseAttentionReason, type CaseAttentionWeights, type CaseNextAction } from "./case-attention";
 
 /** How many cases the band shows. */
@@ -38,8 +39,8 @@ export const NEXT_ACTION_DIALOG: Partial<Record<CaseNextAction, "assign" | "due"
  * The one-line why of an attention score, in the reader's language: the list band
  * and the case page say it with the same words (#1176).
  */
-export function useAttentionWhy(): (attention: CaseAttention) => string {
-  const { t_i18n } = useFormatter();
+export function useAttentionWhy(now: number): (attention: CaseAttention) => string {
+  const { t_i18n, intl } = useFormatter();
   const reasonText = (r: CaseAttentionReason): string | null => {
     switch (r.kind) {
       case "kev":
@@ -51,8 +52,11 @@ export function useAttentionWhy(): (attention: CaseAttention) => string {
         return t_i18n("{count, plural, one {# primary asset touched} other {# primary assets touched}}", { count: r.count });
       case "overdue":
         return t_i18n("Overdue");
-      case "due_soon":
-        return t_i18n("{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}", { days: r.days });
+      case "due_soon": {
+        // The same countdown and words as the SLA chip, never a second rounding (#2633).
+        const countdown = slaCountdown(r.due, now);
+        return countdown ? slaSentence(countdown, t_i18n, intl.locale) : null;
+      }
       case "no_owner":
         return t_i18n("No owner");
       case "age":
@@ -68,7 +72,7 @@ export function CasesAttentionBand({ cases, now, weights }: { cases: CtemCaseSum
   const { t_i18n } = useFormatter();
   const { isAdmin } = useAuth();
   const [editing, setEditing] = useState(false);
-  const whyOf = useAttentionWhy();
+  const whyOf = useAttentionWhy(now);
   const top = rankByAttention(cases, now, weights).slice(0, ATTENTION_BAND_SIZE);
   if (top.length === 0) return null;
 
