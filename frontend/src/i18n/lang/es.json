@@ -20110,6 +20110,9 @@
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {Queda {shown} min} other {Quedan {shown} min}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {Queda {shown} h} other {Quedan {shown} h}}",
   "{count, plural, one {{shown} day left} other {{shown} days left}}": "{count, plural, one {Queda {shown} día} other {Quedan {shown} días}}",
+  "{shown} d {shownHours} h left": "Quedan {shown} d {shownHours} h",
+  "{shown} d {shownHours} h past the SLA": "{shown} d {shownHours} h tras el SLA",
+  "SLA due {date}": "Vencimiento del SLA: {date}",
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {{shown} min tras el SLA} other {{shown} min tras el SLA}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {{shown} h tras el SLA} other {{shown} h tras el SLA}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} día tras el SLA} other {{shown} días tras el SLA}}",
@@ -20670,7 +20673,6 @@
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{count, plural, one {# KEV} other {# KEV}} en {assets, plural, one {# activo} other {# activos}}",
   "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, one {# KEV} other {# KEV}}",
   "{count, plural, one {# primary asset touched} other {# primary assets touched}}": "{count, plural, one {# activo primario afectado} other {# activos primarios afectados}}",
-  "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Vence hoy} one {Vence en # día} other {Vence en # días}}",
   "No owner": "Sin responsable",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Abierto hoy} one {Abierto hace # día} other {Abierto hace # días}}",
   "Open the case": "Abrir el caso",
@@ -22164,7 +22166,8 @@
   "Reading OpenCTI...": "Leyendo OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Ninguna integración de OpenCTI tiene una fuente Signals activada.",
   "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}",
-  "This fleet's runs only. The organization total counts every agent.": "Solo las ejecuciones de esta flota. El total de la organización cuenta todos los agentes.",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: {cost} de coste de IA, contado solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: {cost} de coste de IA, contados solo en el total de la organización.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: sus ejecuciones cuentan solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: sus ejecuciones cuentan solo en el total de la organización.}}"
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# activo primario probado} other {# activos primarios probados}}, {inferred, plural, one {# inferido} other {# inferidos}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
+  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}"
 }

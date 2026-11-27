@@ -20110,6 +20110,9 @@
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {{shown} min left} other {{shown} min left}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {{shown} h left} other {{shown} h left}}",
   "{count, plural, one {{shown} day left} other {{shown} days left}}": "{count, plural, one {{shown} day left} other {{shown} days left}}",
+  "{shown} d {shownHours} h left": "{shown} d {shownHours} h left",
+  "{shown} d {shownHours} h past the SLA": "{shown} d {shownHours} h past the SLA",
+  "SLA due {date}": "SLA due {date}",
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
@@ -20670,7 +20673,6 @@
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}",
   "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, one {# KEV} other {# KEV}}",
   "{count, plural, one {# primary asset touched} other {# primary assets touched}}": "{count, plural, one {# primary asset touched} other {# primary assets touched}}",
-  "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}",
   "No owner": "No owner",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}",
   "Open the case": "Open the case",
@@ -22164,7 +22166,8 @@
   "Reading OpenCTI...": "Reading OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "No OpenCTI integration has a Signals source on.",
   "Remove {count, plural, one {# object} other {# objects}}": "Remove {count, plural, one {# object} other {# objects}}",
-  "This fleet's runs only. The organization total counts every agent.": "This fleet's runs only. The organization total counts every agent.",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}"
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
 }
