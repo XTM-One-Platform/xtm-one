@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from posixpath import basename
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from app.integrations.http import AutoRefreshClient
@@ -17,15 +19,95 @@ from ._common import (
     _extract_notion_user_name,
     _format_comment_scope_error,
     _is_unnamed_user,
+    _parse_json_arg,
     _person_label,
     _rich_text_to_plain,
     format_entity_list,
     logger,
+    user_capability_error,
 )
 
 # Distinct comment authors looked up per call: a comment's ``created_by`` is
 # only ever the author's id, whatever the integration may read.
 _MAX_AUTHOR_LOOKUPS = 25
+
+# People one comment may mention, and pages of 100 users an email lookup reads.
+_MAX_MENTIONS = 20
+_EMAIL_SCAN_MAX_PAGES = 50
+
+# ``@{who}`` marks where the mention of *who* (an id or email of ``mentions``)
+# goes in the comment text.
+_PLACEHOLDER = re.compile(r"@\{([^{}\s]+)\}")
+
+_RICH_TEXT_TYPES = ("text", "mention", "equation")
+
+# One Notion rich text run, as the comments endpoint takes it.
+_Run = dict[str, Any]
+
+
+def _text_run(content: str) -> _Run:
+    """One text run, cut to Notion's per-run limit like a plain comment."""
+    if len(content) > _NOTION_RICH_TEXT_LIMIT:
+        logger.warning(
+            "Notion comment truncated from %d to %d chars",
+            len(content),
+            _NOTION_RICH_TEXT_LIMIT,
+        )
+        content = content[: _NOTION_RICH_TEXT_LIMIT - 1] + "…"
+    return {"type": "text", "text": {"content": content}}
+
+
+def _mention_run(user_id: str) -> _Run:
+    return {"type": "mention", "mention": {"type": "user", "user": {"id": user_id}}}
+
+
+def _comment_rich_text(text: str, people: dict[str, str]) -> list[_Run]:
+    """*text* as rich text, each ``@{who}`` of *people* (who to user id) a mention.
+
+    A person with no placeholder in *text* is mentioned at its start, in the
+    order given. A placeholder naming nobody of *people* stays literal text.
+    """
+    runs: list[_Run] = []
+    placed: set[str] = set()
+    cursor = 0
+    for match in _PLACEHOLDER.finditer(text):
+        user_id = people.get(match.group(1).lower())
+        if user_id is None:
+            continue
+        if match.start() > cursor:
+            runs.append(_text_run(text[cursor : match.start()]))
+        runs.append(_mention_run(user_id))
+        placed.add(match.group(1).lower())
+        cursor = match.end()
+    if cursor < len(text):
+        runs.append(_text_run(text[cursor:]))
+    leading: list[_Run] = []
+    for who, user_id in people.items():
+        if who not in placed:
+            leading.extend([_mention_run(user_id), {"type": "text", "text": {"content": " "}}])
+    return leading + runs
+
+
+def _rich_text_json_error(rich_text: object) -> str | None:
+    """Why *rich_text* (parsed ``rich_text_json``) cannot be posted, or None."""
+    if not isinstance(rich_text, list) or not rich_text:
+        return "Error: rich_text_json must be a non-empty JSON array of rich text objects."
+    for idx, item in enumerate(rich_text):
+        if not isinstance(item, dict) or item.get("type") not in _RICH_TEXT_TYPES:
+            return (
+                f"Error: rich_text_json[{idx}] must be an object whose type is one of "
+                f"{', '.join(_RICH_TEXT_TYPES)}; nothing was posted."
+            )
+        if not isinstance(item.get(item["type"]), dict):
+            return f"Error: rich_text_json[{idx}] has no '{item['type']}' object; nothing was posted."
+        content = (item.get("text") or {}).get("content") if item["type"] == "text" else None
+        if isinstance(content, str) and len(content) > _NOTION_RICH_TEXT_LIMIT:
+            return (
+                f"Error: rich_text_json[{idx}] text is {len(content)} characters; "
+                f"Notion takes at most {_NOTION_RICH_TEXT_LIMIT} per run. Split it; "
+                "nothing was posted."
+            )
+    return None
 
 
 def _attachment_lines(comment: dict) -> list[str]:
@@ -164,19 +246,120 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
             empty_msg="No comments on this page.",
         )
 
+    async def _resolve_mentions(
+        client: AutoRefreshClient, wanted: list[str]
+    ) -> tuple[dict[str, tuple[str, str]], list[str], str | None]:
+        """Each wanted id or email (lower-cased) to (user id, name).
+
+        Returns the resolved people, the entries that matched no workspace
+        user, and an error that stops the call (a refused users endpoint).
+        Ids are read with GET /users/{id}; emails are matched on the pages of
+        GET /users, the endpoint ``list_notion_users`` reads.
+        """
+        resolved: dict[str, tuple[str, str]] = {}
+        missing: list[str] = []
+        emails = [w for w in wanted if "@" in w]
+        for user_id in (w for w in wanted if "@" not in w):
+            resp, err, status_code, _code = await _throttled_request_with_error_metadata(
+                client,
+                "get",
+                f"{_BASE_URL}/users/{user_id}",
+                _PROVIDER,
+                "get mentioned user",
+                report_stale=False,
+            )
+            if status_code == 403:
+                return {}, [], user_capability_error(err or "403", action="look up the people to mention")
+            user = None
+            if resp is not None and not err:
+                try:
+                    user = resp.json()
+                except ValueError:
+                    user = None
+            if isinstance(user, dict) and user.get("id"):
+                resolved[user_id] = (str(user["id"]), _extract_notion_user_name(user))
+            else:
+                missing.append(user_id)
+        if emails:
+            params: dict[str, str] = {"page_size": "100"}
+            pages = 0
+            while True:
+                resp, err, status_code, _code = await _throttled_request_with_error_metadata(
+                    client,
+                    "get",
+                    f"{_BASE_URL}/users",
+                    _PROVIDER,
+                    "list users",
+                    params=params,
+                )
+                if err or resp is None:
+                    if status_code == 403:
+                        return {}, [], user_capability_error(err or "403", action="look up the people to mention")
+                    return {}, [], f"Error: could not look up the people to mention: {err}"
+                pages += 1
+                data = resp.json()
+                for user in data.get("results", []):
+                    email = str((user.get("person") or {}).get("email") or "").lower()
+                    if email in emails and user.get("id"):
+                        resolved[email] = (str(user["id"]), _extract_notion_user_name(user))
+                if all(e in resolved for e in emails):
+                    break
+                if not data.get("has_more") or not data.get("next_cursor"):
+                    break
+                if pages >= _EMAIL_SCAN_MAX_PAGES:
+                    break
+                params["start_cursor"] = data["next_cursor"]
+            missing.extend(e for e in emails if e not in resolved)
+        return resolved, missing, None
+
     async def add_notion_comment(
-        page_id: str = "", text: str = "", discussion_id: str = ""
+        page_id: str = "",
+        text: str = "",
+        discussion_id: str = "",
+        mentions: list[str] | None = None,
+        rich_text_json: str | list[_Run] | None = None,
     ) -> str:
         """Add a page-level comment OR reply into an existing discussion thread.
 
-        Provide ``text`` plus EITHER ``page_id`` (start a new page-level
-        comment) OR ``discussion_id`` (reply into an existing inline/thread
-        discussion — get the discussion_id from ``list_notion_comments``).
+        Provide ``text`` (or ``rich_text_json``) plus EITHER ``page_id``
+        (start a new page-level comment) OR ``discussion_id`` (reply into an
+        existing inline/thread discussion — get the discussion_id from
+        ``list_notion_comments``).
+
+        ``mentions`` (Notion user ids or emails) are written as user mention
+        runs, so the people are notified: at each ``@{id}`` / ``@{email}``
+        placeholder of ``text``, else at its start. One that matches no
+        workspace user refuses the call and nothing is posted.
         """
         page_id = (page_id or "").strip()
         discussion_id = (discussion_id or "").strip()
-        if not (text or "").strip():
+        if isinstance(mentions, str):
+            mentions = [part for part in re.split(r"[,\s]+", mentions) if part]
+        wanted: list[str] = []
+        for entry in mentions or []:
+            who = str(entry or "").strip().lower()
+            if who and who not in wanted:
+                wanted.append(who)
+        rich_text, parse_err = _parse_json_arg(rich_text_json, what="rich_text_json", expected="array")
+        if parse_err:
+            return parse_err
+        if rich_text is not None:
+            if (text or "").strip():
+                return "Error: provide EITHER text OR rich_text_json, not both; nothing was posted."
+            if wanted:
+                return (
+                    "Error: mentions goes with text; in rich_text_json write the "
+                    "mention runs yourself. Nothing was posted."
+                )
+            rich_text_err = _rich_text_json_error(rich_text)
+            if rich_text_err:
+                return rich_text_err
+        elif not (text or "").strip():
             return "Error: comment text is required."
+        if len(wanted) > _MAX_MENTIONS:
+            return (
+                f"Error: a comment mentions at most {_MAX_MENTIONS} people ({len(wanted)} given); nothing was posted."
+            )
         if not page_id and not discussion_id:
             return (
                 "Error: provide page_id (new page-level comment) or "
@@ -188,19 +371,25 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 "(page_id starts a new comment; discussion_id replies to a "
                 "thread)."
             )
-        if len(text) > _NOTION_RICH_TEXT_LIMIT:
-            logger.warning(
-                "Notion comment truncated from %d to %d chars",
-                len(text),
-                _NOTION_RICH_TEXT_LIMIT,
-            )
-            text = text[: _NOTION_RICH_TEXT_LIMIT - 1] + "…"
-        body: dict = {"rich_text": [{"type": "text", "text": {"content": text}}]}
-        if discussion_id:
-            body["discussion_id"] = discussion_id
-        else:
-            body["parent"] = {"page_id": page_id}
         async with _client() as client:
+            people: dict[str, tuple[str, str]] = {}
+            if wanted:
+                people, missing, lookup_err = await _resolve_mentions(client, wanted)
+                if lookup_err:
+                    return f"{lookup_err} Nothing was posted."
+                if missing:
+                    return (
+                        "Error: no Notion workspace user matches "
+                        f"{', '.join(missing)}; nothing was posted. Find the "
+                        "right id or email with list_notion_users(query=...)."
+                    )
+            if rich_text is None:
+                rich_text = _comment_rich_text(text, {who: user_id for who, (user_id, _name) in people.items()})
+            body: dict[str, Any] = {"rich_text": rich_text}
+            if discussion_id:
+                body["discussion_id"] = discussion_id
+            else:
+                body["parent"] = {"page_id": page_id}
             _, err, status_code, error_code = await _throttled_request_with_error_metadata(
                 client,
                 "post",
@@ -220,6 +409,9 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
             target = (
                 f"discussion {discussion_id}" if discussion_id else f"page {page_id}"
             )
+            if people:
+                names = ", ".join(name for _user_id, name in people.values())
+                return f"Comment added to {target}, mentioning {names}."
             return f"Comment added to {target}."
 
     executor.register("list_notion_comments", list_notion_comments)
@@ -254,7 +446,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 "Add a comment to Notion. Provide text plus EITHER page_id (a new "
                 "page-level comment) OR discussion_id (reply into an existing "
                 "inline/thread discussion - get the discussion_id from "
-                "list_notion_comments)."
+                "list_notion_comments). mentions notifies people with real "
+                "@mentions; an unknown one refuses the call, nothing posted."
             ),
             input_schema={
                 "type": "object",
@@ -274,9 +467,27 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                             "with page_id)."
                         ),
                     },
-                    "text": {"type": "string", "description": "Comment text"},
+                    "text": {
+                        "type": "string",
+                        "description": (
+                            "Comment text; @{id} or @{email} marks where a person of mentions goes (else at the start)."
+                        ),
+                    },
+                    "mentions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Notion user ids or emails to @mention (notified); find them with list_notion_users."
+                        ),
+                    },
+                    "rich_text_json": {
+                        "type": "string",
+                        "description": (
+                            "Instead of text: a raw Notion rich_text JSON array (text, mention, equation runs)."
+                        ),
+                    },
                 },
-                "required": ["text"],
+                "required": [],
             },
             source="integration:notion",
             priority=1,
