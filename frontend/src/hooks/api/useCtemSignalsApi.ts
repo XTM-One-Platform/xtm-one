@@ -371,9 +371,35 @@ export interface CtemSignalPurgeJob {
   finished_at: string | null;
 }
 
+/** One resync route of the purge (#2578): a world type, an inside source or a pass, with its default window. */
+export interface CtemSignalResyncRoute {
+  key: string;
+  group: "world" | "inside" | "pass";
+  /** English, translated by the dialog. */
+  label: string;
+  /** Days; null: no age limit. */
+  default: number | null;
+  /** False for a pass: it reads the current state. */
+  windowed: boolean;
+}
+
+/** The resync's outcome on one route (#2578), from `steps.resync.counts.routes`. */
+export interface CtemSignalResyncRouteResult {
+  window_days: number | null;
+  read?: number;
+  recorded?: number;
+  errors?: string[];
+  skipped?: string;
+  error?: string;
+  note?: string;
+  capped?: boolean;
+}
+
 export interface CtemSignalPurgeInfo {
   counts: { signals: number; cases: number };
   confirm_word: string;
+  resync_routes: CtemSignalResyncRoute[];
+  resync_max_days: number;
   job: CtemSignalPurgeJob | null;
 }
 
@@ -390,7 +416,11 @@ export function useCtemSignalPurge(enabled: boolean) {
 /** Start the purge of every signal (#2528): 422 without the word, 409 while a job runs. */
 export function useStartCtemSignalPurge() {
   const qc = useQueryClient();
-  return useMutation<{ job: CtemSignalPurgeJob }, Error, { confirm: string; resync: boolean }>({
+  return useMutation<
+    { job: CtemSignalPurgeJob },
+    Error,
+    { confirm: string; resync: boolean; resync_windows?: Record<string, number | null> }
+  >({
     mutationFn: (body) => api.post("/ctem-signals/purge", body),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
     meta: { suppressGlobalErrorToast: true },
