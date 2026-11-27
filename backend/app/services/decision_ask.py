@@ -184,6 +184,34 @@ def fit(text: str, limit: int) -> str:
     return head.rstrip(" \n,;:.") + CUT_MARK
 
 
+#: The end of a sentence or a line: where a context given the room left after a platform line is cut (#2683).
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)|\n")
+
+
+def lead_then_fit(head: str, rest: str, limit: int) -> str:
+    """*head* whole, then as much of *rest* as fits in *limit*, cut at a sentence end or dropped (#2683).
+
+    A platform-written line that leads a card is never cut by the text it
+    leads; the agent's text after it keeps its whole sentences and lines in the
+    room left, so the reader never gets a sentence that stops mid-way. A head
+    longer than *limit* alone is cut by :func:`fit`.
+    """
+    head = fit(str(head or "").strip(), limit)
+    rest = str(rest or "").strip()
+    if not rest:
+        return head
+    joined = f"{head}\n{rest}"
+    if len(joined) <= limit:
+        return joined
+    room = limit - len(head) - 1
+    if room <= 0:
+        return head
+    window = rest[: room + 1]
+    ends = [found.end() for found in _SENTENCE_END.finditer(window) if found.end() <= room]
+    kept = rest[: ends[-1]].rstrip() if ends else ""
+    return f"{head}\n{kept}" if kept else head
+
+
 def _text(value: object, limit: int) -> str:
     return fit(" ".join(str(value).split()), limit) if value is not None else ""
 

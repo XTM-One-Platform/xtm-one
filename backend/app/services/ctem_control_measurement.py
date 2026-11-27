@@ -123,7 +123,7 @@ def is_never_measured(case: object) -> bool:
     return str(getattr(case, "title", "") or "").strip().endswith(NEVER_MEASURED_TITLE_TAIL)
 
 
-def _outcome(option: object) -> str | None:
+def option_outcome(option: object) -> str | None:
     """``closes``, ``not_closing`` or ``None``: what an option says of its pass (pure)."""
     if not isinstance(option, Mapping):
         return None
@@ -143,9 +143,9 @@ def closing_recommendation(ask: Mapping[str, Any]) -> dict[str, Any]:
     out = dict(ask)
     options = [o for o in (out.get("options") or []) if isinstance(o, Mapping)]
     recommended = next((o for o in options if str(o.get("key")) == str(out.get("recommendation"))), None)
-    if recommended is None or _outcome(recommended) != "not_closing":
+    if recommended is None or option_outcome(recommended) != "not_closing":
         return out
-    closing = next((o for o in options if _outcome(o) == "closes"), None)
+    closing = next((o for o in options if option_outcome(o) == "closes"), None)
     if closing is not None:
         out["recommendation"] = closing.get("key")
     return out
@@ -165,11 +165,10 @@ def complete_ask(ask: Mapping[str, Any], max_age_days: int, *, never_measured: b
     out = closing_recommendation(ask) if never_measured else dict(ask)
     if has_line(out):
         return out
-    from app.services.decision_ask import fit
+    from app.services.decision_ask import lead_then_fit
 
     head = never_measured_line(max_age_days) if never_measured else card_line(max_age_days)
-    rest = str(out.get("context") or "").strip()
-    out["context"] = fit(f"{head}\n{rest}" if rest else head, _MAX_CONTEXT_CHARS)
+    out["context"] = lead_then_fit(head, str(out.get("context") or ""), _MAX_CONTEXT_CHARS)
     return out
 
 
