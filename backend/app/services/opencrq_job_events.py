@@ -37,7 +37,10 @@ would start a whole register refresh (#1417). The poller therefore hands one
 poll page to the assignment as ONE event (``coalesce_events``): the newest run
 is the entity, ``covers`` lists every run of the page, and ``coalesce_key``
 (tenant and event) lets the dispatcher fold a later page into a run of the
-same key still waiting in the queue (``services/event_coalescing.py``). A run
+same key still waiting in the queue (``services/event_coalescing.py``). The
+event declares a quiet period (``COALESCE_QUIET_SECONDS``, capped at
+``COALESCE_MAX_SECONDS``): the run of the key is held until the burst is
+quiet, so a burst spread over several poll ticks is one run (#2544). A run
 that reports its progress and processed nothing (``expectedTotal`` set,
 ``processedTotal`` 0, a no-op recompute) is no event; a kind that never
 reports progress ends at 0 whatever it did, so its runs are kept. The risk
@@ -77,6 +80,14 @@ EVENTS = frozenset(EVENT_KINDS)
 
 #: The poll interval of these events: a recompute is minutes apart at most.
 POLL_INTERVAL_SECONDS = 60
+
+#: Debounce of a burst (#2544): the run of a coalesce key starts once no new
+#: run of the key finished for this long (``event_coalescing.QUIET_KEY``), so
+#: a batch recompute spread over several poll ticks is ONE assignment run.
+COALESCE_QUIET_SECONDS = 300
+#: ...and never later than this after the burst's first event
+#: (``event_coalescing.MAX_KEY``): a longer burst is one run per window.
+COALESCE_MAX_SECONDS = 900
 
 #: OpenCRQ's terminal success status (``JOB_STATUSES`` of the jobs module).
 SUCCEEDED = "succeeded"
@@ -175,6 +186,15 @@ def moved_scenarios(run: dict[str, Any]) -> tuple[list[str], int, list[dict[str,
     return ids, count if count is not None else len(ids), ale
 
 
+def moved_nothing(run: dict[str, Any]) -> bool:
+    """The run's summary reports ``movedCount`` 0 and an empty ``moved``; ``False`` without a summary."""
+    summary = _summary(run)
+    if _count(summary.get("movedCount")) != 0:
+        return False
+    moved = summary.get("moved")
+    return moved is None or (isinstance(moved, list) and not moved)
+
+
 def changed_count(run: dict[str, Any]) -> int | None:
     """``changedCount`` of the run's summary: what a finding score recompute changed, ``None`` when unreported."""
     return _count(_summary(run).get("changedCount"))
@@ -264,9 +284,14 @@ def processed_nothing(run: dict[str, Any]) -> bool:
     expected total says nothing and the run is kept.
 
     A run whose summary reports ``changedCount`` 0 walked its findings and
-    changed none (#2169): no event either.
+    changed none (#2169): no event either. A ``crq-price-recompute`` run
+    whose summary reports ``movedCount`` 0 and no ``moved`` id re-priced
+    nothing (#2544): no event. A run with no summary (an older OpenCRQ) is
+    kept.
     """
     if changed_count(run) == 0:
+        return True
+    if run.get("kind") == "crq-price-recompute" and moved_nothing(run):
         return True
     return _count(run.get("expectedTotal")) is not None and _count(run.get("processedTotal")) == 0
 
@@ -310,6 +335,8 @@ def coalesce_events(
     event["covers"] = covers[-MAX_COVERED_RUNS:]
     event["run_count"] = len(covers)
     event["coalesce_key"] = coalesce_key(event_type, tenant_id)
+    event[event_coalescing.QUIET_KEY] = COALESCE_QUIET_SECONDS
+    event[event_coalescing.MAX_KEY] = COALESCE_MAX_SECONDS
     page_scenarios: list[str] = []
     for run in kept:
         page_scenarios.extend(sid for sid in risk_scenario_ids(run) if sid not in page_scenarios)
