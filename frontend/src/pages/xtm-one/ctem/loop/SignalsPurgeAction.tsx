@@ -237,8 +237,9 @@ function ResyncWindows({
 }) {
   const { t_i18n } = useFormatter();
   const groups = (Object.keys(GROUP_HEADING) as CtemSignalResyncRoute["group"][]).filter((g) => routes.some((r) => r.group === g));
+  // Labels, legends and the unit at body size, like the fields, not under the preview's content-compact (UX round 2 of #2590, B1).
   return (
-    <div className="space-y-3" data-testid="ctem-signals-purge-windows">
+    <div className="space-y-3 content-base" data-testid="ctem-signals-purge-windows">
       <p className="text-default-secondary">
         {t_i18n("How far back the resync reads, in days. Leave an inside-state field empty to read every open item.")}
       </p>
@@ -270,7 +271,7 @@ function ResyncWindows({
                       <Input
                         id={id}
                         inputMode="numeric"
-                        className="h-8 w-20 shrink-0 [&_input]:text-right [&_input]:tabular-nums"
+                        className="w-20 shrink-0 [&_input]:text-right [&_input]:tabular-nums"
                         value={texts[route.key] ?? ""}
                         placeholder={route.group === "inside" ? t_i18n("All") : undefined}
                         aria-invalid={invalid}
