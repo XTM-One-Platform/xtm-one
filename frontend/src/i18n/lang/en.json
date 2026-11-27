@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "ROI figures are estimated from default baselines until your organization sets its own.",
   "Screen left empty between two inserts": "Screen left empty between two inserts",
   "Simulation finished": "Simulation finished",
+  "Atomic test finished": "Atomic test finished",
   "Inject or atomic test finished": "Inject or atomic test finished",
   "Finding created": "Finding created",
   "Stored": "Stored",
@@ -20083,6 +20084,7 @@
   "Step in progress": "Step in progress",
   "Asset created": "Asset created",
   "Asset updated": "Asset updated",
+  "Asset stale": "Asset stale",
   "Asset turned stale": "Asset turned stale",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).",
   "Finding deleted": "Finding deleted",
@@ -22170,7 +22172,7 @@
   "Triggers": "Triggers",
   "Playbook": "Playbook",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.",
-  "Objects in {platform}:": "Objects in {platform}:",
+  "Owner: {owner}": "Owner: {owner}",
   "No legacy object left.": "No legacy object left.",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {# object would be removed:} other {# objects would be removed:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}",
@@ -22211,5 +22213,8 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}",
   "The last pass ({at}) found no undeclared host and no new port": "The last pass ({at}) found no undeclared host and no new port",
   "The last pass ({at}) found nothing new on this path": "The last pass ({at}) found nothing new on this path",
-  "{reason}; the provider answered nothing for {scopes}": "{reason}; the provider answered nothing for {scopes}"
+  "{reason}; the provider answered nothing for {scopes}": "{reason}; the provider answered nothing for {scopes}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user."
 }
