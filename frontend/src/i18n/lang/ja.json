@@ -22179,5 +22179,8 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, other {推定の主要資産 # 件}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, other {推定 # 件}}",
   "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}",
-  "Not scored": "スコアなし"
+  "Not scored": "スコアなし",
+  "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
 }

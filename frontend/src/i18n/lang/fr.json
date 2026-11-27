@@ -22179,5 +22179,8 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
   "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
-  "Not scored": "Non noté"
+  "Not scored": "Non noté",
+  "This fleet's runs only. The organization total counts every agent.": "Exécutions de cette flotte uniquement. Le total de l'organisation compte tous les agents.",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : {cost} de coût IA, compté dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : {cost} de coût IA, comptés dans le total de l'organisation uniquement.}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}"
 }
