@@ -280,6 +280,20 @@ async def _opencti_connections(sessions: Any) -> tuple[list[Any], list[str]]:
     return connections, errors
 
 
+#: The one line a route reports when OpenCTI refused the token, whatever its long wording.
+AUTH_REFUSED = "OpenCTI refused the integration's token (AUTH_REQUIRED): re-authorize the OpenCTI integration"
+
+
+def _is_auth_refusal(err: str) -> bool:
+    lowered = err.lower()
+    return "auth_required" in lowered or "must be logged in" in lowered
+
+
+def _route_error(err: str) -> str:
+    """The error a route reports: :data:`AUTH_REFUSED` for a refused token, else the message, cut."""
+    return AUTH_REFUSED if _is_auth_refusal(err) else f"OpenCTI: {err}"[:300]
+
+
 async def _pages(gql: Any, query: str, variables: dict[str, Any], root: str, out: dict[str, Any]) -> Any:
     """Yield the nodes of *root*, page by page, up to :data:`MAX_PER_ROUTE`; an error lands in *out*."""
     after: str | None = None
@@ -287,7 +301,7 @@ async def _pages(gql: Any, query: str, variables: dict[str, Any], root: str, out
     while taken < MAX_PER_ROUTE:
         data, err = await gql(query, {**variables, "first": PAGE, "after": after})
         if err:
-            out["errors"].append(f"OpenCTI: {err}"[:300])
+            out["errors"].append(_route_error(err))
             return
         block = (data or {}).get(root) or {}
         for edge in block.get("edges") or []:
@@ -301,6 +315,39 @@ async def _pages(gql: Any, query: str, variables: dict[str, Any], root: str, out
     out["capped"] = True
 
 
+def listener_path(entity_type: str) -> str:
+    """The trigger path the live OpenCTI listener records an *entity_type* delivery on, ``""`` for none."""
+    from app.services.ctem_signal_listeners import LISTENERS
+
+    kind = _STIX_TYPE.get(entity_type, entity_type.lower())
+    return next((row.trigger_path for row in LISTENERS if row.provider == "opencti" and kind in row.object_types), "")
+
+
+#: Why a world route reads nothing: the live listener's own source is off on its path.
+LISTENER_OFF = "The OpenCTI listener source is off for this trigger path (Settings > Organization > signal sources)"
+
+
+async def _excluded_listener_paths(sessions: Any) -> set[str]:
+    """The trigger paths the OpenCTI listener source records nothing on in the current profile.
+
+    ``note_event`` drops such a delivery without a word, so a route read on one would
+    say N read, 0 recorded with no reason; the resync skips it and says why instead.
+    """
+    from app.services.ctem_signal_sources import PATH_SOURCES, excluded_sources, is_excluded
+    from app.services.organizations import get_primary
+
+    try:
+        async with sessions() as db:
+            primary = await get_primary(db)
+            if primary is None:
+                return set()
+            excluded = await excluded_sources(db, primary.id)
+    except Exception:  # an unreadable profile never stops the resync; the recording point still decides
+        logger.info("CTEM resync: signal source exclusions not read", exc_info=True)
+        return set()
+    return {path for path in PATH_SOURCES if is_excluded(excluded, path, "opencti", "listener")}
+
+
 async def resync_world(
     sessions: Any,
     *,
@@ -308,21 +355,35 @@ async def resync_world(
     now: datetime | None = None,
     note: Callable[..., Awaitable[bool]] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Each OpenCTI entity type with its own window and cap, from every enabled OpenCTI source."""
+    """Each OpenCTI entity type with its own window and cap, from every enabled OpenCTI source.
+
+    A route whose trigger path has the OpenCTI listener source switched off is skipped
+    with that reason. A connection whose token OpenCTI refuses is not asked again on the
+    later routes: each says :data:`AUTH_REFUSED` once.
+    """
     from app.services.ctem_signal_listeners import note_event
 
     notify = note or note_event
     windows = windows or default_windows()
     at = now or datetime.now(UTC)
+    off_paths = await _excluded_listener_paths(sessions)
     connections, errors = await _opencti_connections(sessions)
+    refused: set[int] = set()
     routes: dict[str, dict[str, Any]] = {}
     for window in WINDOWS:
         if not window.entity_type:
             continue
         out = routes[window.key] = _route(window.key, windows)
+        if listener_path(window.entity_type) in off_paths:
+            out["skipped"] = LISTENER_OFF
+            continue
         out["errors"] += errors
         variables = {"types": [window.entity_type], "filters": _filters(_since(at, windows.get(window.key)))}
-        for gql in connections:
+        for index, gql in enumerate(connections):
+            if index in refused:
+                if AUTH_REFUSED not in out["errors"]:
+                    out["errors"].append(AUTH_REFUSED)
+                continue
             async for node in _pages(gql, _QUERY, variables, "stixCoreObjects", out):
                 payload = delivery(node)
                 if payload is None:
@@ -330,6 +391,8 @@ async def resync_world(
                 out["read"] += 1
                 if await notify("opencti", "update", payload, verified=True):
                     out["recorded"] += 1
+            if AUTH_REFUSED in out["errors"]:
+                refused.add(index)
     return routes
 
 
@@ -395,7 +458,7 @@ async def resync_pir(
     for gql in connections:
         data, err = await gql(_PIRS, {})
         if err:
-            out["errors"].append(f"OpenCTI PIRs: {err}"[:300])
+            out["errors"].append(AUTH_REFUSED if _is_auth_refusal(err) else f"OpenCTI PIRs: {err}"[:300])
             continue
         pirs = [((e or {}).get("node") or {}).get("id") for e in ((data or {}).get("pirs") or {}).get("edges") or []]
         for pir_id in [p for p in pirs if p in scope_by_pir]:
