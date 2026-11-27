@@ -22110,5 +22110,7 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "No se encontró responsable de grupo de activos ni de activo principal: un administrador, ya que ningún grupo decide en CTEM.",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "El primero de {count, plural, one {# candidato} other {# candidatos}} por fecha de creación de la cuenta.",
   "No owner was found: the current owner is kept.": "No se encontró responsable: se mantiene el responsable actual.",
-  "Set by a person.": "Definido por una persona."
+  "Set by a person.": "Definido por una persona.",
+  "Value (ROI) restarts from now": "El valor (ROI) se reinicia desde ahora",
+  "Measured since {date} (reset)": "Medido desde el {date} (restablecimiento)"
 }
