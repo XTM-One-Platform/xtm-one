@@ -487,7 +487,8 @@ def intake_session() -> AsyncSession:
             connect_args=ENGINE_CONNECT_ARGS,
         )
         _intake_sessionmaker = async_sessionmaker(intake_engine, class_=AsyncSession, expire_on_commit=False)
-    return _intake_sessionmaker()
+    session: AsyncSession = _intake_sessionmaker()
+    return session
 
 
 class StatementScopedSession:

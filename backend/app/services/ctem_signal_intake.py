@@ -34,7 +34,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from prometheus_client import Gauge
 
@@ -153,8 +153,10 @@ async def enqueue(delivery: Delivery) -> bool:
     try:
         from app.core.redis import redis_client
 
-        redis = await redis_client()
-        added, depth = await redis.eval(_ENQUEUE_LUA, 2, QUEUE_KEY, ENTRIES_KEY, entry_key(delivery), delivery.as_json())
+        redis: Any = await redis_client()
+        added, depth = await redis.eval(
+            _ENQUEUE_LUA, 2, QUEUE_KEY, ENTRIES_KEY, entry_key(delivery), delivery.as_json()
+        )
     except Exception as exc:
         logger.warning("CTEM signal intake queue unreachable, recording inline: %r", exc)
         return False
@@ -170,7 +172,7 @@ async def depth() -> int | None:
     try:
         from app.core.redis import redis_client
 
-        redis = await redis_client()
+        redis: Any = await redis_client()
         value = int(await redis.llen(QUEUE_KEY))
     except Exception:
         return None
@@ -178,11 +180,11 @@ async def depth() -> int | None:
     return value
 
 
-async def _pop() -> Delivery | None | bool:
+async def _pop() -> Delivery | None | Literal[False]:
     """The next delivery; ``False`` when the queue is empty, ``None`` for an unreadable entry."""
     from app.core.redis import redis_client
 
-    redis = await redis_client()
+    redis: Any = await redis_client()
     raw = await redis.eval(_POP_LUA, 2, QUEUE_KEY, ENTRIES_KEY)
     if raw is None or raw is False:
         return False

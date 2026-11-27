@@ -61,6 +61,9 @@ _VIEWERS = "ctem:cases:viewers:{vertical}"
 _FRESHNESS = "ctem:cases:freshness:{vertical}"
 _VIEWER_LAST = "ctem:cases:viewer-recompute:{user_id}:{vertical}"
 _RECOMPUTE_LOCK = "ctem:cases:recompute-lock:{organization_id}:{vertical}"
+#: Set by a purge that ended without a resync (#2583 note of 27 Nov 2026): no scheduled or page-open
+#: recompute until it expires, so the purge is not undone one interval later without anyone asking.
+_HELD_AFTER_PURGE = "ctem:cases:recompute-held-after-purge"
 #: The recompute lock frees itself after this long, should its holder die without releasing it.
 RECOMPUTE_LOCK_SECONDS = 10 * 60
 
@@ -259,8 +262,32 @@ async def recompute_as(db: AsyncSession, *, organization_id: uuid.UUID, user_id:
     return answer
 
 
+async def hold_after_purge(minutes: int) -> None:
+    """A purge without a resync ended: no recompute (scheduled or on page open) for *minutes*.
+
+    A manual recompute or a resync still runs; the next scheduled pass after the hold reads the
+    sources again, under their switches.
+    """
+    try:
+        client = await _redis()
+        await client.set(_HELD_AFTER_PURGE, "1", ex=max(1, minutes) * 60)
+    except Exception:
+        logger.warning("CTEM cases recompute not held after a purge: Redis unavailable")
+
+
+async def held_after_purge() -> bool:
+    """Whether a purge without a resync holds the automatic recomputes now."""
+    try:
+        client = await _redis()
+        return bool(await client.exists(_HELD_AFTER_PURGE))
+    except Exception:
+        return False
+
+
 async def pass_due(vertical: str, minutes: int) -> bool:
     """Take the pass slot for this interval; True when this tick runs it (or Redis is unavailable)."""
+    if await held_after_purge():
+        return False
     try:
         client = await _redis()
         return bool(await client.set(_PASS_SLOT.format(vertical=vertical), "1", nx=True, ex=minutes * 60))
@@ -296,6 +323,8 @@ async def scheduled_pass(db: AsyncSession, *, vertical: str = "cyber") -> dict[s
 
 async def viewer_due(user_id: str, vertical: str, minutes: int, now: float | None = None) -> bool:
     """Whether the viewer's last recompute is older than the interval (or never happened)."""
+    if await held_after_purge():
+        return False
     try:
         client = await _redis()
         raw = await client.get(_VIEWER_LAST.format(user_id=user_id, vertical=vertical))

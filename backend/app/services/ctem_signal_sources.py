@@ -57,7 +57,9 @@ EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 #: ``webhook``: a generic signed webhook source an administrator creates on one path
 #: (``ctem_webhook_sources``, #2506); never in :data:`PATH_SOURCES`, read from its table.
-SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook", "webhook")
+#: ``cases_reader``: the scheduled cases recompute's reader of a provider's open issues (#2583 note of
+#: 27 Nov 2026), its own source so the row lists it and its switch stops it.
+SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook", "webhook", "cases_reader")
 #: A path's status (#2436, Sam 26 Nov 2026): read from its sources' on/off state, never from the
 #: integration connection alone: ``enabled`` (every source used on the path is on), ``partly_enabled``
 #: (some are), then ``error``, ``not_set_up``, ``off``, ``not_connected`` and ``agents_api``.
@@ -147,6 +149,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     "new_vulnerability": (
         Source("opencti", "listener", "A vulnerability is created or updated, or linked to one of your assets"),
         Source("opencti", "pir_playbook", "The PIR playbook flags a vulnerability in one of your PIRs"),
+        Source("opencti", "cases_reader", "The cases recompute reads a vulnerability on your inventory software"),
         Source("github", "listener", "A security advisory is published on one of your repositories"),
     ),
     "relevant_threat": (
@@ -173,6 +176,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     ),
     "proven_exploitable": (
         Source("openaev", "listener", "A finished simulation reached a high or very high criticality asset"),
+        Source("openaev", "cases_reader", "The cases recompute reads a CVE finding on one of your assets"),
     ),
     "new_exposure": (
         Source("openaev", "listener", "A reachability assertion failed: a target that should not answer answers"),
@@ -372,6 +376,18 @@ async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, 
 def is_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str, kind: str, name: str = "") -> bool:
     """Whether ``provider:kind`` (``provider:kind:name`` for a named source, #2436) is excluded from *path*."""
     return _key_tuple(source_key(provider, kind, name)) in excluded.get(path, set())
+
+
+def reader_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str) -> bool:
+    """Whether the cases recompute's reader of *provider* records nothing on *path*.
+
+    Off when its own ``provider:cases_reader`` source is excluded, or when the path is off for the
+    provider: every other source of that provider on the path excluded ("Not used here").
+    """
+    if is_excluded(excluded, path, provider, "cases_reader"):
+        return True
+    others = [s for s in PATH_SOURCES.get(path, ()) if s.provider == provider and s.kind != "cases_reader"]
+    return bool(others) and all(is_excluded(excluded, path, s.provider, s.kind, s.name) for s in others)
 
 
 def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:

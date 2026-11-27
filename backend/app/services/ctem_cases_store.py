@@ -449,6 +449,15 @@ async def _source_signal(
     inp = ctem_source_signals.signal_of(issue, fix)
     if inp is None:
         return None, False
+    from app.services.ctem_signal_sources import excluded_sources, reader_excluded, source_key
+
+    # #2583 note of 27 Nov 2026: the reader honours the source switches, read once per session.
+    cache = db.info.setdefault("ctem_excluded_sources", {})
+    if organization_id not in cache:
+        cache[organization_id] = await excluded_sources(db, organization_id)
+    if reader_excluded(cache[organization_id], inp.trigger_path, inp.source_provider):
+        return None, False
+    inp.evidence[ctem_signals.SOURCE_KEY_EVIDENCE] = source_key(inp.source_provider, "cases_reader")
     async with db.begin_nested():
         row, created = await ctem_signals.record_signal(
             db,
