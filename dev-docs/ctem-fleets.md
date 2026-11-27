@@ -1269,7 +1269,15 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
   response - ...", "XTM One - CTEM loop - New relevant threats" and "...
   Threat activity flagged in a PIR"), per integration a Signals source is on
-  for, triggers and playbooks before their notifiers.
+  for, triggers and playbooks before their notifiers. The UI shows that action
+  only while `GET /api/v1/ctem-signals/sources` reports `legacy_pending > 0` on
+  an OpenCTI source (#2627): the objects the holders still hold in their state,
+  read from XTM One's database (`opencti_trigger_provisioning.legacy_pending`),
+  never from OpenCTI on page load; a removal that leaves nothing tombstones the
+  holders whose Signals source delivers, so the count drops at once. An object
+  created outside a holder is not counted: the dry run reads OpenCTI itself. Each
+  per-path object of a source (the PIR playbooks) carries `path` and
+  `path_label`, so two links of one kind on a row read apart.
 
 ### 8.2 Event enrichment
 
@@ -2459,6 +2467,18 @@ and each STIX id is triaged once, #1832), `Weekly PIR answer` (Mondays 07:00),
 clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
 (`opencti:pir-desk:approval:<id>`) and never revokes.
+
+Unfinished work (#2659): a hunt package or detection set a triage run cannot
+finish is delegated again in the run; what still remains is one work item
+keyed `opencti:pir-desk:followup:<entity id>` owned by the orchestrator,
+taken by its `Follow-up due` work-item assignment (`FOLLOWUP_PREFIX`,
+`FOLLOWUP_DUE` in `agents/opencti_pir_desk.py`; it inherits the switch of
+`PIR match created` on upgrade), which resumes from the staged draft and
+files the result in the PIR case; a step a person must take is a
+`needs_human` item with its ask. The desk never creates an item with no
+owner and no ask. `create_work_item` warns an agent with no work-item inbox
+that creates such an item (`_NO_OWNER_NO_INBOX_WARNING`,
+`work_item_context.agent_has_work_item_inbox`).
 
 PIR criteria: today's PIRs carry sectors and regions; the personas use any
 other criteria type a PIR carries and never require one, so the fleet gets

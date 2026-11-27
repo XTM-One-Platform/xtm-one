@@ -89,8 +89,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
         "touched; the board report on the 1st of the month.\n"
         "- **PIR match created** and **Report containing a PIR entity**: the Intelligence desk answers a "
-        "PIR match in OpenCTI; with the **Weekly PIR answer**, the **Half-year threat landscape** and "
-        "the **Stale indicator clean-up**.\n"
+        "PIR match in OpenCTI; with the **Weekly PIR answer**, the **Half-year threat landscape**, "
+        "the **Stale indicator clean-up** and the **Follow-up due** that resumes an unfinished hunt package.\n"
         "- **Simulation finished**: the Validation desk sorts every result of an OpenAEV simulation; "
         "with the **Weekly validation plan**, the **Weekly coverage report** and its own re-tests.\n"
         "- **Scenario re-priced**, **Finding re-scored** and **Control validation ingested**: the Risk "
@@ -312,6 +312,8 @@ OPENCTI_PIR_DESK_DOC: dict[str, str] = {
         "entity flagged in one of the organization's PIRs.\n"
         "- **Weekly PIR answer**: Mondays 07:00.\n"
         "- **Half-year threat landscape**: 1 January and 1 July, 08:00.\n"
+        "- **Follow-up due**: a hunt package or detection set a triage run left unfinished; it is resumed "
+        "from the staged draft and filed in the PIR case.\n"
         "- **Stale indicator clean-up**: the 1st of each month, 06:00.\n"
         "- **Gate answered**: a person answers an indicator revocation; it is revoked or kept as decided."
     ),
@@ -920,6 +922,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
             "name": "Report containing a PIR entity",
             "filter": "A report that contains an entity flagged in a PIR",
         },
+        {"module": "platform", "name": "Follow-up due", "filter": "An unfinished hunt package of the desk"},
         {"module": "schedule", "name": "Weekly PIR answer", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Half-year threat landscape", "filter": "1 January and 1 July at 08:00"},
         {"module": "schedule", "name": "Stale indicator clean-up", "filter": "The 1st of each month at 06:00"},
@@ -966,6 +969,12 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
             "basis": "One run per report holding a PIR entity, under its daily cap",
             "runs_min": 0,
             "runs_max": 150,
+        },
+        {
+            "trigger": "Follow-up due",
+            "basis": "One run per hunt package a triage run left unfinished",
+            "runs_min": 0,
+            "runs_max": 30,
         },
         {"trigger": "Weekly PIR answer", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Half-year threat landscape", "basis": "Two runs a year", "runs_min": 0, "runs_max": 1},
@@ -1256,7 +1265,7 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         *(
             q
             for q in OPENCTI_PIR_DESK_STRUCTURED["quota"]
-            if q["trigger"] in ("PIR match created", "Report containing a PIR entity")
+            if q["trigger"] in ("PIR match created", "Report containing a PIR entity", "Follow-up due")
         ),
         *(q for q in OPENAEV_DETECTION_DESK_STRUCTURED["quota"] if q["trigger"] == "Simulation finished"),
         *(
