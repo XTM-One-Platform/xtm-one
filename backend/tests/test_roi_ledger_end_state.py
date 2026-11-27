@@ -178,9 +178,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[_World]:
     async def no_audit(*_a: Any, **_kw: Any) -> None:
         return None
 
+    async def no_supervisors(_db: Any, _fleet_ids: Any) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+        return {}
+
     monkeypatch.setattr(settings, "observability_cost_data_enabled", True)
     monkeypatch.setattr(roi_ledger, "ledger_facts", ledger_facts)
     monkeypatch.setattr(roi_ledger, "viewer_for", viewer_for)
+    monkeypatch.setattr(roi_ledger, "fleet_supervisors", no_supervisors)
     monkeypatch.setattr(roi_access, "reader_scope", reader_scope)
     monkeypatch.setattr(roi_access, "agent_roi_reader", agent_reader)
     monkeypatch.setattr(roi_access, "fleet_roi_reader", fleet_reader)

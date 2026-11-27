@@ -208,6 +208,15 @@ export interface RoiLedgerFigures {
   names?: Record<string, string>;
   /** What the k rule did (design 12.5); `null` for Mine and administrators. */
   suppressed?: RoiLedgerSuppressed | null;
+  /** What the hero counts (#2639): a fleet's own members only, one agent, the viewer's own, or the whole organization. */
+  basis?: "fleet_members" | "agent" | "mine" | "organization";
+  /** Fleet scope (#2639): the outside agents supervising the fleet, never in the hero; `null` when none. */
+  supervision?: RoiLedgerSupervision | null;
+}
+
+/** `figures.supervision` (`services/roi_figures.py` `Figures.as_dict`): totals of the supervising agents. */
+export interface RoiLedgerSupervision extends RoiLedgerTotals {
+  agents: number;
 }
 
 /** `figures.suppressed` (`services/roi_figures.py` `Suppressed.as_dict`). */

@@ -75,6 +75,12 @@ ROW_OTHER = "other"
 ROW_OTHER_SOURCES = "other_sources"
 ROW_OTHER_UNITS = "other_units"
 
+#: What a hero counts (#2639), answered as ``basis`` so every surface states its scope.
+BASIS_FLEET_MEMBERS = "fleet_members"
+BASIS_AGENT = "agent"
+BASIS_MINE = "mine"
+BASIS_ORGANIZATION = "organization"
+
 #: The bounds and default of ``PlatformSettings.roi_min_group_size`` (12.5).
 MIN_GROUP_SIZE_DEFAULT = 5
 MIN_GROUP_SIZE_MIN = 2
@@ -266,6 +272,17 @@ class Figures:
     currency: str = ""
     #: The k rule's trace (12.5); ``None`` when the rule did not apply (Mine, administrators).
     suppressed: Suppressed | None = None
+    #: Fleet scope only (#2639): the facts of the agents OUTSIDE the fleet that supervise it, never in
+    #: the hero nor in any breakdown (the organization counts them); ``None`` when there are none.
+    supervision: Totals | None = None
+    supervision_agents: int = 0
+
+    @property
+    def basis(self) -> str:
+        """What the hero counts (#2639): ``fleet_members``, ``agent``, ``mine`` or ``organization``."""
+        return {SCOPE_FLEET: BASIS_FLEET_MEMBERS, SCOPE_AGENT: BASIS_AGENT, SCOPE_MINE: BASIS_MINE}.get(
+            self.scope, BASIS_ORGANIZATION
+        )
 
     def as_dict(self) -> dict[str, Any]:
         def rows(items: list[Row] | None) -> list[dict[str, Any]] | None:
@@ -295,6 +312,15 @@ class Figures:
             "cost_masked": self.cost_masked,
             "since": self.since.isoformat() if self.since else None,
             "suppressed": self.suppressed.as_dict() if self.suppressed else None,
+            "basis": self.basis,
+            "supervision": (
+                {
+                    "agents": self.supervision_agents,
+                    **self.supervision.as_dict(cost_masked=self.cost_masked, period_days=self.period_days),
+                }
+                if self.supervision is not None
+                else None
+            ),
         }
 
 
@@ -357,8 +383,13 @@ def compute(
     window_last: date,
     cost_masked: bool = False,
     period_days: int | None = None,
+    supervisor_ids: frozenset[uuid.UUID] = frozenset(),
 ) -> Figures:
     """The figures of *scope* as *viewer* reads them, over the facts of the window (already filtered by day).
+
+    *supervisor_ids* (fleet scope, #2639): agents outside the fleet that supervise it. Their facts
+    never carry the fleet (a fact's fleet is its agent's HOME fleet), so the hero excludes them by
+    construction; they are summed apart in ``supervision`` (the organization total counts them).
 
     The hero sums every selected fact. Each breakdown puts every selected fact in
     exactly one row: its own key, its residual row when it lacks the dimension,
@@ -366,6 +397,7 @@ def compute(
     and fleet scopes; Mine names every agent the viewer used).
     """
     scope = normalize_scope(scope)
+    facts = list(facts)
     chosen = select(facts, scope, viewer, scope_id)
     totals = Totals()
     for fact in chosen:
@@ -419,6 +451,7 @@ def compute(
     by_person = None
     if viewer.organization and viewer.by_person:
         by_person = _breakdown(chosen, lambda f: f.person_id or ROW_NO_PERSON, [ROW_NO_PERSON])
+    supervision, supervision_agents = _supervision(facts, scope, scope_id, supervisor_ids, viewer, suppressed)
     return Figures(
         scope=scope,
         scope_id=scope_id if scope in (SCOPE_AGENT, SCOPE_FLEET) else None,
@@ -435,7 +468,39 @@ def compute(
         since=_since(chosen, window_first),
         period_days=period_days,
         suppressed=suppressed,
+        supervision=supervision,
+        supervision_agents=supervision_agents,
     )
+
+
+def _supervision(
+    facts: Iterable[LedgerFact],
+    scope: str,
+    scope_id: uuid.UUID | None,
+    supervisor_ids: frozenset[uuid.UUID],
+    viewer: Viewer,
+    suppressed: Suppressed | None,
+) -> tuple[Totals | None, int]:
+    """The supervision line of a fleet answer (#2639): the facts of its outside supervisors, apart.
+
+    ``None`` outside the fleet scope, with no supervisor or no fact, when the viewer reads his own
+    share only, or when a non-administrator would read a line backed by fewer than k people (12.5).
+    A supervisor that is a home member of the fleet (its facts carry the fleet) is never summed here.
+    """
+    if scope != SCOPE_FLEET or not supervisor_ids or (suppressed is not None and suppressed.own_share_only):
+        return None, 0
+    totals = Totals()
+    agents: set[uuid.UUID] = set()
+    for fact in facts:
+        if fact.agent_id in supervisor_ids and fact.fleet_id != scope_id:
+            totals.add(fact)
+            agents.add(fact.agent_id)
+    if not agents:
+        return None, 0
+    k = viewer.k
+    if k is not None and len(totals.people) < k:
+        return None, 0
+    return totals, len(agents)
 
 
 def _merged(parts: Iterable[Totals]) -> Totals:
@@ -511,6 +576,7 @@ def compute_subjects(
     window_last: date,
     cost_masked: bool = False,
     period_days: int | None = None,
+    supervisors: dict[uuid.UUID, frozenset[uuid.UUID]] | None = None,
 ) -> dict[uuid.UUID, Figures]:
     """The figures of each agent or fleet of *ids* over one set of facts (the list column, slice L4).
 
@@ -530,6 +596,7 @@ def compute_subjects(
             window_last=window_last,
             cost_masked=cost_masked,
             period_days=period_days,
+            supervisor_ids=(supervisors or {}).get(sid, frozenset()),
         )
         for sid in dict.fromkeys(ids)
     }
