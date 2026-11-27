@@ -347,6 +347,14 @@ def _health_findings_open_on_one_read(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _ctem_exclusions_read_fresh() -> None:
+    """Every test reads the CTEM source exclusions afresh: the recorders' cache (#2583 point 7) never leaks between tests."""
+    from app.services.ctem_signal_sources import forget_exclusions
+
+    forget_exclusions()
+
+
+@pytest.fixture(autouse=True)
 def _agents_in_no_fleet(monkeypatch):
     """Keep the coordination scope's fleet read out of the unit suite.
 

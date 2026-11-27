@@ -378,6 +378,36 @@ async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, 
         return parse_excluded(None)
 
 
+#: Seconds a read exclusion map is trusted by the recorders (#2583 point 7): a source switched off
+#: stops recording within this delay, and an excluded delivery is dropped with no database session.
+EXCLUSIONS_TTL_SECONDS = 30.0
+_exclusions_cache: tuple[float, Any, dict[str, set[tuple[str, ...]]]] | None = None
+
+
+def cached_exclusions() -> tuple[Any, dict[str, set[tuple[str, ...]]]] | None:
+    """The primary organization's id and its exclusion map as last read, while fresh; else ``None``."""
+    import time
+
+    cached = _exclusions_cache
+    if cached is None or time.monotonic() - cached[0] > EXCLUSIONS_TTL_SECONDS:
+        return None
+    return cached[1], cached[2]
+
+
+def remember_exclusions(organization_id: Any, excluded: dict[str, set[tuple[str, ...]]]) -> None:
+    """Keep the exclusion map just read for :data:`EXCLUSIONS_TTL_SECONDS`."""
+    import time
+
+    global _exclusions_cache
+    _exclusions_cache = (time.monotonic(), organization_id, excluded)
+
+
+def forget_exclusions() -> None:
+    """Drop the cached exclusion map: the next delivery reads the profile again."""
+    global _exclusions_cache
+    _exclusions_cache = None
+
+
 def is_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str, kind: str, name: str = "") -> bool:
     """Whether ``provider:kind`` (``provider:kind:name`` for a named source, #2436) is excluded from *path*."""
     return _key_tuple(source_key(provider, kind, name)) in excluded.get(path, set())

@@ -809,18 +809,31 @@ async def note_event(
     from app.services.organizations import get_primary
 
     open_session = session_factory or async_session
+    from app.services.ctem_signal_sources import (
+        cached_exclusions,
+        excluded_sources,
+        is_excluded,
+        remember_exclusions,
+    )
+
+    # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
+    kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
+    # #2583 point 7: a delivery of a source excluded from its path is dropped from the cached map,
+    # before any database session, so an excluded catch-up never takes a connection.
+    cached = cached_exclusions()
+    if cached is not None and is_excluded(cached[1], row.trigger_path, provider, kind, row.source):
+        return False
 
     try:
         async with open_session() as db:
             primary = await get_primary(db)
             if primary is None:
                 return False
-            from app.services.ctem_signal_sources import excluded_sources, is_excluded
-
-            # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
-            kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
-            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind, row.source):
-                return False
+            if cached is None or cached[0] != primary.id:
+                excluded = await excluded_sources(db, primary.id)
+                remember_exclusions(primary.id, excluded)
+                if is_excluded(excluded, row.trigger_path, provider, kind, row.source):
+                    return False
             if row.trigger_path in ("relevant_threat", "new_vulnerability") and fields["evidence"].get("pir"):
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
 

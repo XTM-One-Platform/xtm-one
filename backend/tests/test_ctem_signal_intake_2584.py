@@ -127,3 +127,18 @@ def test_the_intake_engine_is_its_own_pool() -> None:
         assert bind.pool._max_overflow == 0
     finally:
         session.sync_session.close()
+
+
+def test_a_growing_inbox_is_logged_once_per_growth_step(monkeypatch: Any, caplog: Any) -> None:
+    # #2584 point 4: a log line when the inbox depth grows, never one per tick.
+    monkeypatch.setattr(inbox, "_last_logged_depth", 0)
+    with caplog.at_level("WARNING", logger=inbox.__name__):
+        assert inbox.note_depth(inbox.DEPTH_WARNING - 1) is False
+        assert inbox.note_depth(inbox.DEPTH_WARNING) is True
+        assert inbox.note_depth(inbox.DEPTH_WARNING + 10) is False
+        assert inbox.note_depth(2 * inbox.DEPTH_WARNING) is True
+        assert inbox.note_depth(10) is False
+        assert inbox.note_depth(inbox.DEPTH_WARNING) is True
+    lines = [r.getMessage() for r in caplog.records if "signal inbox" in r.getMessage()]
+    assert len(lines) == 3
+    assert f"{2 * inbox.DEPTH_WARNING} verified deliveries waiting" in lines[1]

@@ -174,6 +174,12 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
     return counts
 
 
+#: Waiting deliveries past which a growing inbox is logged (#2584 point 4): a catch-up the drain does not keep up with.
+DEPTH_WARNING = 1000
+#: The depth last logged; a new line only when the inbox grew past it, reset once it drains under the threshold.
+_last_logged_depth = 0
+
+
 QUEUE_DEPTH_GAUGE = Gauge(
     "xtmone_ctem_signal_inbox_depth",
     "Verified signal source deliveries accepted and waiting to be recorded (#2584)",
@@ -193,7 +199,29 @@ async def depth() -> int | None:
     except Exception:
         return None
     QUEUE_DEPTH_GAUGE.set(value)
+    note_depth(value)
     return value
+
+
+def note_depth(value: int) -> bool:
+    """Log a warning when the inbox depth grows past :data:`DEPTH_WARNING`; ``True`` when a line was written.
+
+    One line per growth step (the depth at least doubled since the last line, or crossed the
+    threshold again after draining under it), so a storm leaves a readable trail, never a line per tick.
+    """
+    global _last_logged_depth
+    if value < DEPTH_WARNING:
+        _last_logged_depth = 0
+        return False
+    if _last_logged_depth and value < 2 * _last_logged_depth:
+        return False
+    logger.warning(
+        "CTEM signal inbox: %d verified deliveries waiting to be recorded (warning at %d): the drain is behind",
+        value,
+        DEPTH_WARNING,
+    )
+    _last_logged_depth = value
+    return True
 
 
 async def _delete(row_id: Any) -> None:
