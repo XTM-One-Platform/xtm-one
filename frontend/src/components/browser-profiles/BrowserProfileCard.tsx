@@ -253,6 +253,15 @@ export function BrowserProfileCard({
             </Tip>
           )}
         </div>
+        {profile.apps.length > 0 && (
+          <ul aria-label={t_i18n("Also signs in")} className="space-y-0.5 content-compact text-default-secondary">
+            {profile.apps.map((app) => (
+              <li key={app.url} className="break-all">
+                {t_i18n("Also signs in: {name} - {url}", { name: app.name, url: app.url })}
+              </li>
+            ))}
+          </ul>
+        )}
         <VaultSecretsNotice status={profile.vault_secrets} fieldLabels={{ credentials: t_i18n("Sign-in credentials") }} />
         {profile.last_sign_in_message && (
           <p className={cn("content-compact", profile.session_status === "failed" ? "text-feedback-error-primary" : "text-default-secondary")}>

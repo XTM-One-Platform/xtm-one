@@ -37,6 +37,7 @@ function profile(overrides: Partial<BrowserProfile> = {}): BrowserProfile {
     start_url: "https://app.example.test/",
     login_url: null,
     allowed_hosts: [],
+    apps: [],
     login_config: {},
     browser_options: {},
     username_hint: null,
@@ -134,5 +135,18 @@ describe("BrowserProfileCard on an application that did not answer", () => {
     await waitFor(() => expect(screen.getAllByText("Dry run: signed in, not checked")).toHaveLength(2));
     expect(screen.queryByText("Dry run did not finish")).toBeNull();
     expect(screen.queryByText("Dry run: did not finish")).toBeNull();
+  });
+});
+
+describe("BrowserProfileCard of a profile that signs in other applications", () => {
+  it("names each application its session also signs in, with its URL", () => {
+    card(profile({ apps: [{ name: "Risk", url: "https://risk.example.test/" }] }));
+    const list = screen.getByRole("list", { name: "Also signs in" });
+    expect(list).toHaveTextContent("Also signs in: Risk - https://risk.example.test/");
+  });
+
+  it("shows no application list when the profile declares none", () => {
+    card(profile({ apps: [] }));
+    expect(screen.queryByRole("list", { name: "Also signs in" })).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /** Labels and pure helpers of the browser profile screens. */
-import type { BrowserProfileLoginConfig, BrowserSessionStatus } from "@/types";
+import type { BrowserProfileApp, BrowserProfileLoginConfig, BrowserSessionStatus } from "@/types";
 
 /** The English label of a browser session status: the last probe's answer, never the cookies'. @i18n-keys */
 export const SESSION_STATUS_LABELS = {
@@ -56,6 +56,13 @@ export function parseHosts(text: string): string[] {
     .split(/[\n,]/)
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** The form's application rows as the profile stores them: a row without a URL left out, names and URLs trimmed. */
+export function appsFrom(rows: BrowserProfileApp[]): BrowserProfileApp[] {
+  return rows
+    .map((row) => ({ name: row.name.trim(), url: row.url.trim() }))
+    .filter((row) => row.url);
 }
 
 /** The sign-in setting listing the storage keys the application keeps its session in. */

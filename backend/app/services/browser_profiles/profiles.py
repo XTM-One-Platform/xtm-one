@@ -176,6 +176,53 @@ def clean_browser_options(value: dict | None) -> dict | None:
     return {k: v for k, v in options.items() if v}
 
 
+#: How many other applications one profile may declare, and how long an application's name may be.
+MAX_APPS = 20
+_APP_NAME_MAX = 200
+#: The marks of the profile's own application: another application declared on it is judged by its structure.
+_APP_MARKS = ("signed_in_selector", "signed_in_url_pattern", "signed_out_url_pattern")
+
+
+def clean_apps(value: Any) -> list[dict[str, str]]:
+    """``apps`` as stored: each other application the session signs in, ``{name, url}``, one per host."""
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list | tuple):
+        raise ProfileError("apps is a list of {name, url}.")
+    if len(value) > MAX_APPS:
+        raise ProfileError(f"A profile declares at most {MAX_APPS} other applications.")
+    apps: list[dict[str, str]] = []
+    hosts: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {"name", "url"}:
+            raise ProfileError("Each of apps is {name, url}.")
+        url = _check_url(str(item.get("url") or ""), "apps.url", required=True) or ""
+        host = (urlparse(url).hostname or "").lower().rstrip(".")
+        if host in hosts:
+            continue
+        hosts.add(host)
+        name = str(item.get("name") or "").strip()[:_APP_NAME_MAX] or host
+        apps.append({"name": name, "url": url})
+    return apps
+
+
+def app_hosts(apps: list | None) -> list[str]:
+    """The hosts of a profile's declared applications."""
+    return normalise_hosts([str(app.get("url") or "") for app in apps or [] if isinstance(app, dict)])
+
+
+def covers_url(profile: BrowserProfile, url: str) -> bool:
+    """Whether *url*'s host is the profile's application or one it declares (a parent domain given matches)."""
+    text = (url or "").strip().lower()
+    if not text:
+        return False
+    host = (urlparse(text if "://" in text else f"https://{text}").hostname or "").rstrip(".")
+    if not host:
+        return False
+    hosts = normalise_hosts([profile.start_url, profile.login_url or ""]) + app_hosts(profile.apps)
+    return any(h == host or h.endswith("." + host) for h in hosts)
+
+
 @dataclass(frozen=True)
 class ProfileFields:
     name: str
@@ -188,6 +235,8 @@ class ProfileFields:
     keepalive_minutes: int
     #: Column -> seconds; a timeout left out keeps the profile's (its default on a new one).
     timeouts: dict[str, int] = field(default_factory=dict)
+    #: The other applications the session signs in (:func:`clean_apps`).
+    apps: list[dict[str, str]] = field(default_factory=list)
 
 
 def clean_timeouts(values: dict[str, Any] | None) -> dict[str, int]:
@@ -220,6 +269,7 @@ def clean_fields(
     description: str | None = None,
     keepalive_minutes: int = KEEPALIVE_MINUTES_DEFAULT,
     timeouts: dict[str, Any] | None = None,
+    apps: Any = None,
 ) -> ProfileFields:
     clean_name = (name or "").strip()
     if not clean_name:
@@ -239,6 +289,7 @@ def clean_fields(
         description=(description or "").strip()[:2000] or None,
         keepalive_minutes=keepalive,
         timeouts=clean_timeouts(timeouts),
+        apps=clean_apps(apps),
     )
 
 
@@ -247,6 +298,7 @@ def apply_fields(profile: BrowserProfile, fields: ProfileFields) -> None:
     profile.start_url = fields.start_url
     profile.login_url = fields.login_url
     profile.allowed_hosts = fields.allowed_hosts or None
+    profile.apps = fields.apps or None
     profile.login_config = fields.login_config
     profile.browser_options = fields.browser_options
     profile.description = fields.description
@@ -256,8 +308,8 @@ def apply_fields(profile: BrowserProfile, fields: ProfileFields) -> None:
 
 
 def destination(profile: BrowserProfile) -> tuple[str, str | None, list[str]]:
-    """Where the profile types its credentials: the URLs it signs in at and the private hosts it may reach."""
-    return (profile.start_url, profile.login_url, sorted(profile.allowed_hosts or []))
+    """Where the profile types its credentials: the URLs it signs in at, the hosts it may reach."""
+    return (profile.start_url, profile.login_url, sorted(profile.allowed_hosts or []) + app_hosts(profile.apps))
 
 
 async def repoint_problem(db: AsyncSession, user: Any, profile: BrowserProfile, before: tuple) -> str | None:
@@ -474,6 +526,30 @@ class ProfileSnapshot:
     #: code with no TOTP secret, an approval), ``None`` none ran since they were set
     #: (``BrowserProfile.signs_in_unattended``).
     signs_in_unattended: bool | None = None
+    #: The other applications the session signs in (``BrowserProfile.apps``), ``{name, url}`` each.
+    apps: tuple[dict, ...] = ()
+
+    def app_for(self, url: str | None) -> dict | None:
+        """The declared application whose host *url* is on, or ``None`` (the profile's own application, or none)."""
+        host = (urlparse(url or "").hostname or "").lower().rstrip(".")
+        if not host or host == self.app_host:
+            return None
+        return next((app for app in self.apps if app_hosts([app]) == [host]), None)
+
+    def as_app(self, app: dict) -> ProfileSnapshot:
+        """This session judged as the declared application *app*: its URL is the start URL, nothing to sign in at.
+
+        The profile signs in at its own application; another one opens signed in through the same
+        identity-provider session, so it is probed by its structure alone (the own application's marks and
+        sign-in URL do not apply to it).
+        """
+        config = {key: value for key, value in self.login_config.items() if key not in _APP_MARKS}
+        return dataclasses.replace(self, start_url=str(app.get("url") or ""), login_url=None, login_config=config)
+
+    def scoped_to(self, url: str | None) -> ProfileSnapshot:
+        """This session as the application *url* is on: a declared application's, else the profile's own."""
+        app = self.app_for(url)
+        return self.as_app(app) if app is not None else self
 
     def _has(self, key: str) -> bool:
         return bool(self.credentials.get(key)) or key in self.referenced
@@ -585,13 +661,16 @@ def snapshot(profile: BrowserProfile) -> ProfileSnapshot:
         credentials={key: value for key, value in stored.items() if not is_secret_reference(value)},
         storage_state=read_storage_state(profile),
         policy=target_policy(
-            start_url=profile.start_url, login_url=profile.login_url, allowed_hosts=profile.allowed_hosts
+            start_url=profile.start_url,
+            login_url=profile.login_url,
+            allowed_hosts=list(profile.allowed_hosts or []) + app_hosts(profile.apps),
         ),
         sign_in_timeout=float(timeout_of(profile, "sign_in_timeout_seconds")),
         session_save_timeout=float(timeout_of(profile, "session_save_timeout_seconds")),
         mfa_timeout=float(timeout_of(profile, "mfa_timeout_seconds")),
         referenced=frozenset(key for key, value in stored.items() if is_secret_reference(value)),
         signs_in_unattended=profile.signs_in_unattended,
+        apps=tuple(dict(app) for app in profile.apps or [] if isinstance(app, dict)),
     )
 
 
@@ -716,6 +795,7 @@ def serialize_profile(profile: BrowserProfile, *, can_manage: bool) -> dict:
         "start_url": profile.start_url,
         "login_url": profile.login_url,
         "allowed_hosts": list(profile.allowed_hosts or []),
+        "apps": [dict(app) for app in profile.apps or [] if isinstance(app, dict)],
         "login_config": dict(profile.login_config or {}),
         "browser_options": dict(profile.browser_options or {}),
         "username_hint": mask_username(credentials.get("username")),

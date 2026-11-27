@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { loginConfigFrom, loginConfigTexts } from "./browser-profile-format.ts";
+import { appsFrom, loginConfigFrom, loginConfigTexts } from "./browser-profile-format.ts";
 
 test("the storage keys a profile keeps read as one text in the form", () => {
   assert.deepEqual(loginConfigTexts({ keep_storage_keys: ["auth", "msal.Token"], signed_in_selector: "#app" }), {
@@ -24,4 +24,14 @@ test("the form's text is saved as the list of storage keys", () => {
     { keep_storage_keys: ["auth", "msal.Token"], signed_in_selector: "#app" },
   );
   assert.deepEqual(loginConfigFrom({ keep_storage_keys: " , " }), {});
+});
+
+test("the applications a profile also signs in are saved trimmed, a row without a URL left out", () => {
+  assert.deepEqual(
+    appsFrom([
+      { name: " Risk ", url: " https://risk.example.com/ " },
+      { name: "Blank", url: "  " },
+    ]),
+    [{ name: "Risk", url: "https://risk.example.com/" }],
+  );
 });

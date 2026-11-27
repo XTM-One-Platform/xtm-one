@@ -22076,5 +22076,14 @@
   "Resync from the sources": "Resync from the sources",
   "Resume signal intake": "Resume signal intake",
   "{signals, plural, one {# signal} other {# signals}}, {cases, plural, one {# case} other {# cases}}": "{signals, plural, one {# signal} other {# signals}}, {cases, plural, one {# case} other {# cases}}",
-  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, one {# signal recorded} other {# signals recorded}}"
+  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, one {# signal recorded} other {# signals recorded}}",
+  "Deleting browser profile": "Deleting browser profile",
+  "Also signs in (optional)": "Also signs in (optional)",
+  "Other applications this profile's session opens signed in, for example through the same single sign-on. Agents find this profile by their URL and record them with it.": "Other applications this profile's session opens signed in, for example through the same single sign-on. Agents find this profile by their URL and record them with it.",
+  "Application name": "Application name",
+  "Application URL": "Application URL",
+  "Remove application": "Remove application",
+  "Add application": "Add application",
+  "Also signs in": "Also signs in",
+  "Also signs in: {name} - {url}": "Also signs in: {name} - {url}"
 }
