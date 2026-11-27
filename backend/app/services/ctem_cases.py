@@ -450,7 +450,7 @@ def _upgrade_prefix(key: str) -> str | None:
     return key.rsplit("@", 1)[0] + "@"
 
 
-def _upgrade_parts(key: str) -> tuple[str, str, str] | None:
+def upgrade_key_parts(key: str) -> tuple[str, str, str] | None:
     """``(vendor, product, version)`` of an upgrade key, lower-cased as keys are; ``None`` for another key."""
     if not key.startswith("upgrade:") or "@" not in key or "/" not in key:
         return None
@@ -469,7 +469,7 @@ def same_product_key(left: str, right: str) -> bool:
     """
     if left == right:
         return True
-    a, b = _upgrade_parts(left), _upgrade_parts(right)
+    a, b = upgrade_key_parts(left), upgrade_key_parts(right)
     if a is None or b is None or a[2] != b[2]:
         return False
     (va, pa, _), (vb, pb, _) = a, b
