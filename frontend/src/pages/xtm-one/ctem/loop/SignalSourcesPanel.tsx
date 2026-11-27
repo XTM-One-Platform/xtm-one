@@ -42,6 +42,7 @@ import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { PlatformSourceEnableDialog } from "./PlatformSourceControls";
+import { quietReasonText } from "./quiet-reason";
 import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
 import { isProvisioned } from "./platform-sources";
 import { signalsHref } from "./signals-route";
@@ -258,6 +259,18 @@ function CountCell({ tip, title, label }: { tip: string; title: string; label: s
   );
 }
 
+/** The empty Last signal cell with why its pass raised nothing; a keyboard stop like its sibling cells (UX round 1 on #2654, B3). */
+function QuietReasonCell({ reason, label }: { reason: string; label: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={reason}>
+      <span className="rounded-sm text-default-secondary" tabIndex={tabIndex} data-testid="ctem-signal-sources-quiet-reason">
+        {label}
+      </span>
+    </Tip>
+  );
+}
+
 function providerName(provider: string): string {
   return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
 }
@@ -447,7 +460,17 @@ export function SignalSourcesPanel() {
       hideable: true,
       width: 152,
       sortValue: (path) => path.last_signal_at ?? "",
-      cell: (path) => <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>,
+      cell: (path) => {
+        // Why an empty outside path raised nothing (#2634): the reason its pass gives, worded here, on the empty cell.
+        const reason = !path.last_signal_at
+          ? quietReasonText(path.quiet_reason, t_i18n, (iso) => formatShortDateTimeIntl(intl, iso))
+          : undefined;
+        return reason ? (
+          <QuietReasonCell reason={reason} label={lastSignal(path)} />
+        ) : (
+          <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>
+        );
+      },
     },
     {
       key: "action",

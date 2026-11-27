@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_surface_observation import CtemSurfaceObservation
@@ -498,7 +498,7 @@ def _still_holding(signalled: list[str], obs: Observation) -> list[str]:
     marker = f":{SOURCE}:{host_key(obs.host)}:"
     kept: list[str] = []
     for key in signalled:
-        if key == REARM_NEW_HOST:  # consumed by the pass that saw the host again (#2578)
+        if key.startswith(REARM_PREFIX):  # consumed by the pass that saw the host again (#2578, #2634)
             continue
         detail = key.split(marker, 1)[1] if marker in key else ""
         if detail.startswith("port:") and detail not in open_ports:
@@ -572,8 +572,6 @@ async def run_pass(
     Answers the counts and the case events to raise after the commit
     (``ctem_case_loop.publish_pending``) under ``pending``.
     """
-    from app.services import ctem_case_loop, ctem_scope_gate_store, ctem_signals
-
     at = now or datetime.now(UTC)
     domains = list(getattr(profile, "owned_domains", []) or [])
     ranges = list(getattr(profile, "address_ranges", []) or [])
@@ -619,48 +617,19 @@ async def run_pass(
 
     from app.services.ctem_signal_sources import parse_excluded
 
-    # The providers an administrator took off a path (#1445): a finding only they saw records nothing there.
-    excluded = parse_excluded(profile)
     seen_by = {host_key(obs.host): list(obs.providers or [reader.provider]) for obs in observations}
-    pending = ctem_case_loop.PendingEvents()
     counts: dict[str, int] = {"observed": len(observations), "recorded": 0}
-    for finding in findings:
-        if not _kept_for_path(excluded, finding.trigger_path, seen_by.get(finding.host) or reader.provider.split("+")):
-            counts["excluded"] = counts.get("excluded", 0) + 1
-            continue
-        signal, created = await ctem_signals.record_signal(
-            db,
-            organization_id=organization_id,
-            signal=ctem_signals.SignalInput(
-                trigger_path=finding.trigger_path,
-                source_provider=reader.provider,
-                subject_kind="asset",
-                subject_ref=finding.host,
-                lens="outside",
-                subject_label=f"{finding.host}: {finding.reason}",
-                observed_at=at,
-                # #2436: the pass that recorded it, counted apart on the signal sources view.
-                evidence={
-                    **finding.evidence,
-                    "reason": finding.reason,
-                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{reader.provider}:pass",
-                },
-                dedupe_key=finding.dedupe_key,
-            ),
-            recorded_via="listener",
-            recorded_by=ctem_signals.SYSTEM_ACTOR,
-            now=at,
-        )
-        events = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
-        if events:
-            pending.items.extend(events.items)
-            pending.verticals |= events.verticals
-            pending.frames.extend(events.frames)
-        row = rows.get(finding.host)
-        if row is not None:
-            row.signalled = list(dict.fromkeys([*(row.signalled or []), finding.dedupe_key]))
-        counts["recorded"] += 1
-        counts[finding.trigger_path] = counts.get(finding.trigger_path, 0) + 1
+    pending = await _record_findings(
+        db,
+        organization_id=organization_id,
+        findings=findings,
+        rows=rows,
+        provider=reader.provider,
+        at=at,
+        excluded=parse_excluded(profile),
+        seen_by=seen_by,
+        counts=counts,
+    )
     counts["new_host_withheld"] = len(withheld)
     counts["out_of_scope"] = len(out_of_scope)
     if unread:
@@ -679,6 +648,244 @@ async def run_pass(
     )
     await db.flush()
     return {"counts": counts, "pending": pending, "statuses": statuses}
+
+
+async def _record_findings(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    findings: list[Finding],
+    rows: dict[str, CtemSurfaceObservation],
+    provider: str,
+    at: datetime,
+    excluded: dict[str, set[tuple[str, str]]],
+    seen_by: dict[str, list[str]],
+    counts: dict[str, int],
+) -> Any:
+    """Record each finding as an outside-lens signal and hold its key on the host row; the case
+    events to publish after the commit. *counts* gains ``recorded``, ``excluded`` and one count per path."""
+    from app.services import ctem_case_loop, ctem_scope_gate_store, ctem_signals
+
+    pending = ctem_case_loop.PendingEvents()
+    counts.setdefault("recorded", 0)
+    for finding in findings:
+        # The providers an administrator took off a path (#1445): a finding only they saw records nothing there.
+        if not _kept_for_path(excluded, finding.trigger_path, seen_by.get(finding.host) or provider.split("+")):
+            counts["excluded"] = counts.get("excluded", 0) + 1
+            continue
+        signal, created = await ctem_signals.record_signal(
+            db,
+            organization_id=organization_id,
+            signal=ctem_signals.SignalInput(
+                trigger_path=finding.trigger_path,
+                source_provider=provider,
+                subject_kind="asset",
+                subject_ref=finding.host,
+                lens="outside",
+                subject_label=f"{finding.host}: {finding.reason}",
+                observed_at=at,
+                # #2436: the pass that recorded it, counted apart on the signal sources view.
+                evidence={
+                    **finding.evidence,
+                    "reason": finding.reason,
+                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{provider}:pass",
+                },
+                dedupe_key=finding.dedupe_key,
+            ),
+            recorded_via="listener",
+            recorded_by=ctem_signals.SYSTEM_ACTOR,
+            now=at,
+        )
+        events = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+        if events:
+            pending.items.extend(events.items)
+            pending.verticals |= events.verticals
+            pending.frames.extend(events.frames)
+        row = rows.get(finding.host)
+        if row is not None:
+            row.signalled = list(dict.fromkeys([*(row.signalled or []), finding.dedupe_key]))
+        counts["recorded"] += 1
+        counts[finding.trigger_path] = counts.get(finding.trigger_path, 0) + 1
+    return pending
+
+
+# ── the purge re-raise (#2634) ──────────────────────────────────────────────
+
+#: The prefix of a re-arm mark: ``rearm:`` and the key of the signal the purge deleted
+#: (``REARM_NEW_HOST`` is the older, host-level form of the new-host mark).
+REARM_PREFIX = "rearm:"
+#: The paths whose held keys the purge re-arms and a resync may re-raise from the baseline.
+REARMED_PATHS: tuple[str, ...] = ("surface_drift", "new_exposure")
+
+
+def rearm_mark(dedupe_key: str) -> str:
+    """The mark the purge leaves for one deleted pass signal (#2634)."""
+    return f"{REARM_PREFIX}{dedupe_key}"[:240]
+
+
+def held_findings(row: Baseline, declared: dict[str, Any]) -> list[Finding]:
+    """The findings the last committed pass held on *row* and the purge re-armed (no I/O, #2634).
+
+    A new-host mark raises the drift again unless the host is declared now; a port mark raises
+    its path's port finding again (a declared host's port is ``new_exposure``, an undeclared
+    host's ``surface_drift``). Keys of other paths are recomputed by every pass, never re-raised here.
+    """
+    asset = declared.get(row.host) or (declared.get(host_key(row.ip)) if row.ip else None)
+    base: dict[str, Any] = {"source": SOURCE, "hostnames": [row.host], "ports": list(row.ports), "re_raised": "purge"}
+    if row.ip:
+        base["ips"] = [row.ip]
+    out: list[Finding] = []
+    marker = f":{SOURCE}:{row.host}:"
+    for mark in row.signalled:
+        if not mark.startswith(REARM_PREFIX):
+            continue
+        key = mark.removeprefix(REARM_PREFIX)
+        if mark == REARM_NEW_HOST or (key.startswith("surface_drift:") and key.endswith(":new_host")):
+            if asset is None:
+                out.append(
+                    Finding(
+                        "surface_drift",
+                        row.host,
+                        "a host neither declared nor seen before the last pass, held when the signals were purged",
+                        "new_host",
+                        {**base, "baseline": "absent"},
+                    )
+                )
+            continue
+        path = key.split(":", 1)[0]
+        detail = key.split(marker, 1)[1] if marker in key else ""
+        if path not in REARMED_PATHS or not detail.startswith("port:"):
+            continue
+        port = detail.removeprefix("port:")
+        if asset is not None and path == "new_exposure":
+            reason = f"{asset.name} answers on {port}, held by the last pass when the signals were purged"
+            out.append(Finding(path, row.host, reason, detail, {**base, "asset": asset.name, "new_port": port}))
+        elif asset is None and path == "surface_drift":
+            reason = f"an undeclared host answers on {port}, held by the last pass when the signals were purged"
+            out.append(Finding(path, row.host, reason, detail, {**base, "new_port": port}))
+    return list({f.dedupe_key: f for f in out}.values())
+
+
+async def reraise_held(db: AsyncSession, *, now: datetime | None = None) -> dict[str, Any] | None:
+    """Raise again, from the stored baseline, what the last committed pass held when a purge
+    deleted it (#2634); the caller commits. Run by the purge resync after its own pass, for the
+    marks that pass left (it did not complete: a provider read failed, no credential; or it did
+    not see the host this time): the outside paths are not left empty while the undeclared hosts
+    the last pass saw still exist. Each re-raised key replaces its mark, so the next pass that
+    sees the host dedupes on it. ``None`` when the pass is off.
+    """
+    from app.services import organization_context as org_context
+    from app.services.ctem_signal_sources import parse_excluded
+    from app.services.organizations import get_primary
+
+    primary = await get_primary(db)
+    if primary is None:
+        return None
+    _row, profile = await org_context.current_profile(db, primary.id)
+    if not profile.attack_surface.enabled:
+        return None
+    at = now or datetime.now(UTC)
+    rows = await _baseline(db, primary.id)
+    declared = _declared(profile)
+    findings: list[Finding] = []
+    for row in rows.values():
+        marks = [k for k in row.signalled or [] if k.startswith(REARM_PREFIX)]
+        if not marks:
+            continue
+        found = held_findings(_as_baseline(row), declared)
+        findings.extend(found)
+        restored = {f.detail.removeprefix("port:") for f in found if f.detail.startswith("port:")}
+        known = {f"{p.get('port')}/{p.get('transport') or 'tcp'}" for p in row.ports or [] if isinstance(p, dict)}
+        extra = []
+        for key in sorted(restored - known):
+            number, _, transport = key.partition("/")
+            extra.append(
+                {"port": int(number) if number.isdigit() else number, "transport": transport or "tcp", "product": ""}
+            )
+        if extra:
+            row.ports = [*(row.ports or []), *extra]
+        row.signalled = [k for k in row.signalled or [] if not k.startswith(REARM_PREFIX)]
+    counts: dict[str, Any] = {"recorded": 0, "held": len(findings)}
+    pending = await _record_findings(
+        db,
+        organization_id=primary.id,
+        findings=findings,
+        rows=rows,
+        provider=next((r.source_provider for r in rows.values() if r.source_provider), "attack_surface"),
+        at=at,
+        excluded=parse_excluded(profile),
+        seen_by={},
+        counts=counts,
+    )
+    await db.flush()
+    return {"counts": counts, "pending": pending}
+
+
+def empty_reads(statuses: dict[str, str]) -> list[str]:
+    """The scopes a pass read ``empty`` (the provider answered no host at all for them), from its
+    ``provider|scope`` statuses (#2634: an owned domain the provider knows nothing of)."""
+    return sorted({key.split("|", 1)[-1] for key, state in (statuses or {}).items() if state == "empty"})
+
+
+async def quiet_reasons(
+    db: AsyncSession, organization_id: uuid.UUID, *, resync_running: bool = False
+) -> dict[str, dict[str, Any]]:
+    """Why the attack-surface pass raised nothing on each of its paths (#2634): read from the latest
+    committed pass and the baseline, for the source rows of an empty path. Pure reads.
+
+    Each reason is data the screen words in the reader's language (UX round 1 on #2654): ``code``
+    (resync_queued, a ``no_pass_reason`` code, empty_read, rearmed, baseline, withheld,
+    no_undeclared_host or nothing_new; frontend quiet-reason.ts words each one), ``at`` (the
+    last pass, ISO 8601), ``count`` and ``scopes`` when the code needs them, and ``empty_scopes``:
+    the scopes the provider answered nothing for on a pass that still read hosts.
+    *resync_running*: a purge resync is replaying its routes; its pass runs after them.
+    """
+    paths = ("new_exposure", "stale_asset", "surface_drift")
+    if resync_running:
+        return {p: {"code": "resync_queued"} for p in paths}
+    latest = await list_passes(db, organization_id, limit=1)
+    if not latest:
+        code, _sentence = await no_pass_reason(db, organization_id)
+        return {p: {"code": code} for p in paths}
+    last = latest[0]
+    counts = dict(last.counts or {})
+    if all(counts.get(path) for path in paths):
+        return {}
+    when = last.at.isoformat() if last.at else None
+    # Counted in SQL: the baseline rows (ports, signalled) are never loaded for a count (review on #2654).
+    armed = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(CtemSurfaceObservation)
+            .where(
+                CtemSurfaceObservation.organization_id == organization_id,
+                cast(CtemSurfaceObservation.signalled, Text).like(f'%"{REARM_PREFIX}%'),
+            )
+        )
+        or 0
+    )
+    empty = empty_reads(dict(last.statuses or {}))
+    out: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        if counts.get(path):
+            continue
+        reason: dict[str, Any] = {"at": when}
+        if empty and not counts.get("observed"):
+            reason.update(code="empty_read", scopes=list(empty))
+        elif armed:
+            reason.update(code="rearmed", count=armed)
+        elif path == "surface_drift" and last.previous_at is None:
+            reason["code"] = "baseline"
+        elif path == "surface_drift" and counts.get("new_host_withheld"):
+            reason.update(code="withheld", count=int(counts["new_host_withheld"]))
+        elif path == "surface_drift":
+            reason["code"] = "no_undeclared_host"
+        else:
+            reason["code"] = "nothing_new"
+        if empty and counts.get("observed"):
+            reason["empty_scopes"] = list(empty)
+        out[path] = reason
+    return out
 
 
 # ── the pass summaries and the one-off repair (#1498) ───────────────────────
@@ -719,18 +926,25 @@ async def why_no_pass(db: AsyncSession, organization_id: uuid.UUID) -> str:
     reason names the first step the schedule stops at (off, no scope, no provider, no reader),
     else says that no pass has completed yet, with what makes one write nothing (#2331).
     """
+    _code, sentence = await no_pass_reason(db, organization_id)
+    return sentence
+
+
+async def no_pass_reason(db: AsyncSession, organization_id: uuid.UUID) -> tuple[str, str]:
+    """``why_no_pass`` as a code the screen words (pass_off, no_scope, no_provider,
+    provider_unreadable, no_pass_completed) and the sentence agents and the API read (#2634)."""
     from app.services import organization_context as org_context
 
     _row, profile = await org_context.current_profile(db, organization_id)
     surface = profile.attack_surface
     if not surface.enabled:
-        return "the attack surface pass is turned off in the organization profile (attack_surface.enabled)"
+        return "pass_off", "the attack surface pass is turned off in the organization profile (attack_surface.enabled)"
     if not (profile.owned_domains or profile.address_ranges):
-        return "the organization profile declares no owned domains and no address ranges to read"
+        return "no_scope", "the organization profile declares no owned domains and no address ranges to read"
     reader = await reader_for(db, profile)
     if isinstance(reader, str):
-        return reader
-    return (
+        return ("provider_unreadable" if declared_integrations(surface) else "no_provider"), reader
+    return "no_pass_completed", (
         "no pass has completed yet: a pass is recorded only when it completes (records exist since #1512, "
         "none is deleted); a pass whose provider read failed records nothing and is retried after a backoff"
     )
