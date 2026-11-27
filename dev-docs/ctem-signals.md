@@ -426,12 +426,6 @@ own objects stay until that source is enabled and connected
 no delivery lost. A refused adoption stays off with its reason and is tried
 once (`adopted_from`).
 
-## 4quater. The inventory evaluation of path 6 (#2642)
-
-`services/ctem_inventory_staleness.py` evaluates the inventory records of the primary organization as they stand: a record whose `last_seen_at` is older than `attack_surface.stale_after_days` (14 by default) is `unseen`, a record whose `sync_id` names a sync that no longer exists is `orphaned`. A record of a sync whose last run failed or that paused itself is withheld and counted (`withheld_sync_failed`): its age is the sync's failure. Each finding is recorded through `record_signal` (source `xtm_one:pass`, dedupe `stale_asset:xtm_one:<detail>:<record id>`). It runs daily on the autonomous tick (Redis slot `ctem:inventory-staleness:pass`) and once in the resync step of a purge (`resync_passes`); the source is always on and can be taken off the path like any other.
-
-The last outcome is kept (`ctem:inventory-staleness:last`, 30 days). `GET /ctem-signals/paths` answers, on every path that is on with no signal in 30 days, `silent_reason` `{code, detail, evaluation?}`: `never_evaluated`, `no_asset_past_threshold`, `upstream_sync_failed` or `inventory_truncated` (the inventory holds more records than one evaluation reads, 100,000 in pages of 5,000 keyed on the record id; the outcome counts them as `truncated`) for path 6, `listener_never_fired` for a path no source ever fed.
-
 ## 5. Visibility
 
 Signals are organization data; their content is what the recorder chose to
@@ -559,10 +553,23 @@ order:
    raised new host keeps its row with the `rearm:new_host` mark, so the next pass
    that sees it raises it once without the provider-date check, then drops the
    mark; a deleted row was withheld `known_to_provider` and never raised again).
+   A raised port of path 5 or 7 also leaves a `rearm:<signal key>` mark.
    No other source keeps raised state outside the signal row.
 3. **Resync**, only when the administrator ticked it (unchecked by default),
    `app.services.ctem_signal_resync`, recording through the paused intake for this
-   step only, each route with its own read window and its own cap
+   step only. It opens with `reraise_held` (#2634): every `rearm:` mark of the
+   baseline is raised again at once, dated now, from what the last committed pass
+   held (a new host still undeclared on path 7, a held port on path 5 or 7), and
+   the mark is replaced by the signal key, so the next pass dedupes on it; the
+   pass itself runs only after every route and diffs against the pre-purge pass.
+   While the routes replay, the paths list gives the outside paths the reason
+   `resync_queued` (`quiet_reason`, `ctem_attack_surface.quiet_reasons`);
+   after it, an outside path with no signal in 30 days names why (first pass
+   baseline, no undeclared host, new hosts withheld, re-armed hosts waiting, or
+   an owned scope the provider read `empty`). The reason is data, never a
+   sentence: `{code, at, count, scopes, empty_scopes}`; the signal sources panel
+   words each code through `t_i18n` (`quiet-reason.ts`) and renders `at` with
+   the locale date format. The routes follow, each route with its own read window and its own cap
    (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
    windows live in `WINDOWS`; the dialog sends the chosen ones as
    `resync_windows`, validated by `validate_windows` (1 to 365 days; an
@@ -579,12 +586,20 @@ order:
    - inside state (paths 3, 10): the open Aikido issues and the open Dependabot
      alerts of each GitHub organization, read with the integrations visible to
      the administrator who started the purge and a token minted for them;
+   - path 5 (#2641, #2643): the open findings of every enabled OpenAEV listener
+     source (`openaev_findings`, no age limit by default), read through
+     `POST /api/findings/search` with the integration owner's credential and fed
+     to `note_event` as the provisioned `finding_created` trigger delivers them
+     (`finding_delivery`: same `_openaev_event` shape, keyed on the finding id, so
+     a second resync adds nothing); skipped with its reason when that source is
+     off on path 5, a refused read is one error line and the other routes go on;
    - the attack surface (5, 6, 7) and evidence health (9, 12) passes, once each,
      their outcome reported (recorded, off in the profile, skipped and why, the
      error, or nothing to raise).
-   GitLab findings (the GitLab asset sync) and OpenAEV results (event only) are
-   reported with that reason. The step's counts carry `windows`, `routes` (per
-   route: window, read, recorded, capped, errors, skipped) and `by_path`
+   GitLab findings (the GitLab asset sync) and OpenAEV simulation results and
+   score degradations (transitions of a simulation run: run a simulation to raise
+   them again) are reported with that reason. The step's counts carry `windows`,
+   `routes` (per route: window, read, recorded, capped, errors, skipped) and `by_path`
    (signals and cases per trigger path).
 4. **Resume intake**, always, also after a failure, which the job status and the
    audit row report.
