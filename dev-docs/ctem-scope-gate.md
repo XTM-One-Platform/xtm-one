@@ -14,7 +14,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 
 - After a signal is first recorded, by the API, the agent tool or a listener.
   A new sighting of a known signal re-runs it only when the signal is
-  unmatched (`to_validate`). A failure is retried once with local reads only
+  unmatched (`to_validate`) or on the watchlist (`watchlist`, #2581:
+  `RE_DECIDED_ON_SIGHTING`), so a rising EPSS, a new KEV flag or an asset now
+  internet-facing can confirm a watchlist signal and open its case; a
+  discarded signal (gate or person) is not decided again by a sighting. A
+  failure is retried once with local reads only
   (no OpenCTI or OpenCRQ call); a second failure leaves the signal `new`; it
   never refuses the signal. A remote read on this path never commits the
   gate's session (it decides inside a savepoint) and is bounded in time. The
@@ -56,6 +60,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   OpenCRQ connection; the pass at recording time does not (no user to read
   them for), and its decision says so.
 - A signal in `case_opened` is never moved back: the case step owns it.
+- Retention (#2581, `ctem-signals.md` section 6quater): a gate-discarded
+  signal not seen for 30 days and a watchlist signal not seen for 90 days are
+  deleted by the hourly retention pass; a later sighting records the signal
+  again and this gate decides it as a first sighting. A signal a person
+  dismissed (`dismissed_by_user`) or in a case is never deleted.
 
 ## 2. Reconcile
 
