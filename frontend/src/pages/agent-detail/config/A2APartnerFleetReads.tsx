@@ -41,14 +41,16 @@ function A2AReadOptIn({
   enabled,
   label,
   explanation,
+  errorTitle,
 }: {
   agentId: string;
   optIn: OptIn;
   enabled: boolean;
   label: string;
   explanation: string;
+  /** The toast title when saving this opt-in fails: names this switch, never the other. */
+  errorTitle: string;
 }) {
-  const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const setOptIn = useSetA2APartnerFleetReads(agentId, optIn);
   const aiOff = useAiActionDisabled();
@@ -67,7 +69,7 @@ function A2AReadOptIn({
           onCheckedChange={(next) =>
             setOptIn.mutate(next, {
               onError: (e: Error) =>
-                toast({ title: t_i18n("Could not change the partner fleet reads"), description: e.message, variant: "error" }),
+                toast({ title: errorTitle, description: e.message, variant: "error" }),
             })
           }
         />
@@ -88,6 +90,7 @@ export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; e
         explanation={t_i18n(
           "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.",
         )}
+        errorTitle={t_i18n("Could not change the partner fleet reads")}
       />
       <A2AReadOptIn
         agentId={agentId}
@@ -97,6 +100,7 @@ export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; e
         explanation={t_i18n(
           "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.",
         )}
+        errorTitle={t_i18n("Could not change the partner owner reads")}
       />
     </>
   );

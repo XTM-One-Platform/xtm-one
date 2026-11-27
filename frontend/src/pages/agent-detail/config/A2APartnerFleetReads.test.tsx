@@ -102,4 +102,16 @@ describe("A2APartnerFleetReads", () => {
       expect(put).toHaveBeenCalledWith(`/agents/${AGENT}/a2a/partner-owner-reads`, { enabled: true }),
     );
   });
+
+  it("names the owner reads switch when it fails, never the fleet switch", async () => {
+    put.mockRejectedValue(new Error("404 Not Found: Agent not exposed"));
+    renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />, {
+      client: testQueryClient({ appMutationCache: true }),
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Partners read fleets and runs as the owner" }));
+
+    expect(await screen.findAllByText("Could not change the partner owner reads")).toHaveLength(1);
+    expect(screen.queryByText("Could not change the partner fleet reads")).toBeNull();
+  });
 });
