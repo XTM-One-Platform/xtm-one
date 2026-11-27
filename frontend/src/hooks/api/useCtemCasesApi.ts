@@ -72,6 +72,8 @@ export interface CtemCaseSummary {
   signal_count?: number;
   /** How the case came to be, read from its history (#1723): the list's "Opened by" filter. */
   opened_by?: CtemCaseOpenedBy;
+  /** The trigger paths of the signals behind the case this reader sees, [] for none (#2556): the Signal type filter. */
+  signal_types?: string[];
   /** Products that did not answer this read: their issues show without details. */
   details_unavailable: string[];
   /** The loop (#857): how the case started, its severity and SLA, its proof. */
@@ -524,6 +526,8 @@ export interface CtemCaseList {
   details_unavailable_reasons?: Record<string, string>;
   ticketing?: CtemTicketingTarget;
   freshness?: CtemCasesFreshness;
+  /** The English label of each trigger path, in the trigger model's order (#2556): translated by its key. */
+  signal_types?: Record<string, string>;
 }
 
 export interface CtemCaseUpdate {

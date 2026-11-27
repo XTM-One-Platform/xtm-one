@@ -11,7 +11,7 @@
 import { expect, test } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { filterPanelAlign, filterPanelMaxHeight } from "./filter-pill";
+import { filterPanelAlign, filterPanelMaxHeight, filterPanelMaxWidth } from "./filter-pill";
 
 // vitest runs from frontend/ (CI and `yarn test`), as shadow-overlay-floating.test.ts.
 const SRC = join(process.cwd(), "src") + sep;
@@ -395,6 +395,13 @@ test("a fitted filter panel stops above the viewport's bottom edge and keeps a u
   expect(filterPanelMaxHeight(248.6, 1080)).toBe(823);
   // A pill near the bottom still opens a panel the user can scroll inside.
   expect(filterPanelMaxHeight(1000, 1080)).toBe(160);
+});
+
+test("a fitted filter panel is never wider than the side of its anchor it opens from (#2556)", () => {
+  // The CTEM cases pill at 1080 px: x 596 to 716. Opening from its right edge leaves 716 - 8.
+  expect(filterPanelMaxWidth({ left: 596, right: 716 }, 1080)).toBe(708);
+  // A pill near the left edge opens from it: the viewport less the pill's left edge and the margin.
+  expect(filterPanelMaxWidth({ left: 200, right: 320 }, 1920)).toBe(1712);
 });
 
 test("the Filters pill panel fits the viewport with its own scroller", () => {

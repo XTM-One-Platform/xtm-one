@@ -17,6 +17,7 @@ import { useNow } from "@/hooks/useTick";
 import { caseDueFlags } from "./ctem/cases-due";
 import { CASE_CREATED_RANGES, CASE_CREATED_RANGE_LABEL, caseCreatedRanges } from "./ctem/cases-created-range";
 import { caseOpenedAt } from "./ctem/case-attention";
+import { caseSignalTypeOptions, caseSignalTypes } from "./ctem/cases-signal-type";
 import {
   CASE_QUICK_FILTER_LABEL,
   CASE_SCOPES,
@@ -436,6 +437,8 @@ export default function CtemCases() {
         searchFields={(c) => [c.title, c.product_label, c.fixed_version]}
         searchPlaceholder={t_i18n("Search fix, product or version")}
         filtersInPill
+        // Facets in columns with counts, active filters as chips (#2556): fits 1080p, no inner scroller.
+        facetGrid
         filters={[
           {
             // One status among the eight (#1503), beside the scope chips: the Kanban's columns, as a filter.
@@ -469,6 +472,15 @@ export default function CtemCases() {
             label: "Opened by",
             values: (c) => (c.opened_by ? [c.opened_by] : []),
             options: CASE_OPENED_BY.map((o) => ({ value: o, label: t_i18n(CASE_OPENED_BY_LABEL[o]) })),
+          },
+          {
+            // The type of the signals behind the case (#2556); "No signal" keeps split and legacy cases reachable.
+            key: "signal_type",
+            label: "Signal type",
+            values: (c) => caseSignalTypes(c),
+            options: caseSignalTypeOptions(t_i18n, data?.signal_types, t_i18n("No signal")),
+            // Ordinal: the CTEM trigger model's order (path 1 first), "No signal" last.
+            ordered: true,
           },
           {
             key: "owner",
