@@ -44,7 +44,7 @@ import { useFormatter } from "@/i18n";
 import { cn, isEntityShared, timeAgo } from "@/lib/utils";
 import type { BrowserProfile, BrowserSignInState } from "@/types";
 
-import { SESSION_STATUS_LABELS, SESSION_VARIANTS } from "./browser-profile-format";
+import { appLabel, appsSummary, SESSION_STATUS_LABELS, SESSION_VARIANTS } from "./browser-profile-format";
 
 /** How a credential read from a vault is named, read by `t_i18n(CREDENTIAL_LABELS[key])`. @i18n-keys */
 const CREDENTIAL_LABELS = {
@@ -147,6 +147,7 @@ export function BrowserProfileCard({
   const [dryRun, setDryRun] = useState<BrowserSignInState | null>(null);
   const busy = profile.session_status === "signing_in" || signIn.isPending;
   const probe = profile.last_probe_result;
+  const appsLine = profile.apps.length > 0 ? appsSummary(profile.apps) : null;
   const runSignIn = async () => {
     try {
       const state: BrowserSignInState = await signIn.mutateAsync(profile.id);
@@ -253,6 +254,29 @@ export function BrowserProfileCard({
             </Tip>
           )}
         </div>
+        {appsLine && (
+          <Tip
+            content={
+              <ul aria-label={t_i18n("Also signs in")} className="max-w-sm space-y-0.5 content-compact">
+                {profile.apps.map((app) => (
+                  <li key={app.url} className="break-words">
+                    {t_i18n("{name} - {url}", { name: appLabel(app), url: app.url })}
+                  </li>
+                ))}
+              </ul>
+            }
+          >
+            <p
+              tabIndex={0}
+              className="flex items-center gap-1 rounded-sm content-compact text-default-secondary outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              data-testid="browser-profile-apps"
+            >
+              <LogIn className="h-3 w-3 shrink-0" aria-hidden />
+              <span className="truncate">{t_i18n("Also signs in: {names}", { names: appsLine.names })}</span>
+              {appsLine.more > 0 && <span className="shrink-0">{`+${appsLine.more}`}</span>}
+            </p>
+          </Tip>
+        )}
         <VaultSecretsNotice status={profile.vault_secrets} fieldLabels={{ credentials: t_i18n("Sign-in credentials") }} />
         {profile.last_sign_in_message && (
           <p className={cn("content-compact", profile.session_status === "failed" ? "text-feedback-error-primary" : "text-default-secondary")}>

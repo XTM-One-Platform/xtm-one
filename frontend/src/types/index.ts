@@ -15974,6 +15974,12 @@ interface BrowserProfileProbe {
  */
 export type BrowserProfileLoginConfig = Record<string, string | string[]>;
 
+/** Another application a browser profile's saved session signs in. */
+export interface BrowserProfileApp {
+  name: string;
+  url: string;
+}
+
 export interface BrowserProfile {
   id: string;
   user_id: string | null;
@@ -15982,6 +15988,8 @@ export interface BrowserProfile {
   start_url: string;
   login_url: string | null;
   allowed_hosts: string[];
+  /** The other applications the saved session signs in (through the same identity provider). */
+  apps: BrowserProfileApp[];
   login_config: BrowserProfileLoginConfig;
   browser_options: Record<string, string>;
   username_hint: string | null;
@@ -16021,6 +16029,8 @@ export interface BrowserProfileWrite {
   start_url: string;
   login_url?: string | null;
   allowed_hosts?: string[];
+  /** Omitted: keep; `[]`: none. */
+  apps?: BrowserProfileApp[];
   login_config?: BrowserProfileLoginConfig | null;
   browser_options?: Record<string, string> | null;
   description?: string | null;

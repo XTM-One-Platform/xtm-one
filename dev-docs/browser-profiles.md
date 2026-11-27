@@ -382,8 +382,32 @@ security option (`SECURITY_OPTIONS`, `SECURITY_CONTROLS`
 `tools.browser_profiles_public_targets_only`; it was
 `video_studio_private_targets`, whose stored value migration `v5965bprof01`
 moves) AND the host declared on the profile (its start / sign-in URL hosts
-plus `allowed_hosts`); loopback, link-local and cloud metadata addresses stay
-refused.
+plus `allowed_hosts` and its applications' hosts); loopback, link-local and
+cloud metadata addresses stay refused.
+
+## Applications a profile also signs in (`apps`)
+
+An application that signs in through another one's identity provider opens
+signed in with that application's saved session. The profile declares it in
+`BrowserProfile.apps` (`[{name, url}]`, migration `b2549profapps01`, cleaned by
+`profiles.clean_apps`: an http(s) URL without credentials, one entry per host,
+at most `MAX_APPS`). Their hosts are hosts of the profile everywhere a host
+counts: the URL policy (`snapshot()`), the hosts a session is saved for
+(`agent_sessions.profile_hosts`) and the re-point rule (`destination`).
+`profiles.covers_url` answers a lookup by URL (`list_browser_profiles` and
+`GET /browser-profiles` take `url`). A page on a declared application is judged
+as that application: `ProfileSnapshot.scoped_to(url)` / `as_app(app)` take its
+URL as the start URL, no sign-in URL and none of the own application's marks
+(`signed_in_selector`, `signed_in_url_pattern`, `signed_out_url_pattern`), so a
+recording that starts there waits for it (`capture.record_take`) and
+`check_browser_profile_session` probes each one once the profile is signed in
+(`session_check.apps`). The profile still signs in at its own application. A
+profile without `apps` reads as before.
+
+`delete_browser_profile` deletes a profile from an agent with the REST delete's
+rule (`can_manage`, audited); a shared profile, or one recordings were made
+with (`VideoTake.profile_id`, set to null, the recordings kept), needs
+`confirm=true`.
 
 ## Surfaces
 
@@ -413,7 +437,8 @@ preference checks, the copy, the keep-alive adapter),
 status flags, the trace schema), `test_browser_profile_signin_chromium.py` and
 `test_browser_profile_signin_entra.py` (the `chromium` CI job: the passkey /
 FIDO flow end to end - bridge bypass, credential picker, otc, KMSI, the
-redirect-chain mislabel), `test_browser_profile_totp.py` (the core TOTP
+redirect-chain mislabel), `test_browser_profile_apps.py` (the declared
+applications, the lookup by URL, the delete tool), `test_browser_profile_totp.py` (the core TOTP
 module) and `test_browser_profile_vault_credentials.py` (credentials read from
 a vault: the write check, the resolved snapshot, failures named, the re-point
 rule, the where-used scan).

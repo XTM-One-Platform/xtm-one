@@ -93,7 +93,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import String, cast, select
+from sqlalchemy import String, cast, func, select
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -1074,15 +1074,19 @@ def build_video_studio_tools(
 
         return await resolve_profile_id_prefix(session, profile_id, user_uuid)
 
-    async def _list_profiles() -> ToolResult:
+    async def _list_profiles(url: str | None = None) -> ToolResult:
         from app.api.v1.helpers import can_manage
-        from app.services.browser_profiles.profiles import list_usable_profiles, serialize_profile
+        from app.services.browser_profiles.profiles import covers_url, list_usable_profiles, serialize_profile
 
         async with async_session() as session:
             user = await _user(session, user_id)
             if user is None:
                 return _result("Browser profiles are available to signed-in users only.", error=True)
             rows = await list_usable_profiles(session, user.id)
+            if url and rows:
+                rows = [profile for profile in rows if covers_url(profile, str(url))]
+                if not rows:
+                    return _result(f"No browser profile you can use signs in {url} (its start URL or its apps).")
             if not rows:
                 return _result(
                     "No browser profile yet. Create one with save_browser_profile (the demo environment's start URL); "
@@ -1108,10 +1112,12 @@ def build_video_studio_tools(
                     or "no credentials"
                 )
                 renews = " - renews by itself" if data["renews_by_itself"] else ""
+                also = "".join(f"\n  - also signs in: {app['name']} - {app['url']}" for app in data["apps"])
                 lines.append(
                     f"- **{data['name']}** (`{data['id']}`): {data['start_url']} - {_session_text(data)}; {secrets}"
                     + renews
                     + (" (company)" if data["is_company_managed"] else "")
+                    + also
                 )
             return _result(
                 "Browser profiles you can record with (the session status is the last probe of start_url in the "
@@ -1124,6 +1130,7 @@ def build_video_studio_tools(
         profile_id: str | None = None,
         login_url: str | None = None,
         allowed_hosts: Any = None,
+        apps: Any = None,
         login_selectors: Any = None,
         color_scheme: str | None = None,
         locale: str | None = None,
@@ -1157,6 +1164,7 @@ def build_video_studio_tools(
                 if profile is None or not can_manage(user, profile, await get_user_group_ids(session, user.id)):
                     return _result(f"No browser profile `{profile_id}` you can edit.", error=True)
             hosts = _json(allowed_hosts)
+            given_apps = _json(apps)
             selectors = _json(login_selectors)
             options = {
                 k: v for k, v in (("color_scheme", color_scheme), ("locale", locale), ("timezone", timezone)) if v
@@ -1169,6 +1177,7 @@ def build_video_studio_tools(
                     allowed_hosts=hosts
                     if isinstance(hosts, list)
                     else (list(profile.allowed_hosts or []) if profile else []),
+                    apps=given_apps if given_apps is not None else (list(profile.apps or []) if profile else []),
                     login_config=selectors
                     if isinstance(selectors, dict)
                     else (profile.login_config if profile else None),
@@ -1203,17 +1212,18 @@ def build_video_studio_tools(
                 entity_id=str(profile.id),
                 entity_name=profile.name,
                 summary=f"{'Created' if created else 'Updated'} browser profile {profile.name}",
-                details={"hosts": fields.allowed_hosts, "via": "agent"},
+                details={"hosts": fields.allowed_hosts, "apps": fields.apps, "via": "agent"},
             )
             await session.commit()
             data = serialize_profile(profile, can_manage=True)
+        also = "".join(f" Also signs in: {app['name']} - {app['url']}." for app in data["apps"])
         has_any = data["has_username"] or data["has_password"] or data["has_totp"]
         stored = (
             f"Credentials on file: username {'yes' if data['has_username'] else 'no'}, password "
             f"{'yes' if data['has_password'] else 'no'}, TOTP {'yes' if data['has_totp'] else 'no'}. "
         )
         return _result(
-            f"{'Created' if created else 'Updated'} browser profile **{data['name']}** (`{data['id']}`) for {data['start_url']}. "
+            f"{'Created' if created else 'Updated'} browser profile **{data['name']}** (`{data['id']}`) for {data['start_url']}.{also} "
             + stored
             + ("" if has_any else f"{_CREDENTIALS_ON_THE_PAGE} ")
             + "Next: sign_in_browser_profile to open and save a session."
@@ -1374,6 +1384,7 @@ def build_video_studio_tools(
                 )
         elif snap.storage_state:
             await signin.store_probe(snap.id, probe)
+        apps_checked = await _check_apps(snap) if probe.authenticated and snap.apps else []
         check = {
             "session_check": {
                 "profile_id": snap.id,
@@ -1384,6 +1395,7 @@ def build_video_studio_tools(
                 "renews_by_itself": snap.renews_unattended,
                 "stores_password": bool(snap.credentials.get("password")),
                 "http_status": probe.http_status,
+                **({"apps": apps_checked} if apps_checked else {}),
             }
         }
         from app.services.video_studio.take_preflight import PROFILES_PAGE
@@ -1421,7 +1433,91 @@ def build_video_studio_tools(
                 f"Not signed in: start_url lands on {probe.url or 'nothing'} ({probe.reason}). A recording with this "
                 "profile would stop before step 1: call sign_in_browser_profile first (the user answers the MFA)."
             )
-        return _result(f"{verdict}{renewal}{no_password}\n{json.dumps(check)}")
+        per_app = "".join(
+            f" {app['name']}: {'signed in' if app['authenticated'] else 'not signed in'} ({app['landed_url'] or 'nothing'})."
+            for app in apps_checked
+        )
+        return _result(f"{verdict}{per_app}{renewal}{no_password}\n{json.dumps(check)}")
+
+    async def _check_apps(snap: Any) -> list[dict[str, Any]]:
+        """Each application the profile declares, opened in its saved session: signed in or not, per application."""
+        from app.services.browser_profiles import signin
+
+        checked = []
+        for app in snap.apps:
+            try:
+                probe = await asyncio.wait_for(signin.probe_profile(snap.as_app(app)), timeout=_wait_budget(60.0))
+            except TimeoutError:
+                checked.append(
+                    {
+                        "name": app["name"],
+                        "url": app["url"],
+                        "authenticated": False,
+                        "landed_url": "",
+                        "reason": "timed out",
+                    }
+                )
+                continue
+            except Exception as exc:
+                reason = format_exception_message(exc)
+                checked.append(
+                    {"name": app["name"], "url": app["url"], "authenticated": False, "landed_url": "", "reason": reason}
+                )
+                continue
+            checked.append(
+                {
+                    "name": app["name"],
+                    "url": app["url"],
+                    "authenticated": probe.authenticated,
+                    "landed_url": probe.url,
+                    "reason": probe.reason,
+                }
+            )
+        return checked
+
+    async def _delete_profile(profile_id: str = "", confirm: bool = False) -> ToolResult:
+        from app.api.v1.helpers import can_manage, get_user_group_ids
+        from app.services.audit import log_audit
+        from app.services.browser_profiles.profiles import resolve_profile_id_prefix
+
+        async with async_session() as session:
+            user = await _user(session, user_id)
+            if user is None:
+                return _result("Browser profiles are available to signed-in users only.", error=True)
+            profile_id, ambiguous = await resolve_profile_id_prefix(session, str(profile_id or "").strip(), user.id)
+            if ambiguous:
+                return _result(ambiguous, error=True)
+            pid = safe_uuid(str(profile_id))
+            profile = await session.get(BrowserProfile, pid) if pid else None
+            if profile is None or not can_manage(user, profile, await get_user_group_ids(session, user.id)):
+                return _result(f"No browser profile `{profile_id}` you can delete.", error=True)
+            shared = bool(profile.is_company_managed or profile.shared_group_ids or profile.shared_user_ids)
+            takes = await session.scalar(
+                select(func.count()).select_from(VideoTake).where(VideoTake.profile_id == profile.id)
+            )
+            if (shared or takes) and not confirm:
+                why = ["it is shared"] if shared else []
+                if takes:
+                    why.append(f"{takes} recording(s) were made with it (they are kept)")
+                return _result(
+                    f"Not deleted: {' and '.join(why)}. Call delete_browser_profile again with confirm=true to delete "
+                    f"**{profile.name}** (`{profile.id}`).",
+                    error=True,
+                )
+            name, deleted_id = profile.name, str(profile.id)
+            await log_audit(
+                session,
+                user=user,
+                action="delete",
+                entity_type="browser_profile",
+                entity_id=deleted_id,
+                entity_name=name,
+                summary=f"Deleted browser profile {name}",
+                details={"via": "agent", "recordings_kept": int(takes or 0)},
+            )
+            await session.delete(profile)
+            await session.commit()
+        return _result(f"Deleted browser profile **{name}** (`{deleted_id}`); its recordings are kept.")
 
     async def _snapshot_page(profile_id: str = "", url: str | None = None, reset_state: Any = None) -> ToolResult:
         from pydantic import ValidationError
@@ -5061,6 +5157,7 @@ def build_video_studio_tools(
         ("test_browser_profile_sign_in", _test_sign_in),
         ("check_browser_profile_session", _check_session),
         ("snapshot_browser_profile_page", _snapshot_page),
+        ("delete_browser_profile", _delete_profile),
         ("record_browser_demo", _record),
         ("get_video_recording", _get_take),
         ("list_video_recordings", _list_takes),
@@ -5516,13 +5613,19 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
         ToolDefinition(
             name="list_browser_profiles",
             description=(
-                "List the browser profiles (demo environments with a saved sign-in) you can record with. Each "
-                "session status is the last probe of the saved session - start_url opened in it and checked to "
-                "render the application, never the cookies it holds: signed in, expired (with the URL it landed "
-                "on, e.g. the application's or the identity provider's sign-in page), saved but not checked yet, or "
-                "waiting for MFA (with the challenge_id to answer)."
+                "List the browser profiles (saved sign-ins) you can use, with the other apps each signs in. The "
+                "session status is the last probe of start_url in the saved session, never the cookies: signed in, "
+                "expired (with the URL it landed on), not checked yet, or waiting for MFA (with the challenge_id)."
             ),
-            input_schema={"type": "object", "properties": {}},
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Only profiles covering this URL's host (start URL or apps).",
+                    }
+                },
+            },
             source=_SOURCE,
             live_state=True,
         ),
@@ -5544,6 +5647,15 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
                     "start_url": {"type": "string", "description": "Where recordings start (the app's home page)."},
                     "login_url": {"type": "string"},
                     "allowed_hosts": {"type": "array", "items": {"type": "string"}},
+                    "apps": {
+                        "type": "array",
+                        "description": "Other apps the session signs in (same SSO); [] clears.",
+                        "items": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string"}, "url": {"type": "string"}},
+                            "required": ["url"],
+                        },
+                    },
                     "login_selectors": {
                         "type": "object",
                         "description": (
@@ -5628,11 +5740,9 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
             name="test_browser_profile_sign_in",
             description=(
                 "Dry-run the whole sign-in once WITHOUT saving anything (the live session is untouched), to see "
-                "where it stalls. A profile that renews by itself (credentials + a valid TOTP secret, or a saved "
-                "identity-provider session) runs end to end; one that would need a person stops at that point. "
-                "Returns the result, a screenshot of where it ended and a step trace (password_submitted, "
-                "fido_bridge_bypassed, picker_choice=..., totp_submitted, kmsi_accepted, ...). Use it after "
-                "save_browser_profile to prove a profile signs in, before burning the live session."
+                "where it stalls; one that would need a person stops there. Returns the result, a screenshot of "
+                "where it ended and a step trace (password_submitted, totp_submitted, ...). Use it after "
+                "save_browser_profile to prove a profile signs in."
             ),
             input_schema={
                 "type": "object",
@@ -5644,13 +5754,10 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
         ToolDefinition(
             name="check_browser_profile_session",
             description=(
-                "Pre-flight before record_browser_demo: open the profile's start_url in its saved session and tell "
-                "whether it renders the signed-in application. When it has expired and the profile renews by itself "
-                "(a valid TOTP secret, or a saved identity-provider session), it signs in again here. Returns a "
-                "session_check {profile_id, authenticated, landed_url, reason, checked_at, renews_by_itself, "
-                "http_status} and stores it as the profile's session status. Not authenticated and cannot renew "
-                "alone: sign_in_browser_profile first (the user answers the MFA). http_status set: the application "
-                "did not answer, nothing to sign in again."
+                "Pre-flight before record_browser_demo: open start_url in the saved session and tell whether it "
+                "renders the signed-in application (each declared app too, under apps); an expired profile that "
+                "renews by itself signs in again here. Returns and stores a session_check. Not authenticated and "
+                "cannot renew alone: sign_in_browser_profile first. http_status set: the application did not answer."
             ),
             input_schema={
                 "type": "object",
@@ -5690,6 +5797,19 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
             },
             source=_SOURCE,
             live_state=True,
+        ),
+        ToolDefinition(
+            name="delete_browser_profile",
+            description=(
+                "Delete a browser profile you manage (its recordings are kept); confirm=true when it is shared or "
+                "recordings were made with it."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"profile_id": {"type": "string"}, "confirm": {"type": "boolean"}},
+                "required": ["profile_id"],
+            },
+            source=_SOURCE,
         ),
         ToolDefinition(
             name="record_browser_demo",

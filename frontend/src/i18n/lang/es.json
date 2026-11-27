@@ -22082,5 +22082,16 @@
   "Resync from the sources": "Resincronizar desde las fuentes",
   "Resume signal intake": "Reanudar la recepción de señales",
   "{signals, plural, one {# signal} other {# signals}}, {cases, plural, one {# case} other {# cases}}": "{signals, plural, one {# señal} other {# señales}}, {cases, plural, one {# caso} other {# casos}}",
-  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, one {# señal registrada} other {# señales registradas}}"
+  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, one {# señal registrada} other {# señales registradas}}",
+  "Deleting browser profile": "Eliminando perfil de navegador",
+  "Also signs in (optional)": "También inicia sesión en (opcional)",
+  "Other applications this profile's session opens signed in, for example through the same single sign-on. Agents find this profile by their URL and record them with it.": "Otras aplicaciones que la sesión de este perfil abre con la sesión iniciada, por ejemplo mediante el mismo inicio de sesión único. Los agentes encuentran este perfil por su URL y las graban con él.",
+  "Application name": "Nombre de la aplicación",
+  "Application URL": "URL de la aplicación",
+  "Remove application": "Quitar aplicación",
+  "Add application": "Añadir aplicación",
+  "Also signs in": "También inicia sesión en",
+  "Also signs in: {names}": "También inicia sesión en: {names}",
+  "{name} - {url}": "{name} - {url}",
+  "Enter an http or https address with a host, for example https://app.example.com/.": "Introduzca una dirección http o https con un host, por ejemplo https://app.example.com/."
 }
