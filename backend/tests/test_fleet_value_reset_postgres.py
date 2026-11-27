@@ -108,7 +108,7 @@ async def test_the_spend_of_a_reset_fleet_agents_is_read_from_the_mark(monkeypat
     window = now - timedelta(days=30)
     reads: list[tuple[datetime | None, frozenset[uuid.UUID] | None]] = []
 
-    async def spend(_db, *, since, now=None, agent_ids=None):  # noqa: ANN001, ANN202
+    async def spend(_db, *, since, now=None, agent_ids=None):
         reads.append((since, None if agent_ids is None else frozenset(agent_ids)))
         ids = agent_ids if agent_ids is not None else []
         # The whole window spends 10 per agent; from the mark, 1.
@@ -117,7 +117,7 @@ async def test_the_spend_of_a_reset_fleet_agents_is_read_from_the_mark(monkeypat
     monkeypatch.setattr(roi_spend, "agent_spend", spend)
     async with _session("fleetvalspend") as session:
         fleet, lead, desk = await _fleet(session, "spend")
-        other, other_lead, _ = await _fleet(session, "kept")
+        _other, other_lead, _ = await _fleet(session, "kept")
         mark = now - timedelta(hours=2)
         fleet.value_measured_since = mark
         await session.flush()

@@ -10,7 +10,7 @@ Canonical lock-safe recipe (rule 5): idempotency probe, then
 downgrade drops the column.
 
 Revision ID: f2580fleetval01
-Revises: c2577caseteam01
+Revises: c2570siginbox1
 Create Date: 2026-11-27 08:30:00.000000
 """
 
@@ -24,7 +24,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "f2580fleetval01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c2577caseteam01"
+down_revision: str | Sequence[str] | None = "c2570siginbox1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
