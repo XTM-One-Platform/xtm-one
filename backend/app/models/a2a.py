@@ -170,6 +170,15 @@ class A2AExposure(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
+    # The per-exposure opt-in of #2638, off by default: a partner's task on
+    # this exposure reads fleets, fleet health and runs with the READ scope of
+    # the run-as identity (``a2a.partner_owner_reads``), plus the running
+    # build; every write stays refused and each read is audited with the
+    # partner task named. Read at each call, like ``partner_fleet_reads``.
+    partner_owner_reads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

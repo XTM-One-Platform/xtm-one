@@ -8895,13 +8895,20 @@ def build_agent_builder_tool(
     async def _partner_list_runs(
         agent_id: str, assignment_id: str, status: str, search: str, scope: str, limit: int, offset: int
     ) -> str | None:
+        from app.a2a.partner_owner_reads import audit_partner_read, list_owner_runs, partner_owner_id
         from app.a2a.partner_runs import list_partner_runs
         from app.a2a.partner_scope import current_partner
 
         partner = current_partner()
         if partner is None:
             return None
+        owner_id = await partner_owner_id(partner)
         if assignment_id or (search or "").strip() or (scope or "visible").strip().lower() != "visible":
+            if owner_id is not None:
+                return (
+                    "In a partner task, list_runs lists the runs the owner sees: "
+                    "filter by agent_id or status, without assignment_id, search or scope."
+                )
             return (
                 "In a partner task, list_runs lists the runs of your own tasks only: "
                 "filter by agent_id or status, without assignment_id, search or scope."
@@ -8917,9 +8924,14 @@ def build_agent_builder_tool(
         status = (status or "").strip().lower()
         if status and status not in _run_status_vocabulary():
             return f"Invalid status `{status}`. Use one of: {', '.join(_run_status_vocabulary())}."
+        if owner_id is not None:
+            # #2638: the exposure lends the owner's read scope, each read audited.
+            await audit_partner_read(partner, owner_id, "list_runs", str(agent_uuid or ""))
+            return await list_owner_runs(owner_id, agent_id=agent_uuid, status=status, limit=limit, offset=offset)
         return await list_partner_runs(partner, agent_id=agent_uuid, status=status, limit=limit, offset=offset)
 
     async def _partner_get_run(run_id: str) -> str | None:
+        from app.a2a.partner_owner_reads import audit_partner_read, get_owner_run, partner_owner_id
         from app.a2a.partner_runs import get_partner_run
         from app.a2a.partner_scope import current_partner
 
@@ -8930,6 +8942,11 @@ def build_agent_builder_tool(
         run_uuid, id_err = _validate_id_arg(run_id, "run_id")
         if run_uuid is None:
             return id_err
+        owner_id = await partner_owner_id(partner)
+        if owner_id is not None:
+            # #2638: the owner's read scope, never the admin bypass.
+            await audit_partner_read(partner, owner_id, "get_run", str(run_uuid))
+            return await get_owner_run(owner_id, run_uuid)
         return await get_partner_run(partner, run_uuid)
 
     # ── list_runs ─────────────────────────────────────────────────────

@@ -13,15 +13,17 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/** The #2202 opt-in of a live A2A exposure: whether a partner's task also
- * reads the exposed agent's home fleet, its health, its work items and the
- * running build. Off by default.
+/** The read opt-ins of a live A2A exposure, both off by default:
+ * - #2202: a partner's task also reads the exposed agent's home fleet, its
+ *   health, its work items and the running build;
+ * - #2638: a partner's task reads fleets, fleet health and runs with the
+ *   owner's read scope, and the running build, each read audited.
  *
  * Rendered only while the agent is exposed, and the exposure read already
- * answers 404 to a caller who may not manage it, so whoever sees the switch
- * may flip it. The server reads the flag at each partner call: switching it
- * off narrows the next call of a running task. The opt-in route is behind the
- * AI gate, so the switch is disabled and explained while AI is off.
+ * answers 404 to a caller who may not manage it, so whoever sees a switch
+ * may flip it. The server reads the flags at each partner call: switching one
+ * off narrows the next call of a running task. The opt-in routes are behind
+ * the AI gate, so the switches are disabled and explained while AI is off.
  */
 
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
@@ -31,35 +33,75 @@ import { useSetA2APartnerFleetReads, type A2AExposureStatus } from "@/hooks/api/
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 
-export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; exposure: A2AExposureStatus }) {
-  const { t_i18n } = useFormatter();
+type OptIn = "partner-fleet-reads" | "partner-owner-reads";
+
+function A2AReadOptIn({
+  agentId,
+  optIn,
+  enabled,
+  label,
+  explanation,
+  errorTitle,
+}: {
+  agentId: string;
+  optIn: OptIn;
+  enabled: boolean;
+  label: string;
+  explanation: string;
+  /** The toast title when saving this opt-in fails: names this switch, never the other. */
+  errorTitle: string;
+}) {
   const { toast } = useToast();
-  const setFleetReads = useSetA2APartnerFleetReads(agentId);
+  const setOptIn = useSetA2APartnerFleetReads(agentId, optIn);
   const aiOff = useAiActionDisabled();
-  const enabled = exposure.partner_fleet_reads === true;
-  const label = t_i18n("Partners read this agent's fleet");
 
   return (
     <div className="flex items-start justify-between gap-3 rounded-sm bg-elevation-hover px-3 py-2.5">
       <div className="space-y-0.5">
         <p className="content-base font-medium">{label}</p>
-        <p className="content-caption text-default-secondary">
-          {t_i18n("A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.")}
-        </p>
+        <p className="content-caption text-default-secondary">{explanation}</p>
       </div>
       <AiDisabledTip>
         <Switch
           aria-label={label}
           checked={enabled}
-          disabled={setFleetReads.isPending || aiOff}
+          disabled={setOptIn.isPending || aiOff}
           onCheckedChange={(next) =>
-            setFleetReads.mutate(next, {
+            setOptIn.mutate(next, {
               onError: (e: Error) =>
-                toast({ title: t_i18n("Could not change the partner fleet reads"), description: e.message, variant: "error" }),
+                toast({ title: errorTitle, description: e.message, variant: "error" }),
             })
           }
         />
       </AiDisabledTip>
     </div>
+  );
+}
+
+export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; exposure: A2AExposureStatus }) {
+  const { t_i18n } = useFormatter();
+  return (
+    <>
+      <A2AReadOptIn
+        agentId={agentId}
+        optIn="partner-fleet-reads"
+        enabled={exposure.partner_fleet_reads === true}
+        label={t_i18n("Partners read this agent's fleet")}
+        explanation={t_i18n(
+          "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.",
+        )}
+        errorTitle={t_i18n("Could not change the partner fleet reads")}
+      />
+      <A2AReadOptIn
+        agentId={agentId}
+        optIn="partner-owner-reads"
+        enabled={exposure.partner_owner_reads === true}
+        label={t_i18n("Partners read fleets and runs as the owner")}
+        explanation={t_i18n(
+          "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.",
+        )}
+        errorTitle={t_i18n("Could not change the partner owner reads")}
+      />
+    </>
   );
 }

@@ -144,16 +144,22 @@ export interface A2AExposureStatus {
    * this exposure also reads the exposed agent's home fleet, its health, its
    * work items and the running build. Read at each partner call. */
   partner_fleet_reads?: boolean;
+  /** The per-exposure opt-in of #2638, off by default: a partner's task on
+   * this exposure reads fleets, fleet health and runs with the owner's read
+   * scope, and the running build. Writes stay refused; each read is audited. */
+  partner_owner_reads?: boolean;
 }
 
 /** Switch the #2202 opt-in on the agent's LIVE exposure. Exposing stays the
  * bindings' job: an agent that is not exposed answers 404. The answer is the
  * exposure status, written straight into the shared cache entry. */
-export function useSetA2APartnerFleetReads(agentId: string) {
+export function useSetA2APartnerFleetReads(
+  agentId: string,
+  optIn: "partner-fleet-reads" | "partner-owner-reads" = "partner-fleet-reads",
+) {
   const qc = useQueryClient();
   return useMutation<A2AExposureStatus, Error, boolean>({
-    mutationFn: (enabled) =>
-      api.put<A2AExposureStatus>(`/agents/${agentId}/a2a/partner-fleet-reads`, { enabled }),
+    mutationFn: (enabled) => api.put<A2AExposureStatus>(`/agents/${agentId}/a2a/${optIn}`, { enabled }),
     // The switch says what went wrong in its own toast: no second, generic one.
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (status) => {
