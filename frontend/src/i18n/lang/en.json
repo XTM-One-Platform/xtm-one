@@ -22175,5 +22175,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
-  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
+  "Not scored": "Not scored"
 }

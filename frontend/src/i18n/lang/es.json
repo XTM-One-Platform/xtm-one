@@ -22175,5 +22175,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# activo primario probado} other {# activos primarios probados}}, {inferred, plural, one {# inferido} other {# inferidos}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
-  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}"
+  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
+  "Not scored": "Sin puntuación"
 }
