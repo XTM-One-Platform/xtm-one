@@ -370,7 +370,7 @@ export function SignalSourcesPanel() {
   const columns: DataTableColumn<CtemSignalPath>[] = [
     {
       key: "path",
-      header: "Trigger path",
+      header: "Signal type",
       sortValue: (path) => t_i18n(path.label),
       cell: (path) => (
         <span className="flex min-w-0 items-center gap-2.5">

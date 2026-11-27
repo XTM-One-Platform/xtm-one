@@ -10,7 +10,8 @@
  * - Signals with a case: the signals in state case_opened (many feed one case), the
  *   open cases under it, read from the Cases page's own query and open filter so the
  *   two pages never disagree (#1935: the card said "Cases opened" over a signal count).
- * - Trigger paths connected: N of the live catalogue, the connected sources'
+ * - Signal types connected: N of the live catalogue (the trigger paths, named "Signal type" as
+ *   in the table and its filter, #2573), the connected sources'
  *   logos and the Sources link on its subtitle line.
  *
  * One row of four footerless cards from 1024 px up, every card the height of a
@@ -104,9 +105,9 @@ export function SignalsSummaryStrip() {
       />
       <StatCard
         icon={SourcesGlyph}
-        label={t_i18n("Trigger paths connected")}
+        label={t_i18n("Signal types connected")}
         value={pathData ? `${count(connected)}/${count(paths.length)}` : pending}
-        exact={pathData ? t_i18n("{connected} of {total} trigger paths connected", { connected: exactCount(connected), total: exactCount(paths.length) }) : undefined}
+        exact={pathData ? t_i18n("{connected} of {total} signal types connected", { connected: exactCount(connected), total: exactCount(paths.length) }) : undefined}
         subtitle={
           /* Spans only: StatCard renders the subtitle inside a <p>. One caption line, so the
              card keeps the height of the three cards beside it (UX round 4 B2 on #1272). */
