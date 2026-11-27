@@ -254,5 +254,4 @@ COPY --from=builder /opt/console-scripts /usr/local/bin
 # manager, so copy the bundle built in the builder stage (see apt.sandbox.base.txt).
 COPY --from=builder /etc/ssl/certs/ /etc/ssl/certs/
 
-
 WORKDIR /workspace
