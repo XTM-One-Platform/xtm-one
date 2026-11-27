@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "Les chiffres de ROI sont estimés à partir des références par défaut tant que votre organisation n'a pas défini les siennes.",
   "Screen left empty between two inserts": "Écran laissé vide entre deux incrustations",
   "Simulation finished": "Simulation terminée",
+  "Atomic test finished": "Test atomique terminé",
   "Inject or atomic test finished": "Inject ou test atomique terminé",
   "Finding created": "Constat créé",
   "Stored": "Enregistré",
@@ -20083,6 +20084,7 @@
   "Step in progress": "Étape en cours",
   "Asset created": "Actif créé",
   "Asset updated": "Actif modifié",
+  "Asset stale": "Actif obsolète",
   "Asset turned stale": "Actif devenu obsolète",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Se déclenche quand un actif n'a pas été vu dans OpenAEV au-delà du seuil d'obsolescence du tenant (inactif tant que le seuil n'est pas défini).",
   "Finding deleted": "Constat supprimé",
@@ -22170,7 +22172,7 @@
   "Triggers": "Déclencheurs",
   "Playbook": "Playbook",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Alimente {count, plural, one {# chemin} other {# chemins}} : {paths}. La désactiver les arrête tous.",
-  "Objects in {platform}:": "Objets dans {platform} :",
+  "Owner: {owner}": "Propriétaire : {owner}",
   "No legacy object left.": "Aucun ancien objet restant.",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {# objet serait supprimé :} other {# objets seraient supprimés :}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {Aucun objet supprimé.} one {# objet supprimé.} other {# objets supprimés.}}",
@@ -22211,5 +22213,8 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {Le dernier passage ({at}) a retenu # nouvel hôte : une lecture partielle, ou connu du fournisseur avant le passage précédent} other {Le dernier passage ({at}) a retenu # nouveaux hôtes : une lecture partielle, ou connus du fournisseur avant le passage précédent}}",
   "The last pass ({at}) found no undeclared host and no new port": "Le dernier passage ({at}) n’a trouvé aucun hôte non déclaré ni aucun nouveau port",
   "The last pass ({at}) found nothing new on this path": "Le dernier passage ({at}) n’a rien trouvé de nouveau sur ce type",
-  "{reason}; the provider answered nothing for {scopes}": "{reason} ; le fournisseur n’a rien répondu pour {scopes}"
+  "{reason}; the provider answered nothing for {scopes}": "{reason} ; le fournisseur n’a rien répondu pour {scopes}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
 }
