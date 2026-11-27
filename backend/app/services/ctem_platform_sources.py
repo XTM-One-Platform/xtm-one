@@ -300,6 +300,7 @@ async def _reconcile_pir_paths(db: Any, row: Any, conn: tuple[Any, str, str], no
             errors.append(f"{path}: {exc}")
             paths[path] = {**sub, "status": "error", "error": str(exc), "checked_at": stamp}
             continue
+        spec = {**spec, "origin": {"source_id": str(row.id)}}
         sub = await module.reconcile(client, spec, sub, url=url, secret=secret, now=now)
         sub["pir_ids"] = list(pir_ids)
         paths[path] = sub
@@ -350,6 +351,7 @@ async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
         return {**state, "status": "error", "error": str(exc), "checked_at": stamp}
     client, integration_id, secret = conn
     url = receiver_url(settings.base_url, integration_id, str(row.id))
+    spec = {**spec, "origin": {"source_id": str(row.id)}}
     new_state = await module.reconcile(client, spec, state, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
     return new_state

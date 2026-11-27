@@ -400,8 +400,35 @@ async def with_tracked_organizations(db: Any, spec: dict[str, Any]) -> dict[str,
     return tracked_refs(spec, rows, profiles)
 
 
-def object_name(spec: dict[str, Any]) -> str:
-    return f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+#: The kind each provisioned object names last (#2583): one naming rule on every object.
+OBJECT_KINDS: dict[str, str] = {
+    "trigger": "Trigger",
+    "notifier": "Notifier",
+    "playbook": "Playbook",
+    "digest": "Digest",
+}
+
+
+def object_name(spec: dict[str, Any], kind: str = "") -> str:
+    """``XTM One - <Fleet> - <Path label> - <Kind>`` (#2583); without *kind*, the shared stem."""
+    stem = f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+    return f"{stem} - {OBJECT_KINDS[kind]}" if kind else stem
+
+
+def object_description(spec: dict[str, Any], kind: str) -> str:
+    """What an OpenCTI user reads on the object: the instance, the fleet, the path and who it serves (#2583)."""
+    from app.core.config import settings
+
+    origin = spec.get("origin") or {}
+    lines = [
+        f"Provisioned by XTM One ({settings.base_url.rstrip('/')}); edits are reverted.",
+        f"Fleet: {spec['fleet']}. Path: {spec['purpose']}. Kind: {OBJECT_KINDS[kind]}.",
+    ]
+    if origin.get("assignment_id"):
+        lines.append(f"Assignment: {origin.get('assignment') or 'unnamed'} ({origin['assignment_id']}).")
+    if origin.get("source_id"):
+        lines.append(f"Signal source: {origin['source_id']}.")
+    return "\n".join(lines)
 
 
 def receiver_url(base_url: str, integration_id: str, assignment_id: str) -> str:
@@ -684,11 +711,12 @@ async def _find_by_name(gql: Gql, root: str, name: str) -> str | None:
     return None
 
 
-async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str) -> str:
+async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str, description: str = "") -> str:
+    description = description or "Provisioned by XTM One: delivers this trigger's events to an assignment."
     notifier_id = notifier_id or await _find_by_name(gql, "notifiers", name)
     if notifier_id:
         data, err = await gql(
-            "query XtmNotifier($id: String!) { notifier(id: $id) { id name notifier_configuration } }",
+            "query XtmNotifier($id: String!) { notifier(id: $id) { id name description notifier_configuration } }",
             {"id": notifier_id},
         )
         if err:
@@ -696,8 +724,11 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
         current = data.get("notifier")
         if current:
             edits = []
+            # #2583: renamed in place on a recheck, its id kept.
             if current.get("name") != name:
                 edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
             if current.get("notifier_configuration") != config:
                 edits.append({"key": "notifier_configuration", "value": [config]})
             if edits:
@@ -714,7 +745,7 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
         {
             "input": {
                 "name": name,
-                "description": "Provisioned by XTM One: delivers this trigger's events to an assignment.",
+                "description": description,
                 "notifier_connector_id": WEBHOOK_CONNECTOR_ID,
                 "notifier_configuration": config,
             }
@@ -729,13 +760,20 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
 
 
 async def _ensure_trigger(
-    gql: Gql, trigger_id: str | None, name: str, filters: str, event_types: list[str], notifier_id: str
+    gql: Gql,
+    trigger_id: str | None,
+    name: str,
+    filters: str,
+    event_types: list[str],
+    notifier_id: str,
+    description: str = "",
 ) -> str:
+    description = description or "Provisioned by XTM One for an assignment; edits are reverted."
     trigger_id = trigger_id or await _find_by_name(gql, "triggersKnowledge", name)
     if trigger_id:
         data, err = await gql(
             "query XtmTrigger($id: String!) { triggerKnowledge(id: $id) "
-            "{ id name event_types filters notifiers { id } } }",
+            "{ id name description event_types filters notifiers { id } } }",
             {"id": trigger_id},
         )
         if err:
@@ -745,6 +783,8 @@ async def _ensure_trigger(
             edits = []
             if current.get("name") != name:
                 edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
             if not _same_filters(current.get("filters"), filters):
                 edits.append({"key": "filters", "value": [filters]})
             if [n.get("id") for n in (current.get("notifiers") or [])] != [notifier_id]:
@@ -766,7 +806,7 @@ async def _ensure_trigger(
         {
             "input": {
                 "name": name,
-                "description": "Provisioned by XTM One for an assignment; edits are reverted.",
+                "description": description,
                 "event_types": event_types,
                 "notifiers": [notifier_id],
                 "instance_trigger": False,
@@ -988,7 +1028,12 @@ async def _relabel_node(gql: Gql, playbook_id: str, node: dict[str, Any], config
 
 
 async def _ensure_pir_playbook(
-    gql: Gql, playbook_id: str | None, name: str, entry: dict[str, Any], notify: dict[str, Any]
+    gql: Gql,
+    playbook_id: str | None,
+    name: str,
+    entry: dict[str, Any],
+    notify: dict[str, Any],
+    description: str = "",
 ) -> str:
     """One running playbook *name* holding *entry* then *notify*; rebuilt on any drift.
 
@@ -996,10 +1041,12 @@ async def _ensure_pir_playbook(
     whose items carry the right values but no label (provisioned before the
     labels) is patched in place, a label rewritten in OpenCTI is kept.
     """
+    description = description or "Provisioned by XTM One for an assignment; edits are reverted."
     playbook_id = playbook_id or await _find_by_name(gql, "playbooks", name)
     if playbook_id:
         data, err = await gql(
-            "query XtmPlaybook($id: String!) { playbook(id: $id) { id name playbook_running playbook_definition } }",
+            "query XtmPlaybook($id: String!) "
+            "{ playbook(id: $id) { id name description playbook_running playbook_definition } }",
             {"id": playbook_id},
         )
         if err:
@@ -1008,9 +1055,22 @@ async def _ensure_pir_playbook(
         if current:
             nodes = _stored_nodes(current.get("playbook_definition"))
             wanted = {PIR_ENTRY_COMPONENT: entry, NOTIFIER_COMPONENT: notify}
+            # #2583: a new name or description is patched in place, the playbook id kept.
+            edits = []
+            if current.get("name") != name:
+                edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
+            if edits:
+                _, err = await gql(
+                    "mutation XtmPlaybookPatch($id: ID!, $input: [EditInput!]!) "
+                    "{ playbookFieldPatch(id: $id, input: $input) { id } }",
+                    {"id": playbook_id, "input": edits},
+                )
+                if err:
+                    raise RuntimeError(err)
             if (
-                current.get("name") == name
-                and current.get("playbook_running")
+                current.get("playbook_running")
                 and set(nodes) == set(wanted)
                 and all(
                     same_node_configuration(cid, config, nodes[cid]["configuration"]) for cid, config in wanted.items()
@@ -1024,7 +1084,7 @@ async def _ensure_pir_playbook(
             await _delete(gql, "playbookDelete", playbook_id)
     data, err = await gql(
         "mutation XtmPlaybookAdd($input: PlaybookAddInput!) { playbookAdd(input: $input) { id } }",
-        {"input": {"name": name, "description": "Provisioned by XTM One for an assignment; edits are reverted."}},
+        {"input": {"name": name, "description": description}},
     )
     if err:
         raise RuntimeError(err)
@@ -1095,6 +1155,8 @@ async def reconcile(
     state = dict(state or {})
     stamp = (now or datetime.now(UTC)).isoformat()
     name = object_name(spec)
+    notifier_name = object_name(spec, "notifier")
+    notifier_text = object_description(spec, "notifier")
     try:
         label_ids, missing = await _resolve_label_ids(gql, spec["labels"])
         if missing:
@@ -1123,14 +1185,21 @@ async def reconcile(
                 }
         if spec.get("mode") == PIR_PLAYBOOK_MODE:
             config = notifier_configuration(url, secret, template=PIR_WEBHOOK_TEMPLATE)
-            notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+            notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), notifier_name, config, notifier_text)
             if state.get("trigger_id"):
                 # The assignment moved from a live trigger to the PIR playbook.
                 await _delete(gql, "triggerKnowledgeDelete", state["trigger_id"])
             member_id, member_name = await _own_user(gql)
             pir_names = await _pir_names(gql, list(spec.get("pir_ids") or []))
             entry, notify = pir_playbook_nodes(spec, notifier_id, member_id, member_name, pir_names)
-            playbook_id = await _ensure_pir_playbook(gql, state.get("playbook_id"), name, entry, notify)
+            playbook_id = await _ensure_pir_playbook(
+                gql,
+                state.get("playbook_id"),
+                object_name(spec, "playbook"),
+                entry,
+                notify,
+                object_description(spec, "playbook"),
+            )
             return {
                 "status": "provisioned",
                 "error": None,
@@ -1154,12 +1223,18 @@ async def reconcile(
             }
         config = notifier_configuration(url, secret)
         filters = trigger_filters(spec, label_ids, country_ids + sector_ids, organization_ids)
-        notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+        notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), notifier_name, config, notifier_text)
         if state.get("playbook_id"):
             # The assignment moved from the PIR playbook back to a live trigger.
             await _delete(gql, "playbookDelete", state["playbook_id"])
         trigger_id = await _ensure_trigger(
-            gql, state.get("trigger_id"), name, filters, spec["event_types"], notifier_id
+            gql,
+            state.get("trigger_id"),
+            object_name(spec, "trigger"),
+            filters,
+            spec["event_types"],
+            notifier_id,
+            object_description(spec, "trigger"),
         )
     except Exception as exc:  # one assignment never breaks the pass
         return {**state, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
@@ -1396,6 +1471,7 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
             assignment.trigger_config = _with_state(config, new_state)
             return new_state
     url = receiver_url(settings.base_url, integration_id, str(assignment.id))
+    spec = {**spec, "origin": {"assignment": getattr(assignment, "name", ""), "assignment_id": str(assignment.id)}}
     new_state = await reconcile(gql, spec, state, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
     assignment.trigger_config = _with_state(config, new_state)

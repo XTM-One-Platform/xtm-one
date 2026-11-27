@@ -70,14 +70,24 @@ class FakeOpenCTI:
                 "playbook": {
                     "id": v["id"],
                     "name": p["name"],
+                    "description": p.get("description"),
                     "playbook_running": p["running"],
                     "playbook_definition": definition,
                 }
             }, None
         if op == "XtmPlaybookAdd":
             pid = self._id()
-            self.playbooks[pid] = {"name": v["input"]["name"], "nodes": [], "running": False}
+            self.playbooks[pid] = {
+                "name": v["input"]["name"],
+                "description": v["input"].get("description"),
+                "nodes": [],
+                "running": False,
+            }
             return {"playbookAdd": {"id": pid}}, None
+        if op == "XtmPlaybookPatch":
+            for e in v["input"]:
+                self.playbooks[v["id"]][e["key"]] = e["value"][0]
+            return {"playbookFieldPatch": {"id": v["id"]}}, None
         if op == "XtmNodeAdd":
             nid = self._id()
             i = v["input"]
@@ -107,7 +117,11 @@ class FakeOpenCTI:
             return {"notifier": dict(n, id=v["id"]) if n else None}, None
         if op == "XtmNotifierAdd":
             nid = self._id()
-            self.notifiers[nid] = {"name": v["input"]["name"], "notifier_configuration": v["input"]["notifier_configuration"]}
+            self.notifiers[nid] = {
+                "name": v["input"]["name"],
+                "description": v["input"].get("description"),
+                "notifier_configuration": v["input"]["notifier_configuration"],
+            }
             return {"notifierAdd": {"id": nid}}, None
         if op == "XtmNotifierPatch":
             for e in v["input"]:
@@ -117,12 +131,26 @@ class FakeOpenCTI:
             t = self.triggers.get(v["id"])
             if not t:
                 return {"triggerKnowledge": None}, None
-            return {"triggerKnowledge": {"id": v["id"], "name": t["name"], "event_types": t["event_types"],
-                                         "filters": t["filters"], "notifiers": [{"id": n} for n in t["notifiers"]]}}, None
+            return {
+                "triggerKnowledge": {
+                    "id": v["id"],
+                    "name": t["name"],
+                    "description": t.get("description"),
+                    "event_types": t["event_types"],
+                    "filters": t["filters"],
+                    "notifiers": [{"id": n} for n in t["notifiers"]],
+                }
+            }, None
         if op == "XtmTriggerAdd":
             tid = self._id()
             i = v["input"]
-            self.triggers[tid] = {"name": i["name"], "event_types": i["event_types"], "filters": i["filters"], "notifiers": i["notifiers"]}
+            self.triggers[tid] = {
+                "name": i["name"],
+                "description": i.get("description"),
+                "event_types": i["event_types"],
+                "filters": i["filters"],
+                "notifiers": i["notifiers"],
+            }
             return {"triggerKnowledgeLiveAdd": {"id": tid}}, None
         if op == "XtmTriggerPatch":
             for e in v["input"]:
@@ -156,6 +184,37 @@ def test_spec_is_normalised_and_named():
     assert spec["entity_types"] == ["Intrusion-Set", "Report"]
     assert spec["event_types"] == ["create"]
     assert prov.object_name(spec) == "XTM One - Threat response - New threats"
+    # #2583: every provisioned object names its kind last; the notifier is named like its trigger.
+    assert prov.object_name(spec, "trigger") == "XTM One - Threat response - New threats - Trigger"
+    assert prov.object_name(spec, "notifier") == "XTM One - Threat response - New threats - Notifier"
+
+
+def test_the_description_names_the_instance_fleet_path_and_assignment():
+    spec = {**prov.read_provision_spec(SPEC_CONFIG), "origin": {"assignment": "Watch", "assignment_id": "a1"}}
+    text = prov.object_description(spec, "trigger")
+    assert "Fleet: Threat response. Path: New threats. Kind: Trigger." in text
+    assert "Assignment: Watch (a1)." in text
+    assert text.startswith("Provisioned by XTM One (http")
+
+
+@pytest.mark.asyncio
+async def test_a_recheck_renames_the_objects_in_place_keeping_their_ids():
+    """#2583: objects provisioned under the old name are renamed on the next recheck, never recreated."""
+    gql = FakeOpenCTI(labels={"ai": "label-ai"})
+    spec = prov.read_provision_spec(SPEC_CONFIG)
+    gql.notifiers["n-old"] = {"name": "XTM One - Threat response - New threats", "notifier_configuration": ""}
+    gql.triggers["t-old"] = {
+        "name": "XTM One - Threat response - New threats",
+        "event_types": ["create"],
+        "filters": "{}",
+        "notifiers": ["n-old"],
+    }
+    state = await prov.reconcile(gql, spec, {"notifier_id": "n-old", "trigger_id": "t-old"}, url=URL, secret="s")
+    assert state["status"] == "provisioned", state
+    assert (state["notifier_id"], state["trigger_id"]) == ("n-old", "t-old")
+    assert gql.notifiers["n-old"]["name"] == "XTM One - Threat response - New threats - Notifier"
+    assert gql.triggers["t-old"]["name"] == "XTM One - Threat response - New threats - Trigger"
+    assert "Kind: Trigger." in gql.triggers["t-old"]["description"]
 
 
 @pytest.mark.parametrize(
@@ -255,7 +314,7 @@ async def test_reconcile_creates_then_is_idempotent():
     assert len(octi.notifiers) == 1 and len(octi.triggers) == 1
     trigger = octi.triggers[state["trigger_id"]]
     assert trigger["notifiers"] == [state["notifier_id"]]
-    assert trigger["name"] == "XTM One - Threat response - New threats"
+    assert trigger["name"] == "XTM One - Threat response - New threats - Trigger"
 
     octi.calls.clear()
     again = await prov.reconcile(octi, spec, state, url=URL, secret="s")
@@ -591,7 +650,7 @@ async def test_reconcile_pir_playbook_creates_a_running_playbook_then_is_idempot
     assert state["mode"] == "pir_playbook"
     assert not octi.triggers and len(octi.notifiers) == 1
     playbook = octi.playbooks[state["playbook_id"]]
-    assert playbook["running"] and playbook["name"] == "XTM One - Threat response - PIR flags"
+    assert playbook["running"] and playbook["name"] == "XTM One - Threat response - PIR flags - Playbook"
     entry, notify = playbook["nodes"]
     assert (entry["component_id"], notify["component_id"]) == (prov.PIR_ENTRY_COMPONENT, prov.NOTIFIER_COMPONENT)
     assert notify["parent"] == entry["id"]
