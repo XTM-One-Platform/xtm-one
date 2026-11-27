@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.models.ctem_case import CASE_STATES, OPEN_STATES, RESOLUTION_KINDS
+from app.models.ctem_case import CASE_STATES, DEFAULT_RESOLUTION_KIND, OPEN_STATES, RESOLUTION_KINDS
 from app.services.ctem_fixed_version import compare_versions, fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
@@ -678,6 +678,18 @@ def latest_validation(validations: Iterable[dict[str, Any]] | None) -> dict[str,
     """The newest validation reference of a case (the list is kept oldest first), ``None`` when none."""
     items = [v for v in (validations or []) if isinstance(v, dict)]
     return items[-1] if items else None
+
+
+def derived_resolution_kind(validations: Iterable[dict[str, Any]] | None) -> str:
+    """The kind of a case resolved with none given (#2675): a resolved case never has none.
+
+    Backed by the newest validation reference only when it passed (``not_exposed`` or
+    ``fixed``); otherwise ``closed_by_decision``, never ``not_exposed`` by default.
+    """
+    newest = latest_validation(validations)
+    if not passing(newest):
+        return DEFAULT_RESOLUTION_KIND
+    return "not_exposed" if (newest or {}).get("result") == "not_exposed" else "fixed"
 
 
 def passing(validation: dict[str, Any] | None) -> bool:

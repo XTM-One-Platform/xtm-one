@@ -422,6 +422,19 @@ is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
 through the usual reopen rule.
 
+**Every resolved case says how it was closed (#2675).** `update_case` never
+leaves `resolution_kind` null on a move to `resolved`: the kind given is kept;
+with none, it is derived from the newest validation reference when that one
+passed (`not_exposed` or `fixed`, `ctem_cases.derived_resolution_kind`), else
+`closed_by_decision`, never `not_exposed` by default. An agent that closes a
+case as out of scope passes `not_relevant` (`dismissed` stays a person's
+decision, #2252). Members keep the state the source reports (above): on a
+closed case (`mitigated_watching`, `resolved`, `accepted_risk`) the read
+answers `open_issue_count` 0 and counts the members still open at source in
+`open_at_source_count`, shown on the case page as "Open at source" under a
+case closed by decision. Rows closed before #2675 keep a null kind (no
+back-fill: the history event says how they were closed).
+
 **Issues fixed below every running version (#2047).** The same inventory read
 hands the recompute every version the product runs (`ctem_case_versions.every_running_version`;
 an asset with no version counts as `unknown`). A member whose own fixed version is

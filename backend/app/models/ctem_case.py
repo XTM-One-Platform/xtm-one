@@ -92,7 +92,19 @@ CASE_PRIORITIES: tuple[str, ...] = ("critical", "high", "medium", "low")
 #: ``signal``: a CTEM signal attached to the case (``external_id`` is its id).
 ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev", "signal")
 #: How a resolved case was closed. ``dismissed``: a person answered a gate "reject and close" (#2252).
-RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk", "dismissed")
+#: ``not_relevant``: an agent closed it as out of scope (#2675). ``closed_by_decision``: resolved with
+#: no kind given and no passing validation, the default (#2675): a resolved case never has none.
+RESOLUTION_KINDS: tuple[str, ...] = (
+    "not_exposed",
+    "mitigated",
+    "fixed",
+    "accepted_risk",
+    "dismissed",
+    "not_relevant",
+    "closed_by_decision",
+)
+#: The kind of a case resolved with none given and no passing validation reference (#2675).
+DEFAULT_RESOLUTION_KIND = "closed_by_decision"
 #: Severity from the scope gate (P1 most urgent).
 CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
 #: What a validation reference says.
