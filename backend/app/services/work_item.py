@@ -40,8 +40,10 @@ admitted.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import time
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -82,7 +84,7 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
-from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
+from app.services.work_item_a2a_refs import delegating_agents, names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
@@ -2330,7 +2332,7 @@ async def create_work_item(
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
         if names_a2a_task(refs):
             # A task id no delegation of this user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
+            await refuse_unknown_a2a_tasks(db, user_uuid, refs, agent_ids=delegating_agents(creator_uuid, owner_uuid))
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2760,7 +2762,12 @@ async def update_work_item(
         refuse_unobserved_deployment_refs(refs)
         if names_a2a_task(refs):
             # A task id no delegation of the item's user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
+            await refuse_unknown_a2a_tasks(
+                db,
+                item.user_id,
+                refs,
+                agent_ids=delegating_agents(item.created_by_agent_id, item.owner_agent_id),
+            )
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
@@ -7740,7 +7747,11 @@ async def release_dependants_of(work_item_id: object) -> int:
 
 
 async def release_ended_run_claims(
-    *, limit: int = _RELEASE_BATCH, run_ids: Sequence[Any] | None = None
+    *,
+    limit: int = _RELEASE_BATCH,
+    run_ids: Sequence[Any] | None = None,
+    deadline: float | None = None,
+    background_events: bool = False,
 ) -> int:
     """Release every claim whose holding run has ended.
 
@@ -7765,6 +7776,12 @@ async def release_ended_run_claims(
     at once, so the item is never read held by a holder that already ended
     while the next tick is awaited. The predicate is the same; an empty or
     unreadable list releases nothing.
+
+    *deadline* (a ``time.monotonic()`` instant) bounds the pass (#2582): past
+    it no further item is released, what was released is committed and the
+    rest waits for the next pass. *background_events* publishes the release
+    events in a task of their own instead of inline, so the scheduler tick
+    that calls it is not held by them.
     """
     from app.core.database import async_session
 
@@ -7795,6 +7812,9 @@ async def release_ended_run_claims(
         holders = await holding_runs(db, [row[1] for row in rows])
         released_by: dict[uuid.UUID, list[uuid.UUID]] = {}
         for item_id, run_id, notes in rows:
+            if deadline is not None and time.monotonic() > deadline:
+                logger.info("Work item claim release stopped at its time budget: the rest waits for the next pass")
+                break
             holder = holders[run_id]
             if holder.alive:  # came back to life between the two reads
                 continue
@@ -7826,11 +7846,32 @@ async def release_ended_run_claims(
                 )
         await db.commit()
     if released_by:
-        try:
-            await _publish(await _release_events(released_by, holders))
-        except Exception as exc:  # best-effort: the release already landed
-            logger.warning("Release platform events not published: %s", format_exception_message(exc))
+        if background_events:
+            _spawn_release_events(released_by, holders)
+        else:
+            await _publish_release_events(released_by, holders)
     return released
+
+
+#: The release event tasks in flight, kept so none is collected before it ends.
+_RELEASE_EVENT_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def _publish_release_events(
+    released_by: dict[uuid.UUID, list[uuid.UUID]], holders: dict[uuid.UUID, HoldingRun]
+) -> None:
+    """Publish the events of a release that already landed; never raises."""
+    try:
+        await _publish(await _release_events(released_by, holders))
+    except Exception as exc:  # best-effort: the release already landed
+        logger.warning("Release platform events not published: %s", format_exception_message(exc))
+
+
+def _spawn_release_events(released_by: dict[uuid.UUID, list[uuid.UUID]], holders: dict[uuid.UUID, HoldingRun]) -> None:
+    """Publish the events of a release in a task of their own, off the caller's path (#2582)."""
+    task = asyncio.create_task(_publish_release_events(released_by, holders))
+    _RELEASE_EVENT_TASKS.add(task)
+    task.add_done_callback(_RELEASE_EVENT_TASKS.discard)
 
 
 async def wake_on_background_task(work_item_id: object, *, task_id: object, outcome: str) -> str | None:

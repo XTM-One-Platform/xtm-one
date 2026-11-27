@@ -32,6 +32,8 @@ interface ConfirmDialogProps {
   confirmDisabled?: boolean;
   /** Content drawn under the description (a short list the decision rests on); already translated by the caller. */
   children?: React.ReactNode;
+  /** `wide` for a decision that carries a form (several fields side by side); `sm` by default. */
+  size?: "sm" | "wide";
   onConfirm: () => void;
 }
 
@@ -46,6 +48,7 @@ export function ConfirmDialog({
   challenge = false,
   confirmDisabled = false,
   children,
+  size = "sm",
   onConfirm,
 }: ConfirmDialogProps) {
   // Every string prop (title, labels, description) is translated once:
@@ -89,7 +92,7 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className={size === "wide" ? "max-w-2xl" : "max-w-sm"}>
         <DialogHeader>
           <div className="flex items-start gap-3">
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${variantStyles.iconBg}`}>

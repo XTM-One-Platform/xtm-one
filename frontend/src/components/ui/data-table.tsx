@@ -130,6 +130,8 @@ export interface DataTableFilterOption {
   value: string;
   /** Already translated. */
   label: string;
+  /** A decorative 16 px icon or logo drawn before the label (#2578); the label carries the meaning. */
+  icon?: ReactNode;
 }
 
 export interface DataTableFilter<T> {
@@ -1774,17 +1776,26 @@ function FilterOptionList({
     <>
       {options.map((option) => {
         const isSelected = selected.includes(option.value);
+        // A value no row would keep under the other filters is dimmed, still selectable (#2578).
+        const empty = !!counts && !isSelected && (counts[option.value] ?? 0) === 0;
         return (
           <button
             type="button"
             key={option.value}
             aria-pressed={isSelected}
+            data-empty={empty || undefined}
             onClick={() => onChange(toggleArrayItem(selected, option.value))}
             className={cn(
               "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left content-compact transition-colors",
               isSelected ? "bg-accent/15 text-accent" : "hover:bg-elevation-hover",
+              empty && "text-default-secondary",
             )}
           >
+            {option.icon && (
+              <span data-testid="filter-option-icon" className={cn("flex size-4 shrink-0 items-center justify-center", empty && "opacity-50")} aria-hidden>
+                {option.icon}
+              </span>
+            )}
             <span className="min-w-0 flex-1 truncate" title={option.label}>
               {option.label}
             </span>

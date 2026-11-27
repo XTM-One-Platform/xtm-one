@@ -295,11 +295,11 @@ def client(redis: _Redis, monkeypatch: pytest.MonkeyPatch) -> httpx.AsyncClient:
 
     started: list[bool] = []
 
-    async def _start(actor: Any, *, resync: bool) -> dict[str, Any]:
+    async def _start(actor: Any, *, resync: bool, windows: Any = None) -> dict[str, Any]:
         if started:
             raise purge.PurgeBusyError(purge.BUSY_DETAIL)
         started.append(resync)
-        return purge.new_status("job", actor, resync=resync)
+        return purge.new_status("job", actor, resync=resync, windows=windows)
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_current_user] = _user
@@ -322,7 +322,17 @@ async def test_an_admin_reads_the_live_counts(client: httpx.AsyncClient) -> None
     async with client as http:
         answer = await http.get("/api/v1/ctem-signals/purge")
     assert answer.status_code == 200
-    assert answer.json() == {"counts": {"signals": 4400, "cases": 37}, "confirm_word": "PURGE", "job": None}
+    body = answer.json()
+    assert {k: body[k] for k in ("counts", "confirm_word", "job")} == {
+        "counts": {"signals": 4400, "cases": 37},
+        "confirm_word": "PURGE",
+        "job": None,
+    }
+    # #2578: the dialog draws one row per resync route with its default window.
+    routes = {r["key"]: r for r in body["resync_routes"]}
+    assert routes["vulnerability"]["default"] == 7 and routes["intrusion_set"]["default"] == 30
+    assert routes["aikido"]["default"] is None and routes["attack_surface"]["windowed"] is False
+    assert body["resync_max_days"] == 365
 
 
 @pytest.mark.asyncio
@@ -335,3 +345,24 @@ async def test_the_purge_needs_the_typed_word_and_runs_one_job(client: httpx.Asy
     assert first.status_code == 202 and first.json()["job"]["resync"] is False
     assert first.json()["job"]["steps"]["resync"]["state"] == "skipped"
     assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_the_resync_windows_are_validated_and_carried_by_the_job(client: httpx.AsyncClient) -> None:
+    """#2578: a bad window is a 422 before any job; a good one lands on the job with the defaults filled in."""
+    async with client as http:
+        bad = await http.post(
+            "/api/v1/ctem-signals/purge",
+            json={"confirm": "PURGE", "resync": True, "resync_windows": {"vulnerability": 0}},
+        )
+        unknown = await http.post(
+            "/api/v1/ctem-signals/purge", json={"confirm": "PURGE", "resync": True, "resync_windows": {"x": 3}}
+        )
+        good = await http.post(
+            "/api/v1/ctem-signals/purge",
+            json={"confirm": "PURGE", "resync": True, "resync_windows": {"vulnerability": 3, "aikido": 90}},
+        )
+    assert bad.status_code == 422 and unknown.status_code == 422
+    windows = good.json()["job"]["windows"]
+    assert windows["vulnerability"] == 3 and windows["aikido"] == 90
+    assert windows["malware"] == 30 and windows["github"] is None

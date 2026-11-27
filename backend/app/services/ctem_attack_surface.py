@@ -121,6 +121,12 @@ class PreviousPass:
     statuses: dict[str, str]
 
 
+#: The mark the purge of every signal (#2578) leaves on a host whose new-host signal it
+#: deleted: the next pass that sees the host raises it again once, without the provider-date
+#: check (the provider saw it before the previous pass by definition), then drops the mark.
+REARM_NEW_HOST = "rearm:new_host"
+
+
 @dataclass(frozen=True)
 class Baseline:
     """What an earlier pass kept of one host (``signalled``: the signal keys still holding;
@@ -394,8 +400,10 @@ def diff(
                         )
             continue
         # path 7: anything new against the baseline (never on the first pass, which sets it).
-        if before is None and not first_pass:
-            why = new_host_withheld(obs, previous, statuses or {})
+        # A host the purge re-armed (#2578) is raised again once, whatever the provider dates.
+        rearmed = before is not None and REARM_NEW_HOST in before.signalled
+        if rearmed or (before is None and not first_pass):
+            why = "" if rearmed else new_host_withheld(obs, previous, statuses or {})
             if why:
                 if withheld is not None:
                     withheld[host] = why
@@ -464,6 +472,8 @@ def _still_holding(signalled: list[str], obs: Observation) -> list[str]:
     marker = f":{SOURCE}:{host_key(obs.host)}:"
     kept: list[str] = []
     for key in signalled:
+        if key == REARM_NEW_HOST:  # consumed by the pass that saw the host again (#2578)
+            continue
         detail = key.split(marker, 1)[1] if marker in key else ""
         if detail.startswith("port:") and detail not in open_ports:
             continue

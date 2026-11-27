@@ -9,6 +9,7 @@ import mimetypes
 import re
 import time
 from html import escape as _html_escape
+from typing import Any
 from urllib.parse import quote as _url_encode
 from urllib.parse import unquote as _url_decode
 
@@ -55,6 +56,7 @@ from ._common import (
 )
 from ._draft_body import PREFER_HTML_BODY, html_draft_body
 from ._internet_headers import format_internet_headers, header_section
+from ._mail_folders import FolderDirectory, render_folders
 from ._mail_window import next_page_token, page_params, pages_line, received_filter
 from ._message_type import PLAIN_MESSAGE, message_type
 from ._outlook import (
@@ -390,19 +392,16 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
     persist_file_fn = ctx.persist_file_fn
     integration_id = ctx.integration_id
 
-    # Normalize common folder name variations to Microsoft Graph well-known names
-    folder_aliases: dict[str, str] = {
-        "inbox": "inbox",
-        "sent": "sentitems",
-        "sentitems": "sentitems",
-        "sent items": "sentitems",
-        "drafts": "drafts",
-        "deleted": "deleteditems",
-        "deleteditems": "deleteditems",
-        "junk": "junkemail",
-        "junkemail": "junkemail",
-        "archive": "archive",
-    }
+    # A folder named by a well-known name, a path, a display name or an id,
+    # resolved to the segment Graph takes; the tree is read once per session.
+    async def _folder_fetch(url: str, params: dict[str, str] | None) -> tuple[dict[str, Any] | None, str | None]:
+        async with _client() as client:
+            resp, err = await _throttled_request(client, "get", url, _PROVIDER, "list mail folders", params=params)
+            if err or resp is None:
+                return None, err or "Error: Microsoft answered no mail folders."
+            return resp.json() or {}, None
+
+    folder_directory = FolderDirectory(_folder_fetch, _BASE_URL)
 
     # ── Send guard ────────────────────────────────────────────
     # One answer per conversation across the agent's runs: scoped to the
@@ -972,8 +971,10 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         ``received_from`` / ``received_to`` keep a received window; a page past
         the first is read with the ``page_token`` the previous answer names.
         """
-        # Normalize folder name
-        normalized = folder_aliases.get(folder.lower().strip(), folder)
+        resolved, folder_err = await folder_directory.resolve(folder)
+        if folder_err or resolved is None:
+            return folder_err or f"Error: no mail folder named '{folder}'."
+        normalized = resolved.label
         window, window_err = received_filter(received_from, received_to)
         if window_err:
             return window_err
@@ -1000,7 +1001,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             resp, err = await _throttled_request(
                 client,
                 "get",
-                f"{_BASE_URL}/me/mailFolders/{normalized}/messages",
+                f"{_BASE_URL}/me/mailFolders/{resolved.segment}/messages",
                 _PROVIDER,
                 "list emails",
                 params=params,
@@ -1373,20 +1374,44 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             details.append({**att, "contentId": cid})
         return raw_markup_report(raw_body, details, offset, err)
 
-    async def search_microsoft_emails(query: str, count: int = 10) -> str:
-        """Search emails by subject or body content across ALL folders (inbox, sent, drafts, etc.).
+    async def list_microsoft_mail_folders(parent: str = "") -> str:
+        """List the mailbox's mail folders with their path and id, every level, or under one folder."""
+        folders, err = await folder_directory.folders()
+        if err:
+            return err
+        under = (parent or "").strip()
+        if under:
+            root, folder_err = await folder_directory.find(under)
+            if folder_err or root is None:
+                return folder_err or f"Error: no mail folder named '{under}'."
+            prefix = root.path + "/"
+            return render_folders(
+                [f for f in folders if f.path.startswith(prefix)], truncated=folder_directory.truncated, under=root.path
+            )
+        return render_folders(folders, truncated=folder_directory.truncated)
 
-        WARNING: This searches every folder including Drafts. To check
+    async def search_microsoft_emails(query: str, count: int = 10, folder: str = "") -> str:
+        """Search emails by subject or body content across ALL folders, or in one ``folder``.
+
+        WARNING: without a folder this searches every folder including Drafts. To check
         only sent emails, use list_microsoft_emails(folder='sentitems') instead.
         """
         if count < 1:
             count = 10
         _select = "id,subject,from,receivedDateTime,bodyPreview"
+        url = f"{_BASE_URL}/me/messages"
+        scope = ""
+        if (folder or "").strip():
+            resolved, folder_err = await folder_directory.resolve(folder)
+            if folder_err or resolved is None:
+                return folder_err or f"Error: no mail folder named '{folder}'."
+            url = f"{_BASE_URL}/me/mailFolders/{resolved.segment}/messages"
+            scope = f" in '{resolved.label}'"
         async with _client() as client:
             resp, err = await _throttled_request(
                 client,
                 "get",
-                f"{_BASE_URL}/me/messages",
+                url,
                 _PROVIDER,
                 "search emails",
                 params={
@@ -1399,7 +1424,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 return err
             messages = resp.json().get("value", [])
             if not messages:
-                return f"No emails matching '{query}'."
+                return f"No emails matching '{query}'{scope}."
             lines = []
             for m in messages:
                 fr = (m.get("from") or {}).get("emailAddress") or {}
@@ -2742,6 +2767,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
     executor.register("get_microsoft_attachment", get_microsoft_attachment)
     executor.register("export_microsoft_email_mime", export_microsoft_email_mime)
     executor.register("search_microsoft_emails", search_microsoft_emails)
+    executor.register("list_microsoft_mail_folders", list_microsoft_mail_folders)
     executor.register("flag_microsoft_email", flag_microsoft_email)
     executor.register("unflag_microsoft_email", unflag_microsoft_email)
     executor.register("list_microsoft_flagged_emails", list_microsoft_flagged_emails)
@@ -2794,7 +2820,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         # ── Email Read ──
         ToolDefinition(
             name="list_microsoft_emails",
-            description="List recent emails from an Outlook mail folder. Returns ID, subject, sender, date, conversation ID, preview, and flag status. include_preview=false returns one compact line per message (id, sender, subject, received date, conversation id, read/flag/importance state) for large reads. Use folder='inbox' (default), 'sentitems', 'drafts', 'deleteditems', or 'archive'. Use the returned ID with get_microsoft_email, flag_microsoft_email, or create_microsoft_draft_reply.",
+            description="List recent emails from an Outlook mail folder. Returns ID, subject, sender, date, conversation ID, preview, and flag status. include_preview=false returns one compact line per message (id, sender, subject, received date, conversation id, read/flag/importance state) for large reads. folder takes a well-known name ('inbox' default, 'sentitems', 'drafts', 'deleteditems', 'junkemail', 'archive'), a custom folder's display name or path ('Inbox/Contracts'), or a folder id from list_microsoft_mail_folders. Use the returned ID with get_microsoft_email, flag_microsoft_email, or create_microsoft_draft_reply.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -2805,7 +2831,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     },
                     "folder": {
                         "type": "string",
-                        "description": "Mail folder: 'inbox' (default), 'sentitems' (sent mail), 'drafts', 'deleteditems', 'archive'",
+                        "description": "Mail folder: a well-known name ('inbox' default, 'sentitems', 'drafts', 'deleteditems', 'junkemail', 'archive'), a display name or path of a custom folder ('Inbox/Contracts', case-insensitive; an ambiguous name is refused with the candidate paths), or a folder id from list_microsoft_mail_folders",
                         "default": "inbox",
                     },
                     "include_preview": {
@@ -2929,7 +2955,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         ),
         ToolDefinition(
             name="search_microsoft_emails",
-            description="Search across all Outlook mailboxes by keyword. Returns matching emails with subject, sender, date, and preview. Use this for cross-folder keyword searches; use list_microsoft_emails for browsing a specific folder.",
+            description="Search Outlook mail by keyword, across every folder or in one folder. Returns matching emails with subject, sender, date, and preview. Pass folder to keep the matches of one folder (same forms as list_microsoft_emails: well-known name, display name or path, folder id); use list_microsoft_emails for browsing a folder.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -2939,8 +2965,30 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                         "description": "Max results",
                         "default": 10,
                     },
+                    "folder": {
+                        "type": "string",
+                        "description": "Optional: search only this folder (a well-known name, a display name or path such as 'Inbox/Contracts', or a folder id from list_microsoft_mail_folders). Empty: every folder, Drafts included.",
+                        "default": "",
+                    },
                 },
                 "required": ["query"],
+            },
+            source="integration:microsoft",
+            priority=0,
+        ),
+        ToolDefinition(
+            name="list_microsoft_mail_folders",
+            description="List the mail folders of the Outlook mailbox, every level (custom folders included): one line per folder with its path ('Inbox/Contracts'), id, child folder count, item and unread counts. Pass parent to list only the folders under one folder. Read a folder with list_microsoft_emails(folder=PATH_OR_ID) or search it with search_microsoft_emails(folder=...).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "parent": {
+                        "type": "string",
+                        "description": "Optional: only the folders under this one (a well-known name, a display name or path, or a folder id). Empty: every folder.",
+                        "default": "",
+                    },
+                },
+                "required": [],
             },
             source="integration:microsoft",
             priority=0,

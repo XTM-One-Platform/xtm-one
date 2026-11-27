@@ -131,7 +131,7 @@ async def test_the_job_deletes_signals_and_their_cases_with_no_orphan() -> None:
             "cases": 2,
             "signals": 3,
             "surface_hosts": 1,
-            "surface_hosts_dropped": 0,
+            "surface_hosts_rearmed": 0,
         }
         session.expire_all()
         assert await session.scalar(select(func.count()).select_from(CtemSignal)) == 0

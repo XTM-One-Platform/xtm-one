@@ -282,6 +282,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # (integration.user_id); the token only reads the evidence health of the
         # tenant's risk scenarios (reader_for).
         "services/ctem_evidence_health.py",
+        # CTEM purge resync (#2578): the Aikido and GitHub integrations visible to the
+        # administrator who started the purge (integration_visible_filter), with a token
+        # minted for that administrator; it only lists open issues and Dependabot alerts.
+        "services/ctem_signal_resync.py",
         "services/openaev_trigger_provisioning.py",
         "services/opencti_trigger_provisioning.py",
         "services/organization_context_opencrq.py",
