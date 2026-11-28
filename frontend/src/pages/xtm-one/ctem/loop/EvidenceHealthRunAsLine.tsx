@@ -8,6 +8,7 @@
  */
 import { useState } from "react";
 import { ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
+import { RunAsLine } from "@/components/module-run-as/RunAsLine";
 import { useRunAsUserName } from "@/components/module-run-as/useRunAsUserName";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,13 +46,14 @@ export function EvidenceHealthRunAsLine({
   };
 
   return (
-    <span className="flex items-center gap-2" data-testid="ctem-path-source-run-as">
-      <span className="text-default-secondary">{t_i18n("Runs as: {user}", { user: name })}</span>
-      {isAdmin && integration && (
-        <Button variant="ghost" size="sm" onClick={() => setPicked(runAs.userId ?? "")} data-testid="ctem-path-source-run-as-change">
-          {t_i18n("Change")}
-        </Button>
-      )}
+    <>
+      {/* The line of the provisioned sources (UX round 1 on #2742, B1): one component, its Change named. */}
+      <RunAsLine
+        name={name}
+        changeLabel={t_i18n("Change the run-as user of {source}", { source: t_i18n("Evidence health") })}
+        onChange={isAdmin && integration ? () => setPicked(runAs.userId ?? "") : undefined}
+        testId="ctem-path-source-evidence-health-run-as"
+      />
       <Dialog open={picked !== null} onOpenChange={(open) => !open && setPicked(null)}>
         <DialogContent size="md" data-testid="ctem-path-source-run-as-dialog">
           <DialogHeader>
@@ -65,12 +67,12 @@ export function EvidenceHealthRunAsLine({
             <Button variant="ghost" onClick={() => setPicked(null)} disabled={saving}>
               {t_i18n("Cancel")}
             </Button>
-            <Button onClick={save} disabled={saving || !picked} data-testid="ctem-path-source-run-as-save">
+            <Button onClick={save} disabled={saving || !picked || picked === (runAs.userId ?? "")} data-testid="ctem-path-source-run-as-save">
               {t_i18n("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </span>
+    </>
   );
 }

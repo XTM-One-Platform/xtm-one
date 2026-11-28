@@ -239,7 +239,6 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
                 id={`${id}-integration`}
                 aria-labelledby={settingsFieldLabelId(`${id}-integration`)}
                 aria-describedby={settingsFieldHintId(`${id}-integration`)}
-                className="max-w-md"
                 options={[
                   { value: AUTO, label: t_i18n("The single connected one") },
                   ...candidates.map((integration) => ({ value: integration.id, label: integration.name })),
@@ -254,6 +253,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
             <div data-testid="settings.organization.evidence-health.run-as-field">
               <ModuleRunAsField
                 module="opencrq"
+                required={false}
                 value={draft.runAs}
                 onChange={(runAs) => setDraft((current) => (current ? { ...current, runAs } : current))}
                 helper={t_i18n("The user the pass reads OpenCRQ as. Default: the integration's owner.")}

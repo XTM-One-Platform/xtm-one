@@ -22254,6 +22254,6 @@
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
   "The integration the pass reads.": "L’intégration que lit la passe.",
-  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "L’utilisateur en tant que lequel la passe lit OpenCRQ. Par défaut : le propriétaire de l’intégration.",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "L’utilisateur avec lequel la passe lit OpenCRQ. Par défaut : le propriétaire de l’intégration.",
   "{name} (integration owner)": "{name} (propriétaire de l’intégration)"
 }
