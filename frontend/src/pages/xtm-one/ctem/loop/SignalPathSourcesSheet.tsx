@@ -156,11 +156,14 @@ export function SignalPathSourcesSheet({
   paths,
   connected,
   onClose,
+  onOpenPath,
 }: {
   path: CtemSignalPath | null;
   paths: readonly CtemSignalPath[];
   connected: ReadonlySet<string>;
   onClose: () => void;
+  /** Shows another path in this panel: a path chip of an opened source (#2784). */
+  onOpenPath?: (pathId: string) => void;
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -458,6 +461,15 @@ export function SignalPathSourcesSheet({
                       onSave={onSave}
                       platformSources={platformSources}
                       onEnable={setEnabling}
+                      // A path chip opens that path with the same source's row opened (#2784).
+                      onOpenPath={
+                        onOpenPath
+                          ? (next) => {
+                              setOpened(new Set([row.key]));
+                              onOpenPath(next);
+                            }
+                          : undefined
+                      }
                     />
                   ) : null
                 }

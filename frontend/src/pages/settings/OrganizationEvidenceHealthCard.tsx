@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/settings-form";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { useToast } from "@/components/ui/toast";
+import { useCtemSignalPaths } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,6 +47,8 @@ import {
   fromForm,
   toForm,
 } from "@/lib/organization-profile";
+import { useConfirmPathsOff } from "@/pages/xtm-one/ctem/loop/ConfirmPathsOffDialog";
+import { profilePassPaths } from "@/pages/xtm-one/ctem/loop/signal-sources";
 
 /** The Select value of "no integration declared": the single connected one. */
 const AUTO = "__auto__";
@@ -83,6 +86,8 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
   const save = usePatchOrganizationContext();
   const { data: integrations = [] } = useIntegrations();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const { data: signalPaths } = useCtemSignalPaths();
+  const [confirmOff, guardOff] = useConfirmPathsOff();
 
   const profile = data?.profile;
   const pass: EvidenceHealthPass = { ...DEFAULT_EVIDENCE_HEALTH, ...((profile?.evidence_health ?? {}) as Partial<EvidenceHealthPass>) };
@@ -148,8 +153,19 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
     draft !== null && (next === null || JSON.stringify(next) !== JSON.stringify({ ...pass, enabled: pass.enabled ?? true, run_as_user_id: pass.run_as_user_id ?? null }));
   const blocked = next === null || pickMissing;
 
+  // Saving the pass off stops every path it feeds: asked first when they are several (#2784).
   const onSave = () => {
     if (!profile || !next || blocked) return;
+    if (state.runs && !next.enabled)
+      return guardOff(
+        profilePassPaths(signalPaths?.paths ?? [], "evidence_health").map((p) => t_i18n(p.label)),
+        t_i18n("Turn off the evidence health pass?"),
+        write,
+      );
+    write();
+  };
+  const write = () => {
+    if (!profile || !next) return;
     const parsed = fromForm({ ...toForm(profile), evidence_health: { ...next } });
     if ("invalid" in parsed) return;
     // #1752: the card's own field alone travels, never the asset rows.
@@ -295,6 +311,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
           <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={!dirty || blocked} onSave={onSave} onCancel={() => setDraft(null)} />
         </div>
       )}
+      {confirmOff}
     </SettingsCard>
   );
 }
