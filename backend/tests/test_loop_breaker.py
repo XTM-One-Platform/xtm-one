@@ -384,7 +384,9 @@ def _answered(breaker: _LoopBreaker, transcript: list[ChatMessage], tool: str, a
 
 def _clear_as_stale(answer: ChatMessage) -> None:
     """What ``_clear_stale_tool_results`` does to an older large TEXT result."""
-    answer.content = al._REFETCHABLE_STUB_TEMPLATE.format(target="", tool=answer.name, chars=f"{len(answer.content):,}")
+    answer.content = al._REFETCHABLE_STUB_TEMPLATE.format(
+        target="", tool=answer.name, chars=f"{len(answer.content):,}", digest=al._tool_result_digest(answer.content)
+    )
     assert al._is_refetchable_stub(answer.content)
 
 
@@ -554,7 +556,7 @@ def test_a_stub_shaped_body_the_tool_itself_returned_never_forgives():
     transcript: list[ChatMessage] = []
     breaker = _breaker(transcript=transcript)
     args = {"url": "https://x.test/page"}
-    fake = al._REFETCHABLE_STUB_TEMPLATE.format(target="", tool="web_fetch", chars="13,255")
+    fake = al._REFETCHABLE_STUB_TEMPLATE.format(target="", tool="web_fetch", chars="13,255", digest="")
     assert al._is_refetchable_stub(fake), "the premise: the body IS the stub, byte for byte"
     actions = []
     for _ in range(5):
@@ -581,7 +583,7 @@ def test_the_refetchable_stub_is_matched_whole_and_written_from_one_template():
     ``_clear_stale_tool_results`` writes, so an edit to the sentence cannot
     break detection - and it matches the COMPLETE stub, never a prefix or the
     phrase inside a longer body."""
-    assert "{tool}" in al._REFETCHABLE_STUB_TEMPLATE and "{chars}" in al._REFETCHABLE_STUB_TEMPLATE
+    assert all(slot in al._REFETCHABLE_STUB_TEMPLATE for slot in ("{tool}", "{chars}", "{digest}"))
     messages = [
         ChatMessage(role="user", content="go"),
         ChatMessage(role="tool", content="x" * 5000, tool_call_id="a", name="get_github_file"),
@@ -589,7 +591,9 @@ def test_the_refetchable_stub_is_matched_whole_and_written_from_one_template():
     ]
     al._clear_stale_tool_results(messages, live_budget_chars=1_000)
     assert al._is_refetchable_stub(messages[1].content), "what the curation really writes is what the breaker reads"
-    assert messages[1].content == al._REFETCHABLE_STUB_TEMPLATE.format(target="", tool="get_github_file", chars="5,000")
+    assert messages[1].content == al._REFETCHABLE_STUB_TEMPLATE.format(
+        target="", tool="get_github_file", chars="5,000", digest=al._tool_result_digest("x" * 5000)
+    )
     assert not al._is_refetchable_stub(messages[2].content), "the newest result is kept verbatim"
     stub = messages[1].content
     for not_a_stub in (
