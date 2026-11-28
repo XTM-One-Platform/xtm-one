@@ -99,6 +99,44 @@ async def resolve(db: AsyncSession, *, actor: Any, raw: Any, providers: list[str
     return chosen
 
 
+async def integration_refusal(db: AsyncSession, raw: Any, integration_id: Any) -> str | None:
+    """Why *raw* cannot read *integration_id* as the run-as of a background pass, or ``None`` (#2739).
+
+    The same rules as :func:`resolve`, held to one integration: an active user
+    for whom that integration resolves (``template_candidate_filter``) and is
+    connected (``connected_for_clause``). The text starts as the reasons
+    ``ctem_platform_sources.reason_code`` reads (``run_as_inactive``,
+    ``run_as_no_integration``), so a source shows it in the reader's language.
+    """
+    from app.models.integration import Integration
+    from app.models.user import User
+    from app.services.fleet_run_as import missing_refusal
+    from app.services.integration_tools import template_candidate_filter
+    from app.services.integration_user_credentials import connected_for_clause
+
+    try:
+        user_id = raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
+        integration_uuid = integration_id if isinstance(integration_id, uuid.UUID) else uuid.UUID(str(integration_id))
+    except ValueError:
+        return "the run-as user is not a user id"
+    user = await db.get(User, user_id)
+    if user is None or not getattr(user, "is_active", False):
+        return "the run-as user is deactivated or no longer exists"
+    row = (
+        await db.execute(
+            select(Integration.provider).where(
+                Integration.id == integration_uuid,
+                await template_candidate_filter(db, user_id, company_automation=True),
+                connected_for_clause(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        integration = await db.get(Integration, integration_uuid)
+        return missing_refusal([str(getattr(integration, "provider", "") or "opencrq")])
+    return None
+
+
 async def candidates(db: AsyncSession, *, actor: Any, provider: str) -> list[Candidate]:
     """The users of the "Act in <module> as" dialog, the caller first.
 

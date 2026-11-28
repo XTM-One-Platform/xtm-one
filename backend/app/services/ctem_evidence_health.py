@@ -323,9 +323,11 @@ class OpenCrqEvidenceReader:
 async def reader_for(db: AsyncSession, profile: Any) -> OpenCrqEvidenceReader | str:
     """The reader of the declared OpenCRQ integration, or the reason there is none.
 
-    The credential is the integration owner's, as the attack surface pass and the
-    CTEM ticketing sync do: an administrator declared it in the profile, and the
-    token only reads the evidence health of the tenant's risk scenarios.
+    The pass reads as ``evidence_health.run_as_user_id`` when an administrator
+    picked one (#2739): that user's OpenCRQ connection, markings and rights,
+    checked first by ``module_run_as.integration_refusal``; a user who cannot
+    use the integration is the reason, never another user picked instead.
+    Unset, the credential is the integration owner's, as before.
     """
     from app.integrations.providers.opencrq._common import _headers, _resolve_tenant
     from app.models.integration import Integration
@@ -343,8 +345,15 @@ async def reader_for(db: AsyncSession, profile: Any) -> OpenCrqEvidenceReader | 
         return "the declared evidence health integration no longer exists"
     if integration.provider != PROVIDER:
         return f"{integration.provider} is not an OpenCRQ integration"
-    owner = str(integration.user_id) if integration.user_id else None
-    token = await _get_token(db, integration_id, PROVIDER, user_id=owner, integ=integration)
+    run_as = (getattr(settings, "run_as_user_id", None) or "").strip()
+    if run_as:
+        refusal = await run_as_refusal(db, settings, str(integration.id))
+        if refusal:
+            return refusal
+        acting = run_as
+    else:
+        acting = str(integration.user_id) if integration.user_id else ""
+    token = await _get_token(db, integration_id, PROVIDER, user_id=acting or None, integ=integration)
     base_url, sep, api_token = str(token or "").partition("||")
     base_url = base_url.strip().rstrip("/")
     if not sep or not base_url or not api_token.strip():
@@ -389,6 +398,16 @@ def resolve_pass(settings: Any, connected: Any) -> tuple[str, str]:
     if declared:
         return (PASS_ON, declared) if declared in ids else (PASS_OFF, "")
     return (PASS_ON, ids[0]) if len(ids) == 1 else (PASS_OFF, "")
+
+
+async def run_as_refusal(db: AsyncSession, settings: Any, integration_id: str) -> str | None:
+    """Why the picked run-as user cannot read *integration_id*, or ``None`` (none picked, or it can; #2739)."""
+    from app.services import module_run_as
+
+    run_as = (getattr(settings, "run_as_user_id", None) or "").strip()
+    if not run_as or not integration_id:
+        return None
+    return await module_run_as.integration_refusal(db, run_as, integration_id)
 
 
 async def connected_integration_ids(db: AsyncSession) -> list[str]:

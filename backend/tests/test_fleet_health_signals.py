@@ -42,18 +42,104 @@ def test_a_platform_interruption_is_not_judged():
 # ── assignment_silent ───────────────────────────────────────────────────────
 
 
+DAILY = {"cron": "0 6 * * *"}
+WEEKLY = {"cron": "0 6 * * 1"}
+SILENT_NOW = datetime(2026, 11, 28, 6, 30, tzinfo=UTC)
+
+
 def test_an_old_schedule_that_never_fired_is_silent():
-    assert signals.schedule_is_silent(created_at=NOW - timedelta(days=30), last_triggered_at=None, now=NOW)
-
-
-def test_a_schedule_that_fired_recently_is_not_silent():
-    assert not signals.schedule_is_silent(
-        created_at=NOW - timedelta(days=30), last_triggered_at=NOW - timedelta(days=2), now=NOW
+    assert signals.schedule_is_silent(
+        trigger_config=DAILY, created_at=NOW - timedelta(days=30), last_triggered_at=None, now=NOW
     )
 
 
-def test_a_young_schedule_is_never_silent():
-    assert not signals.schedule_is_silent(created_at=NOW - timedelta(days=3), last_triggered_at=None, now=NOW)
+def test_a_schedule_that_fired_at_its_last_slot_is_not_silent():
+    assert not signals.schedule_is_silent(
+        trigger_config=DAILY,
+        created_at=NOW - timedelta(days=30),
+        last_triggered_at=datetime(2026, 11, 14, 6, 0, tzinfo=UTC),
+        now=NOW,
+    )
+
+
+def test_a_slot_within_the_grace_is_not_yet_silent():
+    # The 06:00 slot is 30 minutes old: the scheduler may still be on its way.
+    assert not signals.schedule_is_silent(
+        trigger_config=DAILY,
+        created_at=SILENT_NOW - timedelta(days=30),
+        last_triggered_at=datetime(2026, 11, 27, 6, 0, tzinfo=UTC),
+        now=SILENT_NOW,
+    )
+
+
+def test_a_monthly_schedule_between_two_slots_is_not_silent():
+    # #2723: created 14 Nov, first slot 1 Dec.
+    assert not signals.schedule_is_silent(
+        trigger_config={"cron": "0 8 1 * *"},
+        created_at=datetime(2026, 11, 14, 9, 0, tzinfo=UTC),
+        last_triggered_at=None,
+        now=SILENT_NOW,
+    )
+
+
+def test_a_half_yearly_schedule_between_two_slots_is_not_silent():
+    assert not signals.schedule_is_silent(
+        trigger_config={"cron": "0 8 1 1,7 *"},
+        created_at=datetime(2026, 11, 14, 9, 0, tzinfo=UTC),
+        last_triggered_at=None,
+        now=SILENT_NOW,
+    )
+
+
+def test_a_weekly_schedule_enabled_again_after_its_slots_is_not_silent():
+    # Disabled over the Monday slots of 16 and 23 Nov, enabled again 27 Nov.
+    assert not signals.schedule_is_silent(
+        trigger_config=WEEKLY,
+        created_at=datetime(2026, 11, 14, 9, 0, tzinfo=UTC),
+        last_triggered_at=None,
+        resumed_at=datetime(2026, 11, 27, 15, 41, tzinfo=UTC),
+        now=SILENT_NOW,
+    )
+
+
+def test_a_weekly_schedule_that_missed_three_slots_is_silent():
+    # Enabled since 1 Nov, last fire 2 Nov: 9, 16 and 23 Nov came due with nothing.
+    kwargs: dict[str, Any] = {
+        "trigger_config": WEEKLY,
+        "created_at": datetime(2026, 11, 1, 9, 0, tzinfo=UTC),
+        "last_triggered_at": datetime(2026, 11, 2, 6, 0, tzinfo=UTC),
+        "resumed_at": datetime(2026, 11, 1, 9, 0, tzinfo=UTC),
+        "now": SILENT_NOW,
+    }
+    assert signals.schedule_is_silent(**kwargs)
+    assert signals.missed_schedule_slots(**kwargs) == signals.SILENT_DELETE_HINT_SLOTS
+
+
+def test_the_cron_is_read_in_its_timezone():
+    # 06:00 Paris is 05:00 UTC in November: at 06:30 UTC that slot is past the grace,
+    # while the same cron read in UTC (06:00) would still be inside it.
+    kwargs: dict[str, Any] = {
+        "created_at": SILENT_NOW - timedelta(days=30),
+        "last_triggered_at": datetime(2026, 11, 27, 6, 0, tzinfo=UTC),
+        "now": SILENT_NOW,
+    }
+    assert signals.schedule_is_silent(trigger_config={"cron": "0 6 * * *", "timezone": "Europe/Paris"}, **kwargs)
+    assert not signals.schedule_is_silent(trigger_config={"cron": "0 6 * * *"}, **kwargs)
+
+
+def test_a_schedule_without_a_readable_cron_is_never_silent():
+    for config in ({}, {"cron": "nope"}, None):
+        assert not signals.schedule_is_silent(
+            trigger_config=config, created_at=NOW - timedelta(days=30), last_triggered_at=None, now=NOW
+        )
+
+
+def test_the_delete_hint_comes_only_after_several_missed_slots():
+    assert "delete" not in signals.FINDING_ADVICE["assignment_silent"]
+    assert "scheduler" in signals.FINDING_ADVICE["assignment_silent"]
+    assert "delete" not in signals.silent_summary([1, 2])
+    one_stuck = signals.silent_summary([1, signals.SILENT_DELETE_HINT_SLOTS])
+    assert one_stuck.startswith("2 schedule(s)") and "1 missed 3 or more" in one_stuck and "delete" in one_stuck
 
 
 # ── cost_spike ──────────────────────────────────────────────────────────────

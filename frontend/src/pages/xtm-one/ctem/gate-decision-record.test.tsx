@@ -307,15 +307,15 @@ describe("GateDecisionRecord", () => {
     expect(screen.getByTestId("ctem-gate-record-wait").textContent).toContain("Waiting for");
   });
 
-  it("draws no Decided step on a waiting gate and opens its decision from the Asked step (UX r4 B8 on #1708)", () => {
+  it("draws no Decided step on a waiting gate and no link away in its Asked step: the decision is answered on the page", () => {
     render(
       <GateDecisionRecord record={rec({ status: "waiting", answered_at: null, answered_by: null, option: null, comment: null, surface: null, next: null })} />,
     );
     expect(screen.queryByTestId("ctem-gate-record-step-decided")).toBeNull();
     expect(screen.queryByText("Decided")).toBeNull();
-    const asked = screen.getByTestId("ctem-gate-record-step-asked");
-    expect(asked.contains(screen.getByTestId("ctem-gate-record-decision"))).toBe(true);
-    expect(screen.getByText("Open the decision").closest("a")?.getAttribute("href")).toContain("w-1");
+    expect(screen.getByTestId("ctem-gate-record-step-asked")).toBeInTheDocument();
+    expect(screen.queryByTestId("ctem-gate-record-decision")).toBeNull();
+    expect(screen.queryByText("Open the decision")).toBeNull();
   });
 });
 

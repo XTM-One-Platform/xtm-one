@@ -247,6 +247,7 @@ GENERIC_PRODUCT_WORDS: frozenset[str] = frozenset(
         "desktop",
         "driver",
         "framework",
+        "gateway",
         "helper",
         "installer",
         "launcher",
@@ -420,6 +421,37 @@ def label_names(ref: str, label: str) -> bool | None:
     ):
         return None
     return ref_words == words
+
+
+def tail_word_only(product: str, ref: str) -> bool:
+    """Whether *product* is one generic word that only closes a vendor-qualified name *ref* (#2679 reopened).
+
+    ``Gateway`` closes ``Panabit Smart Application Gateway`` and ``JetBrains Gateway``: a generic last
+    word (:data:`GENERIC_PRODUCT_WORDS`) of a name of two words or more names a kind of thing, never
+    the product. A CPE reference is read by its product part.
+    """
+    text = str(ref or "").strip()
+    if text.lower().startswith("cpe:"):
+        text = _haystack(text)
+    word = _TOKEN.findall(_needle(str(product or "")))
+    words = [w for w in _name_words(text)[0] if not w.isdigit()]
+    return (
+        len(word) == 1
+        and word[0] in GENERIC_PRODUCT_WORDS
+        and len(words) >= 2
+        and words[-1] == word[0]
+        and words[0] != word[0]
+    )
+
+
+def tail_refs(software: Iterable[str]) -> frozenset[str]:
+    """The one-word references of *software* that only close a longer reference of the list (#2679 reopened).
+
+    ``Gateway`` beside ``Panabit Smart Application Gateway`` is the generic last word OpenCTI keeps as
+    a second Software name: it reaches nothing on its own (``JetBrains Gateway``, a ``Gateway`` app).
+    """
+    refs = [str(r) for r in software if str(r or "").strip()]
+    return frozenset(ref for ref in refs if any(other != ref and tail_word_only(ref, other) for other in refs))
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
@@ -676,7 +708,8 @@ class PrimaryAssetIndex:
         name are kept; *software* still says which reference each of them runs.
         """
         wanted = {k for k in (keys or []) if k}
-        refs = [(ref, is_family_word(ref)) for ref in software if ref]
+        tails = tail_refs(software)
+        refs = [(ref, is_family_word(ref)) for ref in software if ref and ref not in tails]
         out: list[tuple[Reacher, str]] = []
         for i, reacher in enumerate(self.reachers):
             if keys_only and not wanted & reacher.keys:
@@ -699,7 +732,12 @@ class PrimaryAssetIndex:
         return out
 
     def reach(
-        self, software: list[str], keys: list[str] | None = None, *, keys_only: bool = False
+        self,
+        software: list[str],
+        keys: list[str] | None = None,
+        *,
+        keys_only: bool = False,
+        fixed_version: str | None = None,
     ) -> list[dict[str, Any]]:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
@@ -711,6 +749,7 @@ class PrimaryAssetIndex:
         included), not only the first one met: one versioned installed row is enough.
         ``family_only`` (#2680) holds when every asset of the chain is reached only by a bare OS
         family reference (``Windows``): a possible exposure, never a running product.
+        *fixed_version* (#2747) is the CVE's fix, the only bound a reference naming no version is checked on.
         """
         if not self.reachers:
             return []
@@ -719,7 +758,7 @@ class PrimaryAssetIndex:
         ordered = [r for r in software if r not in generic] + [r for r in software if r in generic]
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
         for reacher, matched in self._matching(ordered, keys, keys_only=keys_only):
-            verified = matched not in generic and runs_versioned(reacher, matched)
+            verified = matched not in generic and runs_versioned(reacher, matched, fixed_version=fixed_version)
             family_only = bool(matched) and is_family_word(matched)
             label = self._label(reacher, matched) or matched
             for link, kind, through in reacher.links:
@@ -847,17 +886,18 @@ def generic_refs(software: list[str]) -> frozenset[str]:
     )
 
 
-def runs_versioned(reacher: Reacher, ref: str) -> bool:
+def runs_versioned(reacher: Reacher, ref: str, *, fixed_version: str | None = None) -> bool:
     """Whether *reacher* runs software *ref* from an installed row that reports its version (#2628).
 
     A bare family reference (``Windows``) is never verified: it names no product to version,
-    nor is a bare generic word (``Client``, #2685).
+    nor is a bare generic word (``Client``, #2685). A reference with no version is compared
+    with *fixed_version* (#2747).
     """
     if not ref or is_family_word(ref) or is_generic_word(ref):
         return False
     return any(
         (product_matches(label, ref) or product_matches(ref, label, ref_exact=False))
-        and version_in_reference(label, reacher.versions.get(label), ref)
+        and version_in_reference(label, reacher.versions.get(label), ref, fixed_version=fixed_version)
         for label in reacher.versioned
     )
 
@@ -918,15 +958,24 @@ def _satisfies(installed: str, op: str, version: str) -> bool:
     return {"<": cmp < 0, "<=": cmp <= 0, ">": cmp > 0, ">=": cmp >= 0, "!=": cmp != 0}.get(op, False)
 
 
-def version_in_reference(label: str, installed: Iterable[str] | None, ref: str) -> bool:
+def version_in_reference(
+    label: str, installed: Iterable[str] | None, ref: str, *, fixed_version: str | None = None
+) -> bool:
     """Whether one *installed* version of *label* is the version or in the range *ref* names (#2711 reopened).
 
-    A reference that names no version (``nginx_plus``) is verified by any versioned row, as before.
+    #2747: a reference that names no version (``Firefox``, ``nginx_plus``) is verified only against
+    the CVE's *fixed_version*: an installed version below it. With no fixed version known, nothing
+    is compared, so nothing is verified (a KEV CVE never opens a P1 case on a version nobody placed).
     A label that names the reference's version itself (``Microsoft SharePoint Server 2019`` for
     ``SharePoint Server 2019``) is the release named. *installed* ``None``: no version read for the label.
     """
     bounds = reference_versions(ref)
-    if bounds is None or installed is None:
+    if bounds is None:
+        fixed = str(fixed_version or "").strip()
+        if not fixed:
+            return False
+        bounds = (("<", fixed),)
+    if installed is None:
         return True
     if len(bounds) == 1 and bounds[0][0] == "=" and contains_word(bounds[0][1].lower(), str(label or "").lower()):
         return True

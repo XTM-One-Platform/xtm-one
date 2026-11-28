@@ -404,3 +404,104 @@ async def test_a_non_opencrq_integration_is_refused(monkeypatch: pytest.MonkeyPa
 
     profile = oc.parse_profile({"evidence_health": {"enabled": True, "integration": str(uuid.uuid4())}})
     assert await health.reader_for(_Db(), profile) == "shodan is not an OpenCRQ integration"
+
+
+# ── the run-as user of the pass (#2739) ─────────────────────────────────
+
+
+class _IntegrationDb:
+    """Answers one OpenCRQ integration owned by *owner*."""
+
+    def __init__(self, integration_id: uuid.UUID, owner: uuid.UUID) -> None:
+        self.integration = type("I", (), {"id": integration_id, "provider": "opencrq", "user_id": owner})()
+
+    async def get(self, model, key):
+        return self.integration
+
+
+def _run_as_profile(integration_id: uuid.UUID, run_as: uuid.UUID | None) -> Any:
+    return oc.parse_profile(
+        {
+            "evidence_health": {
+                "enabled": True,
+                "integration": str(integration_id),
+                **({"run_as_user_id": str(run_as)} if run_as else {}),
+            }
+        }
+    )
+
+
+def _capture_token(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    from app.services import integration_tools
+
+    seen: dict[str, Any] = {}
+
+    async def _token(db, integration_id, provider="", *, user_id=None, integ=None, **_kw):
+        seen["user_id"] = user_id
+        return None  # no credential: reader_for stops right after the token read
+
+    monkeypatch.setattr(integration_tools, "_get_token", _token)
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_unset_run_as_reads_as_the_integration_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    integration_id, owner = uuid.uuid4(), uuid.uuid4()
+    seen = _capture_token(monkeypatch)
+
+    async def _never(*_a, **_kw):
+        raise AssertionError("no run-as check without a run-as")
+
+    monkeypatch.setattr(health, "run_as_refusal", _never)
+    reason = await health.reader_for(_IntegrationDb(integration_id, owner), _run_as_profile(integration_id, None))
+    assert reason == "no OpenCRQ credential could be resolved for the evidence health integration"
+    assert seen["user_id"] == str(owner)
+
+
+@pytest.mark.asyncio
+async def test_a_picked_run_as_reads_as_that_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import module_run_as
+
+    integration_id, owner, run_as = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    seen = _capture_token(monkeypatch)
+    checked: list[tuple[str, str]] = []
+
+    async def _ok(db, raw, integration):
+        checked.append((str(raw), str(integration)))
+        return None
+
+    monkeypatch.setattr(module_run_as, "integration_refusal", _ok)
+    await health.reader_for(_IntegrationDb(integration_id, owner), _run_as_profile(integration_id, run_as))
+    assert checked == [(str(run_as), str(integration_id))]
+    assert seen["user_id"] == str(run_as)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_run_as_is_the_reason_never_another_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import module_run_as
+
+    integration_id, owner, run_as = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    seen = _capture_token(monkeypatch)
+    refusal = "The run-as user has no connected OpenCRQ integration: a fleet automation runs as that user."
+
+    async def _refused(db, raw, integration):
+        return refusal
+
+    monkeypatch.setattr(module_run_as, "integration_refusal", _refused)
+    reason = await health.reader_for(_IntegrationDb(integration_id, owner), _run_as_profile(integration_id, run_as))
+    assert reason == refusal
+    assert "user_id" not in seen  # no token read: never the owner's credential instead
+
+
+def test_the_run_as_is_an_optional_profile_field() -> None:
+    assert oc.parse_profile({}).evidence_health.run_as_user_id is None
+    run_as = str(uuid.uuid4())
+    parsed = oc.parse_profile({"evidence_health": {"run_as_user_id": run_as}})
+    assert parsed.evidence_health.run_as_user_id == run_as
+
+
+def test_a_refused_run_as_reads_as_a_configuration_reason() -> None:
+    from app.services.ctem_platform_sources import reason_code
+
+    assert reason_code("The run-as user has no connected OpenCRQ integration: x")[0] == "run_as_no_integration"
+    assert reason_code("the run-as user is deactivated or no longer exists")[0] == "run_as_inactive"

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createIntl } from "react-intl";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,6 +11,7 @@ import {
   checkRecommendation,
   checkTitle,
   evidenceLabel,
+  evidenceTime,
   moduleCardSubtitle,
   periodLabel,
   productHealth,
@@ -72,6 +74,21 @@ function backendChecks(): { ids: Set<string>; categories: Set<string>; evidenceK
   }
   return { ids, categories, evidenceKeys };
 }
+
+describe("Platform Health evidence times (UX round 2 B1 on #2724)", () => {
+  const fr = createIntl({ locale: "fr-fr", messages: {}, timeZone: "UTC" });
+  const en = createIntl({ locale: "en-us", messages: {}, timeZone: "UTC" });
+
+  it("draws a time in the app language, as the Last seen column does", () => {
+    expect(evidenceTime("2026-11-20T09:00:00Z", fr, t)).toBe("20 nov., 09:00");
+    expect(evidenceTime("2026-11-20T09:00:00Z", en, t)).toContain("Nov 20");
+  });
+
+  it("reads Never for a missing time", () => {
+    expect(evidenceTime(null, fr, (key) => `t:${key}`)).toBe("t:Never");
+    expect(evidenceTime("", fr, (key) => `t:${key}`)).toBe("t:Never");
+  });
+});
 
 describe("Platform Health labels (UX round 1 B2 on #634)", () => {
   const { ids, categories } = backendChecks();

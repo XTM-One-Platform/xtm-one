@@ -58,6 +58,7 @@ async def _world(
         name="nightly",
         prompt="p",
         trigger_type="schedule",
+        trigger_config={"cron": "0 2 * * *"},
         created_at=T0 - timedelta(days=30),
         last_triggered_at=T0 - timedelta(days=20),
     )
