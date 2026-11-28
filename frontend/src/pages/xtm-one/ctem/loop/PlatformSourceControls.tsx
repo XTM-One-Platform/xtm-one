@@ -11,6 +11,8 @@
 import { useEffect, useId, useState } from "react";
 import { Chip, Icon } from "@filigran/design-system";
 import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
+import { RunAsLine } from "@/components/module-run-as/RunAsLine";
+import { useRunAsUserName } from "@/components/module-run-as/useRunAsUserName";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -87,20 +89,10 @@ function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" 
   return `${source.provider}:${source.kind}:${source.integration_id}`;
 }
 
-/** The run-as user of a source at rest: the name, else the email, else a plain "Not set". */
-function useRunAsLabel(userId: string | null): string {
-  const { t_i18n } = useFormatter();
-  const { data: users } = useUsers(Boolean(userId));
-  if (!userId) return t_i18n("Not set");
-  const user = users?.find((u) => u.id === userId);
-  if (!user) return t_i18n("A specific user");
-  return user.full_name?.trim() || user.email;
-}
-
 /** The run-as users of a path table row (#2506), by name: one, or the first and how many more. */
 export function RunAsName({ ids }: { ids: string }) {
   const [first, ...rest] = ids.split(",");
-  const name = useRunAsLabel(first);
+  const name = useRunAsUserName(first || null);
   return (
     <span className="truncate" data-testid="ctem-path-source-run-as">
       {rest.length > 0 ? `${name} +${rest.length}` : name}
@@ -221,7 +213,7 @@ function PlatformSourceLine({
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const disable = useDisableCtemPlatformSource();
-  const runAs = useRunAsLabel(source.run_as_user_id);
+  const runAs = useRunAsUserName(source.run_as_user_id);
   // The reason ended by its full stop, then its fix in the reader's language (UX round 1 on #2653, B2).
   const reason = sourceReasonLine(source, null, t_i18n);
   const toggle = (on: boolean) => {
@@ -259,24 +251,13 @@ function PlatformSourceLine({
       {/* The Open in links take their own wrapping line under the name, so neither the name nor a link label is cut (#2649 UX r1 B1). */}
       {source.enabled && <PlatformObjectLinks source={source} />}
       {source.enabled && (
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-default-secondary" data-testid="ctem-platform-source-run-as">
-            {t_i18n("Runs as: {user}", { user: runAs })}
-          </span>
-          {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
-          {isAdmin && source.integration_connected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onEnable(source)}
-              aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
-              data-testid="ctem-platform-source-run-as-change"
-            >
-              {t_i18n("Change")}
-            </Button>
-          )}
-        </span>
+        // #2650: the run-as stays changeable; the source is provisioned again as the new user.
+        <RunAsLine
+          name={runAs}
+          changeLabel={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
+          onChange={isAdmin && source.integration_connected ? () => onEnable(source) : undefined}
+          testId="ctem-platform-source-run-as"
+        />
       )}
       <PlatformSourceBlastRadius source={source} />
       {!source.integration_connected && <span className="text-default-secondary">{t_i18n("The integration is not connected.")}</span>}

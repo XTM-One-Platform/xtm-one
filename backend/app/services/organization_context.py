@@ -830,8 +830,11 @@ class EvidenceHealthPass(BaseModel):
     model_config = _Strict
 
     enabled: bool | None = None
-    #: The id of the OpenCRQ integration the pass reads with its owner's credential.
+    #: The id of the OpenCRQ integration the pass reads.
     integration: str = Field(default="", max_length=100)
+    #: The user the pass reads OpenCRQ as (#2739): that user's connection, markings and rights,
+    #: checked by ``module_run_as.integration_refusal``. Unset: the integration's owner, as before.
+    run_as_user_id: str | None = Field(default=None, max_length=36)
     #: The re-test delay: evidence older than this many days has expired (path 9).
     max_age_days: int = Field(default=30, ge=1, le=3650)
     #: Hours between two passes (daily by default).

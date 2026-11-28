@@ -96,9 +96,10 @@ def test_a_version_span_reference_verifies_only_inside_the_span() -> None:
     assert not pa.version_in_reference("mail-mcp-bridge", {"1.4.0"}, "mail-mcp-bridge 1.3.0-1.3.3")
 
 
-def test_a_reference_without_version_and_a_release_in_the_label_stay_verified() -> None:
+def test_a_reference_without_version_is_not_verified_and_a_release_in_the_label_is() -> None:
+    """#2747: a versionless reference compares no version, so no versioned row verifies it."""
     hits = _reach(["nginx_plus"], _reacher("WEB-01", "Nginx", "1.25.3", os_family="Linux"))
-    assert [h["version_verified"] for h in hits] == [True]
+    assert [h["version_verified"] for h in hits] == [False]
     assert pa.version_in_reference("Microsoft SharePoint Server 2019", {"16.0.10337"}, "SharePoint Server 2019")
 
 
