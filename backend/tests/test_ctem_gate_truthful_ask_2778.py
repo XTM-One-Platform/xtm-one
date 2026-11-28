@@ -29,7 +29,11 @@ _CLAIM_ASK = {
     "question": "Close the case without the re-test?",
     "context": "The patch is applied on both servers.",
     "options": [
-        {"key": "A", "label": "Close", "effect": "Closes the case; the side exposure is still tracked in its own case."},
+        {
+            "key": "A",
+            "label": "Close",
+            "effect": "Closes the case; the side exposure is still tracked in its own case.",
+        },
         {"key": "B", "label": "Keep open", "effect": "Waits for the re-test."},
     ],
     "recommendation": "A",

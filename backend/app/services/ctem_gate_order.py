@@ -220,9 +220,7 @@ UNCHECKED_CASE_CLAIM_MESSAGE = (
 )
 
 
-async def case_reference_warnings(
-    db: Any, correlation_key: object, ask: object, blocked_reason: object
-) -> list[str]:
+async def case_reference_warnings(db: Any, correlation_key: object, ask: object, blocked_reason: object) -> list[str]:
     """What a CTEM gate card states about cases that the platform could not find (#2778). Never a refusal.
 
     (1) The case the gate key names must exist. (2) A card saying another case
@@ -295,8 +293,8 @@ __all__ = [
     "case_reference_warnings",
     "claims_other_case",
     "gate_of",
-    "mobilize_before_review_warning",
     "missing_case_message",
+    "mobilize_before_review_warning",
     "mobilize_blocked_message",
     "open_gate_item_keys",
     "prerequisite_keys",

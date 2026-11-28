@@ -2887,9 +2887,7 @@ async def update_work_item(
                 )
             if new_ask and human:
                 # A case the card names must exist (#2778): a warning, never a refusal.
-                ask_warnings += await ctem_gate_order.case_reference_warnings(
-                    db, item.correlation_key, new_ask, reason
-                )
+                ask_warnings += await ctem_gate_order.case_reference_warnings(db, item.correlation_key, new_ask, reason)
         why_written = (
             any(v is not None for v in (status, blockers, refs, needs_human, ask)) or owner_agent_id == ""
         )  # re-routing a blocked item or refreshing its reason (context, never the blocker) stays free;
