@@ -20,10 +20,13 @@ import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { COLLAPSE_MS, applyPollDelay, gateApplying, recordGateAnswer, type GateAnswer } from "./gate-applying";
+import { COLLAPSE_MS, applyPollDelay, gateApplying, recordGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
 
-/** Where an answered gate stands, live: the case's own runs, re-read while it is being applied. */
-function useGateApplyingState(waiting: boolean, answer: GateAnswer | null) {
+/**
+ * Where an answered gate stands, live: the case's own runs, re-read while it is being applied. Read once per
+ * gate by its caller, which gives the same phase to the record's chip and to the notice (UX round 1 on #2757, B1).
+ */
+export function useGateApplyingState(waiting: boolean, answer: GateAnswer | null) {
   const { id } = useParams<{ id: string }>();
   const licensed = useAgenticAIEnabled();
   const { data: caseRuns } = useCtemCaseRuns(id, licensed && waiting && !!answer);
@@ -47,19 +50,17 @@ function useGateApplyingState(waiting: boolean, answer: GateAnswer | null) {
 
 export function GateApplyingNotice({
   workItemId,
-  waiting,
-  answer,
+  state,
   testId,
 }: {
   workItemId: string;
-  waiting: boolean;
-  answer: GateAnswer | null;
+  /** The gate's state from `useGateApplyingState` (its last one while the notice collapses). */
+  state: GateApplying | null;
   testId: string;
 }) {
   const { t_i18n, t_text } = useFormatter();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const state = useGateApplyingState(waiting, answer);
   if (!state) return null;
   const option = state.label ? t_text(state.label) : null;
 

@@ -18,6 +18,7 @@ import type * as React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { Link, type IconName } from "@filigran/design-system";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
+import type { GateApplyingPhase } from "./gate-applying";
 import type {
   CtemCaseEvent,
   CtemCaseGateRecipient,
@@ -277,12 +278,15 @@ export function GateDecisionRecord({
   record,
   title,
   byLabel,
-  applying = false,
+  applying = null,
   testId = "ctem-gate-record",
 }: {
   record: CtemCaseGateRecord;
-  /** Answered on this page and not yet applied by the loop (#2746): no wait, deadline or waiting sentence; the chip reads "Being applied". */
-  applying?: boolean;
+  /**
+   * Answered on this page and not yet applied by the loop (#2746): its phase. No wait, deadline or waiting
+   * sentence; the chip reads "Being applied" (applying, timeout) or "Not applied" (failed run).
+   */
+  applying?: GateApplyingPhase | null;
   /** The gate's own title when the record stands alone (the History dialog); a card already titles it. */
   title?: string;
   /** Who answered when the record does not name them (gateAnswererName, or the analyst's mark in OpenCTI). */
@@ -345,9 +349,17 @@ export function GateDecisionRecord({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {title && <span className="font-medium">{title}</span>}
         {applying && waiting ? (
-          <ToneBadge tone="blue" icon={<CaseIcon name="circle-check" />} data-testid={`${testId}-status`}>
-            {t_i18n("Being applied")}
-          </ToneBadge>
+          // The same phase as the notice under it (UX round 1 on #2757, B1); an in-progress glyph, static, in the
+          // tone no final gate chip uses (B3): yellow is the waiting chip's alone.
+          applying === "failed" ? (
+            <ToneBadge tone="red" icon={<CaseIcon name="circle-alert" />} data-testid={`${testId}-status`} data-phase="failed">
+              {t_i18n("Not applied")}
+            </ToneBadge>
+          ) : (
+            <ToneBadge tone="yellow" icon={<CaseIcon name="loader-circle" />} data-testid={`${testId}-status`} data-phase={applying}>
+              {t_i18n("Being applied")}
+            </ToneBadge>
+          )
         ) : (
           <ToneBadge tone={GATE_CHIP_TONE[chip]} icon={<CaseIcon name={GATE_CHIP_ICON[chip]} />} data-testid={`${testId}-status`}>
             {t_i18n(GATE_CHIP_LABEL[chip])}

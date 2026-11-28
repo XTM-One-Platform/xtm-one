@@ -136,8 +136,24 @@ describe("Being applied on the case page (#2746)", () => {
     expect(screen.queryByTestId("ctem-case-waiting-gate-open")).toBeNull();
     expect(screen.queryByTestId("ctem-case-waiting-gate-decision-record-wait")).toBeNull();
     expect(screen.queryByTestId("ctem-case-waiting-gate-decision-record-explain")).toBeNull();
-    expect(screen.getByTestId("ctem-case-waiting-gate-decision-record-status")).toHaveTextContent("Being applied");
+    const chip = screen.getByTestId("ctem-case-waiting-gate-decision-record-status");
+    expect(chip).toHaveTextContent("Being applied");
+    expect(chip.getAttribute("data-phase")).toBe("applying");
     expect(screen.getByTestId("ctem-case-waiting-gate")).toHaveTextContent("Decision recorded");
+    // Every gate of the card answered: the card no longer reads that it waits (UX round 1 on #2757, B2).
+    const card = screen.getByTestId("ctem-case-waiting-gates");
+    expect(card).toHaveTextContent("Decision being applied");
+    expect(card).not.toHaveTextContent("Waits for a decision");
+  });
+
+  it("keeps the card titled waiting while one of its gates is unanswered", () => {
+    state.byId["wi-other"] = { ...OPEN, id: "wi-other" };
+    recordGateAnswer("wi-close", "Close without retest");
+    renderWithProviders(page([rec(), rec({ key: "ctem.other_gate", work_item_id: "wi-other" })]));
+    const card = screen.getByTestId("ctem-case-waiting-gates");
+    expect(card).toHaveTextContent("Waits for a decision");
+    expect(card).not.toHaveTextContent("Decision being applied");
+    clearGateAnswer("wi-other");
   });
 
   it("reads a done item as being applied while the gate still waits", () => {
@@ -153,6 +169,7 @@ describe("Being applied on the case page (#2746)", () => {
     const notice = screen.getByTestId("ctem-case-waiting-gate-decision-applying");
     expect(notice.getAttribute("data-phase")).toBe("timeout");
     expect(notice).toHaveTextContent("Recorded, still being applied. Refresh later.");
+    expect(screen.getByTestId("ctem-case-waiting-gate-decision-record-status")).toHaveTextContent("Being applied");
     act(() => screen.getByTestId("ctem-case-waiting-gate-decision-applying-refresh").click());
     expect(screen.getByTestId("ctem-case-waiting-gate-decision-applying").getAttribute("data-phase")).toBe("applying");
   });
@@ -165,6 +182,11 @@ describe("Being applied on the case page (#2746)", () => {
     const notice = screen.getByTestId("ctem-case-waiting-gate-decision-applying");
     expect(notice.getAttribute("data-phase")).toBe("failed");
     expect(screen.getByTestId("ctem-case-waiting-gate-decision-applying-run")).toHaveTextContent("Open the run");
+    // The chip says the same as the notice (UX round 1 on #2757, B1): never "Being applied" over a failed run.
+    const chip = screen.getByTestId("ctem-case-waiting-gate-decision-record-status");
+    expect(chip).toHaveTextContent("Not applied");
+    expect(chip).not.toHaveTextContent("Being applied");
+    expect(chip.getAttribute("data-phase")).toBe("failed");
   });
 
   it("collapses the waiting card once the gate is applied", () => {

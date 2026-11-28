@@ -24,9 +24,9 @@ import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import type { WorkItem } from "@/types";
 import { GATE_LABEL } from "./case-gates";
-import { CollapseFrame, GateApplyingNotice, useCollapseOut } from "./GateApplyingNotice";
+import { CollapseFrame, GateApplyingNotice, useCollapseOut, useGateApplyingState } from "./GateApplyingNotice";
 import { GateDecisionRecord, gateAnswererName } from "./GateDecisionRecord";
-import { clearGateAnswer, doneItemAnswer, recordGateAnswer, useGateAnswer, type GateAnswer } from "./gate-applying";
+import { clearGateAnswer, doneItemAnswer, recordGateAnswer, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
 
 /**
  * The answer a waiting gate already has (#2746): the one this page sent, else
@@ -130,10 +130,12 @@ export function CaseGateDecision({
   const waiting = record.status === "waiting";
   const { item, isLoading, refetch } = useGateDecisionItem(record, waiting);
   const answer = useGateAnswerState(record, waiting);
-  const applying = waiting && !!answer && !!record.work_item_id;
+  // One read of the phase for the chip and the notice, so they never disagree (UX round 1 on #2757, B1).
+  const applyingState = useGateApplyingState(waiting && !!record.work_item_id, answer);
+  const applying = !!applyingState;
   // Kept for the collapse once the loop applied it: the notice folds away instead of jumping.
-  const lastAnswer = useRef<GateAnswer | null>(null);
-  if (answer) lastAnswer.current = answer;
+  const lastState = useRef<GateApplying | null>(null);
+  if (applyingState) lastState.current = applyingState;
   const notice = useCollapseOut(applying);
 
   return (
@@ -142,12 +144,12 @@ export function CaseGateDecision({
         record={record}
         title={titled ? t_i18n(GATE_LABEL[record.key] ?? "Gate") : undefined}
         byLabel={gateAnswererName(record, history, personName)}
-        applying={applying}
+        applying={applyingState?.phase ?? null}
         testId={`${testId}-record`}
       />
       {notice.render && record.work_item_id && (
         <CollapseFrame closing={notice.closing} testId={`${testId}-applying-frame`}>
-          <GateApplyingNotice workItemId={record.work_item_id} waiting answer={answer ?? lastAnswer.current} testId={`${testId}-applying`} />
+          <GateApplyingNotice workItemId={record.work_item_id} state={applyingState ?? lastState.current} testId={`${testId}-applying`} />
         </CollapseFrame>
       )}
       {waiting && !applying && item && (

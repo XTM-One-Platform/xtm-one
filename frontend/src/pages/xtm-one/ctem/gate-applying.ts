@@ -78,7 +78,20 @@ export function applyPollDelay(elapsedMs: number): number | null {
   return 5_000;
 }
 
-type GateApplyingPhase = "applying" | "timeout" | "failed";
+/**
+ * Every one of these gates (by their decision's work item id) has an answer kept
+ * on the page: the waiting card then reads "Decision being applied" instead of
+ * "Waits for a decision" (#2746 UX round 1, B2). False for an empty list.
+ */
+export function useGatesAnswered(workItemIds: readonly (string | null | undefined)[]): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => workItemIds.length > 0 && workItemIds.every((id) => !!id && answers.has(id)),
+    () => false,
+  );
+}
+
+export type GateApplyingPhase = "applying" | "timeout" | "failed";
 
 export interface GateApplying {
   phase: GateApplyingPhase;
