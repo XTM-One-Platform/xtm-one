@@ -22061,10 +22061,7 @@
   "Indicator sighting": "Indicator sighting",
   "Code scanning": "Code scanning",
   "Secret scanning": "Secret scanning",
-  "{count, plural, other {+# not used here}}": "{count, plural, other {+# not used here}}",
-  "{count, plural, other {+# more}}": "{count, plural, other {+# more}}",
   "No source on: nothing records this path": "No source on: nothing records this path",
-  "Open its sources": "Open its sources",
   "Sources on": "Sources on",
   "{enabled} of {available}": "{enabled} of {available}",
   "Signed webhook": "Signed webhook",
@@ -22269,5 +22266,11 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
   "The integration the pass reads.": "The integration the pass reads.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
-  "{name} (integration owner)": "{name} (integration owner)"
+  "{name} (integration owner)": "{name} (integration owner)",
+  "Dependabot": "Dependabot",
+  "Security advisories": "Security advisories",
+  "Off, not set up or not used here": "Off, not set up or not used here",
+  "Source states": "Source states",
+  "{count, plural, other {# not connected: {names}}}": "{count, plural, other {# not connected: {names}}}",
+  "Its own receiver": "Its own receiver"
 }
