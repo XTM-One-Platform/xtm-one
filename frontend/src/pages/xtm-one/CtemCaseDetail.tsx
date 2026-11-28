@@ -562,9 +562,11 @@ export default function CtemCaseDetail() {
           <RestrictedCell />
         ) : isSignalIssue(r.issue) ? (
           // A signal reads its name, its lens and source as chips and its trigger path as the
-          // caption, as the "Opened by" card does (#1936): never its id. The CVE is never cut
-          // (Sam, 28 Nov 2026; UX round 1 B1 on #2738): it holds its width on the first line with
-          // the pivot icon, the chips go to their own line so a half-width card keeps it whole.
+          // caption, as the "Opened by" card does (#1936): never its id. Two lines, so every row of
+          // the table keeps one height (UX round 2 B1 on #2738): line 1 the CVE, never cut (Sam,
+          // 28 Nov 2026), with the pivot icon; line 2 the lens and source chips, then the caption
+          // in the width left, truncated with its tooltip rather than capped at a fixed width
+          // (w-0 keeps the caption out of the column's intrinsic width, so 1440 still fits).
           <span className="flex min-w-0 flex-col gap-0.5" data-testid="ctem-case-issue-signal">
             <span className="flex min-w-0 items-center gap-1.5">
               {isCveLabel(issueLabel(r.issue, t_i18n)) ? (
@@ -583,20 +585,26 @@ export default function CtemCaseDetail() {
                 ) : null;
               })()}
             </span>
-            {(r.issue.lens || r.issue.source_provider) && (
-              <span className="flex flex-wrap items-center gap-1">
-                {r.issue.lens && <ToneBadge tone="neutral">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
+            {(r.issue.lens || r.issue.source_provider || signalCaption(r.issue, t_i18n)) && (
+              <span className="flex min-w-0 items-center gap-1" data-testid="ctem-case-issue-signal-meta">
+                {r.issue.lens && (
+                  <span className="shrink-0">
+                    <ToneBadge tone="neutral">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>
+                  </span>
+                )}
                 {r.issue.source_provider && (
-                  <ToneBadge tone="neutral" data-testid="ctem-case-issue-signal-source">
-                    {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
-                  </ToneBadge>
+                  <span className="shrink-0">
+                    <ToneBadge tone="neutral" data-testid="ctem-case-issue-signal-source">
+                      {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
+                    </ToneBadge>
+                  </span>
+                )}
+                {signalCaption(r.issue, t_i18n) && (
+                  <span className="w-0 min-w-0 flex-1" data-testid="ctem-case-issue-signal-caption">
+                    <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="content-compact text-default-secondary" />
+                  </span>
                 )}
               </span>
-            )}
-            {/* The path caption is capped at 11rem so the half-width Issues card fits 545 px at
-                1440 at its default columns (UX round 1 B2 on #2738); 24rem from a 72rem card. */}
-            {signalCaption(r.issue, t_i18n) && (
-              <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="max-w-[11rem] @6xl:max-w-[24rem] content-compact text-default-secondary" />
             )}
           </span>
         ) : (

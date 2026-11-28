@@ -202,6 +202,23 @@ describe("CtemCaseDetail context row (Sam, 28 Nov 2026)", () => {
     state.withSignal = false;
   });
 
+  it("draws a signal row on two lines: the CVE, then the chips and the caption on one line (UX round 2 B1 on #2738)", () => {
+    state.withSignal = true;
+    page();
+    const cell = screen.getByTestId("ctem-case-issue-signal");
+    // Exactly two lines: the label line and the meta line, never a third caption line.
+    expect(cell.children).toHaveLength(2);
+    const meta = screen.getByTestId("ctem-case-issue-signal-meta");
+    expect(meta.contains(screen.getByTestId("ctem-case-issue-signal-source"))).toBe(true);
+    const caption = screen.queryByTestId("ctem-case-issue-signal-caption");
+    if (caption) {
+      expect(meta.contains(caption)).toBe(true);
+      // The caption takes the width left, never a fixed cap.
+      expect(caption.innerHTML).not.toContain("max-w-[11rem]");
+    }
+    state.withSignal = false;
+  });
+
   it("draws the Issues card alone, full width, when no asset is named", () => {
     page();
     expect(screen.queryByTestId("ctem-case-affected-assets")).toBeNull();
