@@ -420,7 +420,7 @@ def complete_ask(
     (:func:`_patch_options`, #2683, #2749). The agent's context keeps its figures and requests first
     when it does not fit after the platform line (#2749).
     """
-    from app.services.decision_ask import lead_then_fit
+    from app.services.decision_ask import full_context, lead_full_context
 
     out = dict(ask)
     links = [dict(link) for link in (out.get("links") or []) if isinstance(link, Mapping)]
@@ -440,17 +440,18 @@ def complete_ask(
         out["links"] = links[:5]
     if found and found.get("techniques_total") is not None and not found.get("playable"):
         head = not_playable_line(found, threat)
-        rest = str(out.get("context") or "").strip()
+        # The agent's whole context, its part the card cut included (#2800).
+        rest = full_context(out)
         out["question"] = NOT_PLAYABLE_QUESTION
         if patch_case:
             out["options"], out["recommendation"], left_out = _patch_options(ask)
             if left_out:
                 head += f" Not shown for room: {', '.join(left_out)}."
             if not rest.startswith(NOT_PLAYABLE_LEAD):
-                out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS, keep=_keeps_sentence)
+                out = lead_full_context(out, head, rest, _MAX_CONTEXT_CHARS, keep=_keeps_sentence)
         else:
             if not rest.startswith(NOT_PLAYABLE_LEAD):
-                out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS)
+                out = lead_full_context(out, head, rest, _MAX_CONTEXT_CHARS)
             out["options"] = [dict(o) for o in NOT_PLAYABLE_OPTIONS]
             out["recommendation"] = "A"
     return out

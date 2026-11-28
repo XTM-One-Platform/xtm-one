@@ -6531,6 +6531,8 @@ export interface WorkItemAsk {
   question: string;
   /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
   context?: string | null;
+  /** The whole context when the card's cap cut `context` (#2800): written by the platform, shown under "Full context". */
+  context_full?: string | null;
   options?: WorkItemAskOption[];
   /** The key of the option the agent recommends. */
   recommendation?: string | null;

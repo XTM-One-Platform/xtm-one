@@ -74,6 +74,10 @@ MAX_LINKS = 6
 MAX_URL_CHARS = 1000
 #: A run's context, kept apart from its question (``request_human_input``).
 MAX_RUN_CONTEXT_CHARS = 8000
+#: The whole context kept beside a card's cut one (``ask.context_full``, #2800): the reader opens it under "Full context".
+MAX_FULL_CONTEXT_CHARS = 8000
+#: The ask field that keeps the whole context when the card's cap cut it (#2800); written by the platform only.
+FULL_CONTEXT_FIELD = "context_full"
 
 ASK_FIELDS_MESSAGE = (
     "ask is {question, context?, options?: [{key, label, effect?}], recommendation?: an option key, "
@@ -301,6 +305,43 @@ def _context(value: object) -> str:
     return fit(_context_text(value), MAX_CONTEXT_CHARS)
 
 
+def with_full_context(ask: dict[str, Any], full: str) -> dict[str, Any]:
+    """*ask* keeping *full* as ``context_full`` when its card context does not show it whole (#2800). Pure.
+
+    The card keeps its cap; the text the cap left out stays with the ask, so
+    the decider opens it under "Full context" instead of losing it. A context
+    shown whole carries no ``context_full``.
+    """
+    out = dict(ask)
+    full = str(full or "").strip()[:MAX_FULL_CONTEXT_CHARS]
+    shown = str(out.get("context") or "").strip()
+    if full and full != shown:
+        out[FULL_CONTEXT_FIELD] = full
+    else:
+        out.pop(FULL_CONTEXT_FIELD, None)
+    return out
+
+
+def full_context(ask: Any) -> str:
+    """The whole context of *ask*: its ``context_full`` when the card cut it, else its ``context`` (#2800)."""
+    if not isinstance(ask, dict):
+        return ""
+    return str(ask.get(FULL_CONTEXT_FIELD) or ask.get("context") or "").strip()
+
+
+def lead_full_context(ask: dict[str, Any], head: str, rest: str, limit: int, **kwargs: Any) -> dict[str, Any]:
+    """*ask* with *head* leading its card context (:func:`lead_then_fit`) and the whole text kept (#2800). Pure.
+
+    *rest* is the agent's whole context (its ``context_full`` when the card
+    already cut it): the platform line never costs the agent its evidence.
+    """
+    out = dict(ask)
+    out["context"] = lead_then_fit(head, rest, limit, **kwargs)
+    head_text = str(head or "").strip()
+    rest_text = str(rest or "").strip()
+    return with_full_context(out, f"{head_text}\n{rest_text}" if rest_text else head_text)
+
+
 def _cut_warning(field: str, text: str, limit: int) -> str | None:
     if len(text) <= limit:
         return None
@@ -309,6 +350,12 @@ def _cut_warning(field: str, text: str, limit: int) -> str | None:
     return (
         f"ask.{field} is {len(text)} characters and the card shows {limit}: it was cut after '{tail}', "
         "so the reader does not see the rest. Rewrite it shorter with the decisive facts first"
+        + (
+            f"; the whole text is kept as ask.{FULL_CONTEXT_FIELD} (up to {MAX_FULL_CONTEXT_CHARS} characters), "
+            "which the reader opens under 'Full context' on the card"
+            if field == "context"
+            else ""
+        )
     )
 
 
@@ -695,7 +742,8 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
         raise ValueError(ASK_FIELDS_MESSAGE)
     if not value:
         return None
-    unknown = sorted(set(value) - {"question", "context", "options", "recommendation", "deadline", "links"})
+    known = {"question", "context", FULL_CONTEXT_FIELD, "options", "recommendation", "deadline", "links"}
+    unknown = sorted(set(value) - known)
     if unknown:
         raise ValueError(f"ask has unknown field(s) {', '.join(unknown)}: {ASK_FIELDS_MESSAGE}")
     question = _text(value.get("question"), MAX_QUESTION_CHARS)
@@ -703,10 +751,15 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
         raise ValueError("ask.question is required: the decision in one sentence")
     _refuse_unreadable("question", question)
     ask: dict[str, Any] = {"question": question}
-    context = _context(value.get("context"))
+    context_text = _context_text(value.get("context"))
+    context = fit(context_text, MAX_CONTEXT_CHARS)
     if context:
         _refuse_unreadable("context", context)
         ask["context"] = context
+        # The card keeps its cap; the rest stays reachable under "Full context" (#2800).
+        # A stored ask read again (its context_full given back) keeps the whole text it had.
+        given_full = _context_text(value.get(FULL_CONTEXT_FIELD))
+        ask = with_full_context(ask, given_full if len(given_full) > len(context_text) else context_text)
     options = _options(value.get("options"))
     for option in options:
         _refuse_unreadable("options", f"{option['label']} {option.get('effect', '')}")

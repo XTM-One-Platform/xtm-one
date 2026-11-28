@@ -10867,6 +10867,7 @@
   "Open the integration": "連携を開く",
   "Edit the rules": "ルールを編集",
   "Technical details": "技術的な詳細",
+  "Full context": "コンテキスト全文",
   "Every channel of a team": "チームのすべてのチャネル",
   "The rule names this channel without its team: pick it again in the rule.": "ルールがこのチャネルをチームなしで指定しています。ルールで選び直してください。",
   "A rule answering in every channel follows the first {limit} channels of the account: name this channel in a rule to hear it.": "すべてのチャネルに応答するルールは、アカウントの最初の {limit} 個のチャネルを受信します。このチャネルを受信するには、ルールで指定してください。",

@@ -346,8 +346,7 @@ async def complete_gate_ask(
     line = card_line(attached_assets(getattr(case, "validations", None))) if case is not None else None
     if line is None:
         return ask
-    from app.services.decision_ask import lead_then_fit
+    from app.services.decision_ask import full_context, lead_full_context
 
-    out = dict(ask)
-    out["context"] = lead_then_fit(line, str(out.get("context") or ""), _MAX_CONTEXT_CHARS)
-    return out
+    # The agent's whole context follows the line, kept reachable when the card cuts it (#2800).
+    return lead_full_context(dict(ask), line, full_context(ask), _MAX_CONTEXT_CHARS)

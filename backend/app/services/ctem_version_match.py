@@ -224,14 +224,16 @@ def complete_ask(ask: Mapping[str, Any], match: Mapping[str, Any]) -> dict[str, 
     out = dict(ask)
     if has_line(out):
         return out
-    from app.services.decision_ask import fit
+    from app.services.decision_ask import fit, full_context, with_full_context
 
     head = "\n".join(card_lines(match))
     # The agent's own blindness lines say what the head now says: never twice (#1598).
-    kept = [line for line in str(out.get("context") or "").strip().splitlines() if not _states_blindness(line)]
+    kept = [line for line in full_context(out).splitlines() if not _states_blindness(line)]
     rest = "\n".join(kept).strip()
-    out["context"] = fit(f"{head}\n{rest}" if rest else head, _MAX_CONTEXT_CHARS)
-    return out
+    whole = f"{head}\n{rest}" if rest else head
+    out["context"] = fit(whole, _MAX_CONTEXT_CHARS)
+    # What the cut leaves out stays reachable under "Full context" (#2800).
+    return with_full_context(out, whole)
 
 
 def _states_blindness(line: str) -> bool:

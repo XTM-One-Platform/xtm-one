@@ -165,11 +165,11 @@ def complete_ask(ask: Mapping[str, Any], max_age_days: int, *, never_measured: b
     out = closing_recommendation(ask) if never_measured else dict(ask)
     if has_line(out):
         return out
-    from app.services.decision_ask import lead_then_fit
+    from app.services.decision_ask import full_context, lead_full_context
 
     head = never_measured_line(max_age_days) if never_measured else card_line(max_age_days)
-    out["context"] = lead_then_fit(head, str(out.get("context") or ""), _MAX_CONTEXT_CHARS)
-    return out
+    # The agent's whole context follows the line, kept reachable when the card cuts it (#2800).
+    return lead_full_context(out, head, full_context(out), _MAX_CONTEXT_CHARS)
 
 
 def case_id_of(correlation_key: object) -> uuid.UUID | None:

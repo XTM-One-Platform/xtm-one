@@ -45,6 +45,8 @@ export interface DecisionLinkView {
   ask: {
     question?: string | null;
     context?: string | null;
+    /** The whole context when the card's cap cut `context` (#2800). */
+    context_full?: string | null;
     options?: WorkItemAskOption[] | null;
     recommendation?: string | null;
     deadline?: string | null;
