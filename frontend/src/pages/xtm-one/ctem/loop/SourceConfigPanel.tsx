@@ -78,14 +78,19 @@ function SourceIntegrationRows({
   const { t_i18n, intl } = useFormatter();
   const rows = source.integrations ?? [];
   return (
-    <ul className="flex min-w-0 flex-col gap-1" data-testid="ctem-path-source-integration-rows">
+    // One grid for the whole list (UX round 1 on #2796, B2): every row shares the columns, a row without a switch included;
+    // the delivery column holds the longest dated line of en/fr/es/ja on one line (B3).
+    <ul
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_auto] gap-x-3 gap-y-1"
+      data-testid="ctem-path-source-integration-rows"
+    >
       {rows.map((i) => {
         const state = integrationState(i);
         const name = i.id === "oauth_default" ? t_i18n("OAuth default app") : i.name;
         return (
           <li
             key={i.id}
-            className="grid grid-cols-[minmax(0,1fr)_minmax(0,9rem)_minmax(0,9rem)_auto] items-center gap-x-3"
+            className="col-span-4 grid grid-cols-subgrid items-center"
             data-testid="ctem-path-source-integration-row"
             data-integration={i.id}
             data-state={state}
@@ -96,7 +101,7 @@ function SourceIntegrationRows({
             <span className={cn("min-w-0 break-words", state !== "connected" && "text-default-secondary")} data-testid="ctem-path-source-integration-state">
               {t_i18n(INTEGRATION_STATE_LABEL[state])}
             </span>
-            <span className="min-w-0 break-words text-default-secondary" data-testid="ctem-path-source-integration-delivery">
+            <span className="min-w-0 truncate whitespace-nowrap text-default-secondary" data-testid="ctem-path-source-integration-delivery">
               {t_i18n("Last delivery: {date}", { date: i.last_delivery_at ? formatShortDateTimeIntl(intl, i.last_delivery_at) : t_i18n("Never") })}
             </span>
             {state === "disconnected" ? (

@@ -392,4 +392,30 @@ describe("the sources side panel (#1445)", () => {
     );
     expect(screen.getByTestId("ctem-path-source-row").getAttribute("data-state")).toBe("off");
   });
+
+  it("never reads a path Enabled when its webhook listeners wait for a webhook or are off (UX r1 #2796 B1)", () => {
+    const conn = (secret: boolean, used = true) => ({ id: `i-${secret}-${used}`, name: "GitHub", status: "connected", webhook_secret_set: secret, last_delivery_at: null, used });
+    const aikido = (integrations: ReturnType<typeof conn>[]) => ({ ...GH({ integrations }), provider: "aikido", key: "aikido:listener" });
+    // The API's Enabled is demoted: waiting + off is Not set up, off alone is Off, one live listener beside them is partial.
+    expect(pathStatus({ status: "enabled", sources: [GH({ integrations: [conn(false)] }), aikido([conn(true, false)])] })).toBe("not_set_up");
+    expect(pathStatus({ status: "enabled", sources: [aikido([conn(true, false)])] })).toBe("off");
+    expect(pathStatus({ status: "enabled", sources: [GH({ integrations: [conn(true)] }), aikido([conn(false)])] })).toBe("partly_enabled");
+    expect(pathStatus({ status: "partly_enabled", sources: [GH({ integrations: [conn(false)] })] })).toBe("not_set_up");
+    // Derived without an API status the same way; a listener that can deliver keeps Enabled.
+    expect(pathStatus({ sources: [GH({ integrations: [conn(false)] })] })).toBe("not_set_up");
+    expect(pathStatus({ status: "enabled", sources: [GH({ integrations: [conn(true)] })] })).toBe("enabled");
+    // An older API without the integrations list keeps its status.
+    expect(pathStatus({ status: "enabled", sources: [GH({ integrations: undefined })] })).toBe("enabled");
+  });
+
+  it("lays every integration row on one shared grid, a disconnected row included (UX r1 #2796 B2)", () => {
+    const path = codePath(GH({ integrations: [...GH().integrations, { id: "i-gh-3", name: "GitHub archive", status: "disconnected", webhook_secret_set: false, last_delivery_at: null, used: true }] }));
+    open(path);
+    const list = within(configOf("github")).getByTestId("ctem-path-source-integration-rows");
+    expect(list.className).toContain("grid-cols-[");
+    for (const row of within(list).getAllByTestId("ctem-path-source-integration-row")) {
+      expect(row.className).toContain("grid-cols-subgrid");
+      expect(row.children).toHaveLength(4);
+    }
+  });
 });

@@ -84,11 +84,29 @@ export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">
  * A path's status: the API's when present, else derived from its sources the same way (no source:
  * agents and the API only; one in error: error; every used source on: enabled; some on: partly
  * enabled; one not set up: not set up; one off: off). One status per path, the one its sources say
- * (UX round 1 on #2442, B1), never the integration connection alone (#2436, Sam 26 Nov 2026).
+ * (UX round 1 on #2442, B1), never the integration connection alone (#2436, Sam 26 Nov 2026). An enabled or partly
+ * enabled path follows the honest state of its webhook listeners (UX round 1 on #2796, B1): a bound listener with no used
+ * integration able to deliver never makes it Enabled.
  */
 export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): CtemSignalPathStatus {
-  if (path.status) return path.status;
   const sources = path.sources ?? [];
+  const status = path.status ?? derivedPathStatus(sources);
+  if (status !== "enabled" && status !== "partly_enabled") return status;
+  const demoted = sources.map(demotedListenerState).filter((s): s is SourceState => s !== null);
+  if (demoted.length === 0) return status;
+  if (sources.some((s) => s.bound && demotedListenerState(s) === null)) return "partly_enabled";
+  return demoted.includes("waiting") ? "not_set_up" : "off";
+}
+
+/** The state a bound webhook listener reads when it cannot deliver (Waiting for webhook, Off), else null (#2796 UX r1 B1). */
+function demotedListenerState(source: CtemSignalPathSource): SourceState | null {
+  if (!source.bound || (source.error_count ?? 0) > 0 || !isWebhookListener(source)) return null;
+  const state = webhookListenerState(source);
+  return state === "bound" ? null : state;
+}
+
+/** A path's status from its sources alone, when the API answers none. */
+function derivedPathStatus(sources: readonly CtemSignalPathSource[]): CtemSignalPathStatus {
   if (sources.length === 0) return "agents_api";
   if (sources.some((s) => (s.error_count ?? 0) > 0)) return "error";
   if (sources.some((s) => s.bound)) {
