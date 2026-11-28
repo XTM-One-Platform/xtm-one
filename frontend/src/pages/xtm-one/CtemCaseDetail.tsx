@@ -78,7 +78,7 @@ import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind 
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
-import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel, signalPivot } from "./ctem/case-issue-label";
+import { eventIssueLabel, isCveLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel, signalPivot } from "./ctem/case-issue-label";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { ToneBadge } from "@/components/ui/tone-badge";
 import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
@@ -562,15 +562,17 @@ export default function CtemCaseDetail() {
           <RestrictedCell />
         ) : isSignalIssue(r.issue) ? (
           // A signal reads its name, its lens and source as chips and its trigger path as the
-          // caption, as the "Opened by" card does (#1936): never its id.
-          <span className="flex min-w-0 max-w-[18rem] flex-col" data-testid="ctem-case-issue-signal">
+          // caption, as the "Opened by" card does (#1936): never its id. The CVE is never cut
+          // (Sam, 28 Nov 2026; UX round 1 B1 on #2738): it holds its width on the first line with
+          // the pivot icon, the chips go to their own line so a half-width card keeps it whole.
+          <span className="flex min-w-0 flex-col gap-0.5" data-testid="ctem-case-issue-signal">
             <span className="flex min-w-0 items-center gap-1.5">
-              <TruncatedText text={issueLabel(r.issue, t_i18n)} className="font-medium" />
-              {r.issue.lens && <ToneBadge tone="neutral" className="shrink-0">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
-              {r.issue.source_provider && (
-                <ToneBadge tone="neutral" className="shrink-0" data-testid="ctem-case-issue-signal-source">
-                  {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
-                </ToneBadge>
+              {isCveLabel(issueLabel(r.issue, t_i18n)) ? (
+                <span className="shrink-0 whitespace-nowrap font-medium" data-testid="ctem-case-issue-signal-label">
+                  {issueLabel(r.issue, t_i18n)}
+                </span>
+              ) : (
+                <TruncatedText text={issueLabel(r.issue, t_i18n)} className="max-w-[18rem] font-medium" />
               )}
               {/* A signal from OpenCTI, OpenAEV or OpenCRQ opens its object in the module (#1357),
                   the small icon a product issue row carries; nothing when there is no target. */}
@@ -581,10 +583,20 @@ export default function CtemCaseDetail() {
                 ) : null;
               })()}
             </span>
-            {/* The path caption takes its cell's own 26rem width, not the 9rem cap of the Fixed
-                version caption (UX round 1 B3 on #1945). */}
+            {(r.issue.lens || r.issue.source_provider) && (
+              <span className="flex flex-wrap items-center gap-1">
+                {r.issue.lens && <ToneBadge tone="neutral">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
+                {r.issue.source_provider && (
+                  <ToneBadge tone="neutral" data-testid="ctem-case-issue-signal-source">
+                    {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
+                  </ToneBadge>
+                )}
+              </span>
+            )}
+            {/* The path caption is capped at 11rem so the half-width Issues card fits 545 px at
+                1440 at its default columns (UX round 1 B2 on #2738); 24rem from a 72rem card. */}
             {signalCaption(r.issue, t_i18n) && (
-              <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="content-compact text-default-secondary" />
+              <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="max-w-[11rem] @6xl:max-w-[24rem] content-compact text-default-secondary" />
             )}
           </span>
         ) : (

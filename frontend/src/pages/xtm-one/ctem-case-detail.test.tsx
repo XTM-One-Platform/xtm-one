@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   closedState: "resolved",
   resolutionKind: "closed_by_decision" as string | null,
   withAssets: false,
+  withSignal: false,
 }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
@@ -121,6 +122,9 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
               { source: "opencti", external_id: "v1", open: true, name: "CVE-2024-0001", cve: "CVE-2024-0001", cvss: state.issuesCvss ? 9.8 : null, epss: 0.94, kev: true, assets: ["a"] },
               { source: "openaev", external_id: "f2", open: true, name: "CVE-2024-0002", cve: "CVE-2024-0002", cvss: state.issuesCvss ? 7.5 : null, epss: 0.1, kev: false, assets: ["b"] },
               { restricted: true },
+              ...(state.withSignal
+                ? [{ source: "signal", external_id: "s1", open: true, name: "CVE-2024-21762", lens: "outside", source_provider: "opencti", cvss: 9.8, kev: true, assets: ["a"] }]
+                : []),
             ],
             history: [{ at: "2026-11-13T10:00:00Z", actor: "system", kind: "issue_added", issue: "Restricted", from: null, to: null, reason: null, evidence: null }],
           },
@@ -184,6 +188,18 @@ describe("CtemCaseDetail context row (Sam, 28 Nov 2026)", () => {
     for (const name of ["Source", "EPSS", "Fixed version"]) {
       expect(within(issues).queryByRole("columnheader", { name: new RegExp(name) })).toBeNull();
     }
+  });
+
+  it("never cuts the CVE of a signal row: the label holds its width, the chips go to their own line (UX round 1 B1 on #2738)", () => {
+    state.withSignal = true;
+    page();
+    const label = screen.getByTestId("ctem-case-issue-signal-label");
+    // The whole CVE as its own text, never a TruncatedText that may cut it.
+    expect(label.textContent).toBe("CVE-2024-21762");
+    // The lens and source chips sit on a line of their own, not beside the CVE.
+    const source = screen.getByTestId("ctem-case-issue-signal-source");
+    expect(label.parentElement?.contains(source)).toBe(false);
+    state.withSignal = false;
   });
 
   it("draws the Issues card alone, full width, when no asset is named", () => {

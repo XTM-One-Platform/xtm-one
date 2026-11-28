@@ -99,7 +99,7 @@ export function CaseAffectedAssets({ data, className }: { data: CtemCaseAffected
             header: "Running version",
             cell: (a: CtemCaseAffectedAsset) => (
               <span className={a.in_inventory ? undefined : "text-default-secondary"}>
-                <TruncatedText text={assetVersionText(a, t_i18n)} className="max-w-[10rem]" />
+                <TruncatedText text={assetVersionText(a, t_i18n)} className="max-w-[8rem]" />
               </span>
             ),
             sortValue: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join(",") : "~"),
@@ -132,6 +132,8 @@ export function CaseAffectedAssets({ data, className }: { data: CtemCaseAffected
             ),
             csv: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map(versionSourceName).join("; "),
             hideable: true,
+            // Half width beside the issues (UX round 1 B2 on #2738): under Columns below a wide card.
+            hideBelow: SECONDARY_HIDE_BELOW,
           } satisfies DataTableColumn<CtemCaseAffectedAsset>,
         ]
       : []),

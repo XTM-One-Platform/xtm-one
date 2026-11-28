@@ -2,10 +2,19 @@
 
 import { describe, expect, it } from "vitest";
 import type { CtemCaseVisibleIssue } from "@/hooks/api/useCtemCasesApi";
-import { UUID_PATTERN, eventIssueLabel, issueLabel, memberAssetCount, memberKev, signalCaption } from "./case-issue-label";
+import { UUID_PATTERN, eventIssueLabel, isCveLabel, issueLabel, memberAssetCount, memberKev, signalCaption } from "./case-issue-label";
 
 const t = (key: string, values?: Record<string, string | number>) =>
   Object.entries(values ?? {}).reduce((text, [k, v]) => text.replace(`{${k}}`, String(v)), key);
+
+describe("isCveLabel", () => {
+  it("reads a CVE id, never a name that mentions one", () => {
+    expect(isCveLabel("CVE-2024-21762")).toBe(true);
+    expect(isCveLabel("cve-2023-4863")).toBe(true);
+    expect(isCveLabel("Patch CVE-2024-21762")).toBe(false);
+    expect(isCveLabel("O365 Device Code Phishing Campaign")).toBe(false);
+  });
+});
 
 const ID = "b4c4713e-62ec-427d-9013-cbc4822da4b4";
 const signal = (over: Partial<CtemCaseVisibleIssue> = {}): CtemCaseVisibleIssue => ({

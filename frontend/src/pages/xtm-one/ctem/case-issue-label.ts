@@ -16,6 +16,11 @@ export const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 /** The CTEM signal lens in words (same wording as the "Opened by" card). @i18n-keys */
 const SIGNAL_LENS_LABEL = { inside: "Inside", outside: "Outside", world: "World" } as const;
 
+/** A CVE id (CVE-YYYY-NNNN...): the label a case row never cuts (Sam, 28 Nov 2026). */
+export function isCveLabel(label: string): boolean {
+  return /^CVE-\d{4}-\d{4,}$/i.test(label.trim());
+}
+
 /** The lens of a signal in words, untranslated (an unknown lens reads as written). */
 export function signalLensLabel(lens: string): string {
   return (SIGNAL_LENS_LABEL as Record<string, string>)[lens] ?? lens;
