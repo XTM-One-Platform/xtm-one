@@ -1,12 +1,15 @@
 // The validation of a case (CTEM-12-UI): run order of each validation
 // reference, gate A passed automatically at the fleet's level, a waiting
 // validation on the unified work-item decision card (never a CTEM card), a
-// stored safe_mode never rendered (#1810), and a case not validated yet says so.
+// stored safe_mode never rendered (#1810), and a case not validated yet leaves
+// the card out of the page unless OpenAEV is not connected (#2786).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
+import { CaseLoopProvider } from "./CaseSectionReason";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
 import { autoPassReason, chosenOptionLabel, latestValidations } from "./case-validation";
 
@@ -173,9 +176,21 @@ describe("CaseValidation", () => {
     expect(screen.queryByTestId("ctem-case-validation-hint")).toBeNull();
   });
 
-  it("says a case not validated yet, never blank", () => {
+  it("is left out of the page while the case is not validated and has no scenario (#2786)", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} />);
-    expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
+    expect(screen.queryByTestId("ctem-case-validation")).toBeNull();
+  });
+
+  it("says a case not validated yet, with Connect, when OpenAEV is not connected (#2786)", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseLoopProvider value={{ sources: { opencrq: true, opencti: true, openaev: false } }}>
+          <CaseValidation caseId="c1" validations={[]} history={[]} />
+        </CaseLoopProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-case-validation-empty")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect OpenAEV" })).toBeTruthy();
   });
 
   // #2468: the scenario link, like the threat package's, and its playability.

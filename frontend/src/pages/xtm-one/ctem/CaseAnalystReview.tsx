@@ -9,7 +9,9 @@
  * policy" when it ran without a person (never hidden), the waiting review on the
  * unified work-item decision card (dev-docs/human-gates.md), never a CTEM card,
  * or who answered: a person or the analyst's mark in OpenCTI. A viewer who does
- * not read OpenCTI sees that a package exists, not which. Never blank.
+ * not read OpenCTI sees that a package exists, not which. Left out of the page
+ * while there is no package and no review gate event or record (#2786), unless
+ * OpenCTI is not connected: then it says so, with Connect.
  */
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
@@ -25,7 +27,7 @@ import { safeExternalUrl } from "@/lib/utils";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseSectionReason, useHideEmptySection } from "./CaseSectionReason";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseAnalystReview({
@@ -68,6 +70,7 @@ export function CaseAnalystReview({
         : answerer
           ? t_i18n("a person")
           : null;
+  if (useHideEmptySection(!pkg && !gate && !record, "opencti")) return null;
 
   return (
     <Card data-testid="ctem-case-analyst-review">

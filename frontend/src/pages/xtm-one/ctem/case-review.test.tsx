@@ -197,8 +197,13 @@ describe("CaseAnalystReview", () => {
     packageComesFirst();
   });
 
-  it("says a case with no package yet, never blank", () => {
+  it("is left out of the page while there is no package and no review gate (#2786)", () => {
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={null} history={[]} />);
-    expect(screen.getByText(/read from OpenCRQ|reviews in OpenCTI/)).toBeTruthy();
+    expect(screen.queryByTestId("ctem-case-analyst-review")).toBeNull();
+  });
+
+  it("shows a waiting review with no package yet (#2786)", () => {
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={null} history={[ev({ to: "waited" })]} />);
+    expect(screen.getByTestId("ctem-case-analyst-review")).toBeTruthy();
   });
 });

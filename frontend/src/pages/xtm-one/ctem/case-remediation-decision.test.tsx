@@ -1,7 +1,8 @@
 // The remediation decision of a case (CTEM-17-UI): "Decided by policy" with
 // the option and why, a waiting decision answered on the unified work-item
 // decision card (never a CTEM card), a viewer who cannot see the decision
-// item gets no figure and no answer control, and a case not decided yet says so.
+// item gets no figure and no answer control, and a case not decided yet leaves
+// the card out of the page (#2786).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
@@ -119,11 +120,47 @@ describe("CaseRemediationDecision", () => {
     expect(screen.getByTestId("ctem-case-remediation-why").textContent).toBe("Above the approval threshold");
   });
 
-  it("says so when the case is not decided yet", () => {
+  it("is left out of the page while the case is not decided yet (#2786)", () => {
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={[]} />);
-    expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
-    // The section's icon before the sentence: it has no product logo (#1679, point 5).
-    expect(screen.getByTestId("ctem-case-remediation-empty").querySelector("svg")).not.toBeNull();
+    expect(screen.queryByTestId("ctem-case-remediation")).toBeNull();
+  });
+
+  it("shows as soon as a decision is recorded or its options are written (#2786)", () => {
+    const { unmount } = renderWithProviders(
+      <CaseRemediationDecision
+        caseId="c1"
+        history={[]}
+        gates={[
+          {
+            key: "ctem.remediation.decision",
+            phase: null,
+            status: "answered",
+            asked_at: "2026-11-21T09:00:00Z",
+            asked_of: null,
+            asked_by_agent: null,
+            deadline: null,
+            answered_at: "2026-11-21T10:00:00Z",
+            answered_by: null,
+            surface: null,
+            option: null,
+            comment: null,
+            reason: null,
+            passed_at: null,
+            wait_seconds: 3600,
+            decision_id: null,
+            work_item_id: null,
+            decision_filed: true,
+            recorded_on_case: true,
+            next: null,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("ctem-case-remediation")).toBeTruthy();
+    expect(screen.getByTestId("ctem-case-remediation-record")).toBeTruthy();
+    unmount();
+    renderWithProviders(<CaseRemediationDecision caseId="c1" history={[NOTE]} />);
+    expect(screen.getByText("B. Add a WAF rule")).toBeTruthy();
   });
 });
 

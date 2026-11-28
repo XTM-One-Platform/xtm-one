@@ -1098,14 +1098,23 @@ phases: `refresh`, `cases`, `view` (`redis`, `decode` or `decode-memo`, `copy`),
   agentic AI or on a read error nothing is claimed and the card is hidden.
   Calls to action are design system buttons; no inline link in the secondary
   colour.
-- Loop sections, not started (#1266): How it would be exploited, Analyst
-  review, Validation, Remediation decision and Treatment plan each say what
-  they will hold and the product they are written from (OpenCRQ for the
-  exploitation reading and the treatment plan, OpenCTI for the analyst
-  review, OpenAEV for validation) with its logo and connection state, and a
-  "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. A case is opened only by a signal
-  or split into its own case by a person or an agent (#1529): "Opened by"
+- Loop sections, not started (#1266, #2786): How it would be exploited,
+  Attack path and blast radius, Analyst review, Validation, Remediation
+  decision, Treatment plan and Mobilization are left out of the page while
+  they hold nothing processed or filled (Sam, 28 Nov 2026: the page shows
+  what was done, never a list of what will come). Each section computes its
+  own "empty" from the data it reads and `useHideEmptySection` applies one
+  rule: a section shows as soon as it holds a gate event or record, an open
+  decision, a package, a scenario, a validation, an option line, a reading
+  (a reading with no hop included), a plan, a ticket or an applied change.
+  The one exception is a section whose product is not registered (OpenCRQ
+  for the exploitation reading, the attack path and the treatment plan,
+  OpenCTI for the analyst review, OpenAEV for validation): it stays with its
+  sentence, the "<product> is not connected" line and a "Connect <product>"
+  button (`CaseSectionReason`), since that is an action a person takes.
+  Order and card design are unchanged; the page's vertical gap closes over a
+  section left out. No section repeats who works the case. A case is
+  opened only by a signal or split into its own case by a person or an agent (#1529): "Opened by"
   lists the signals, and on a case with none says "Split into its own case
   by a person or an agent" (a `created` event to `manual`) or, for a case a
   source read built before the readers recorded signals, "Opened by a source
