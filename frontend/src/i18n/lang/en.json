@@ -21124,7 +21124,6 @@
   "Re-test delay (days)": "Re-test delay (days)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "The OpenCRQ pass that finds decayed evidence and blind spots.",
   "Record decayed evidence and blind spots of the risk scenarios as signals.": "Record decayed evidence and blind spots of the risk scenarios as signals.",
-  "The integration the pass reads, with its owner's credential.": "The integration the pass reads, with its owner's credential.",
   "No connected OpenCRQ integration. Connect one in Integrations first.": "No connected OpenCRQ integration. Connect one in Integrations first.",
   "Several OpenCRQ integrations are connected: pick the one the pass reads.": "Several OpenCRQ integrations are connected: pick the one the pass reads.",
   "Evidence older than this has expired, 1 to 3650. Default 30.": "Evidence older than this has expired, 1 to 3650. Default 30.",
@@ -22268,12 +22267,7 @@
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
-  "Being applied": "Being applied",
-  "Decision being applied": "Decision being applied",
-  "Not applied": "Not applied",
-  "Decision recorded: {option}. The loop is applying it.": "Decision recorded: {option}. The loop is applying it.",
-  "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
-  "Recorded, still being applied. Refresh later.": "Recorded, still being applied. Refresh later.",
-  "Decision recorded, but the run applying it failed.": "Decision recorded, but the run applying it failed.",
-  "Decision recorded: {gate}": "Decision recorded: {gate}"
+  "The integration the pass reads.": "The integration the pass reads.",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
+  "{name} (integration owner)": "{name} (integration owner)"
 }
