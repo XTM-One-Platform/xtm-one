@@ -190,7 +190,7 @@ async def test_the_world_routes_take_the_chosen_windows(monkeypatch: pytest.Monk
         return True
 
     _one_source(monkeypatch, _gql)
-    windows = resync.validate_windows({"vulnerability": 1})
+    windows = resync.spans_from_days(resync.validate_windows({"vulnerability": 1}))
     await resync.resync_world(lambda: _Session(), windows=windows, now=NOW, note=_note)
     vulns = next(v for v in asked if v["types"] == ["Vulnerability"])
     assert vulns["filters"]["filters"][0]["values"] == ["2026-11-25T17:00:00+00:00"]
@@ -366,7 +366,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
     async def _boom(sessions: Any, *, windows: Any, **kw: Any) -> dict[str, Any]:
         raise RuntimeError("Aikido 503")
 
-    async def _passes(sessions: Any) -> dict[str, Any]:
+    async def _passes(sessions: Any, **kw: Any) -> dict[str, Any]:
         return {"attack_surface": {"recorded": 2}, "evidence_health": resync.pass_outcome(None)}
 
     async def _by_path(sessions: Any) -> dict[str, Any]:

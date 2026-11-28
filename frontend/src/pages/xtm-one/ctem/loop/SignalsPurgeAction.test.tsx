@@ -73,10 +73,14 @@ describe("SignalsPurgeAction", () => {
     fireEvent.click(screen.getByTestId("ctem-signals-purge"));
     expect(screen.queryByTestId("ctem-signals-purge-windows")).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: "Resync signals from sources after the purge" }));
-    const vulns = screen.getByRole("textbox", { name: "Vulnerabilities" }) as HTMLInputElement;
+    const vulns = screen.getByRole("textbox", { name: "How far back Vulnerabilities is read" }) as HTMLInputElement;
     expect(vulns.value).toBe("7");
-    expect((screen.getByRole("textbox", { name: "Aikido open issues" }) as HTMLInputElement).value).toBe("");
+    expect((screen.getByRole("textbox", { name: "How far back Aikido open issues is read" }) as HTMLInputElement).value).toBe("");
     expect(screen.getByTestId("ctem-signals-purge-window-attack_surface").textContent).toContain("Runs once");
+    // Every source and pass starts ticked (#2745); an info row has no box.
+    expect(screen.getByRole("checkbox", { name: "Vulnerabilities" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "Attack surface pass" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("checkbox", { name: "GitLab dependency findings" })).toBeNull();
     // A route the resync does not read is a read-only line with its reason, never a field (UX round 1 of #2590, B3).
     expect(screen.queryByRole("textbox", { name: "GitLab dependency findings" })).toBeNull();
     expect(screen.getByTestId("ctem-signals-purge-window-gitlab").textContent).toContain("Recorded by the GitLab asset sync");
@@ -85,19 +89,54 @@ describe("SignalsPurgeAction", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
     expect(state.started).toEqual([
-      { confirm: "PURGE", resync: true, resync_windows: { vulnerability: 3, intrusion_set: 30, aikido: null } },
+      {
+        confirm: "PURGE",
+        resync: true,
+        resync_sources: {
+          vulnerability: { enabled: true, window: 3, unit: "days" },
+          intrusion_set: { enabled: true, window: 30, unit: "days" },
+          aikido: { enabled: true, window: null, unit: "days" },
+          attack_surface: { enabled: true },
+        },
+      },
     ]);
+  });
+
+  it("leaves an unticked source and pass out of the resync, its field disabled (#2745)", () => {
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Resync signals from sources after the purge" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Vulnerabilities" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Attack surface pass" }));
+    const vulns = screen.getByRole("textbox", { name: "How far back Vulnerabilities is read" });
+    expect(vulns).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("ctem-signals-purge-window-attack_surface").textContent).toContain("Does not run");
+    // An empty field on an unticked source blocks nothing.
+    fireEvent.change(vulns, { target: { value: "" } });
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    expect(state.started[state.started.length - 1]).toEqual({
+      confirm: "PURGE",
+      resync: true,
+      resync_sources: {
+        vulnerability: { enabled: false },
+        intrusion_set: { enabled: true, window: 30, unit: "days" },
+        aikido: { enabled: true, window: null, unit: "days" },
+        attack_surface: { enabled: false },
+      },
+    });
   });
 
   it("keeps the purge disabled while a window is out of range", () => {
     renderWithProviders(<SignalsPurgeAction />);
     fireEvent.click(screen.getByTestId("ctem-signals-purge"));
     fireEvent.click(screen.getByRole("checkbox", { name: "Resync signals from sources after the purge" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Vulnerabilities" }), { target: { value: "0" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "How far back Vulnerabilities is read" }), { target: { value: "0" } });
     const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
     fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
     // The message sits under the invalid field itself, visible and tied to it (UX round 1 of #2590, B2).
-    const field = screen.getByRole("textbox", { name: "Vulnerabilities" });
+    const field = screen.getByRole("textbox", { name: "How far back Vulnerabilities is read" });
     const error = screen.getByRole("alert");
     expect(error.textContent).toContain("Enter a whole number from 1 to 365");
     expect(field.getAttribute("aria-describedby")).toBe(error.id);
