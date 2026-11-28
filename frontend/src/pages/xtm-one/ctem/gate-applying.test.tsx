@@ -38,7 +38,7 @@ vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
 }));
 
 const { CaseWaitingGates } = await import("./CaseWaitingGates");
-const { APPLY_WINDOW_MS, applyPollDelay, clearGateAnswer, doneItemAnswer, gateApplying, recordGateAnswer } = await import("./gate-applying");
+const { APPLY_WINDOW_MS, applyPollDelay, clearGateAnswer, gateApplying, itemAnswer, recordGateAnswer } = await import("./gate-applying");
 
 const T0 = Date.parse("2026-11-28T08:00:00Z");
 
@@ -118,9 +118,17 @@ describe("gateApplying (#2746)", () => {
     expect(applyPollDelay(60_000)).toBe(5_000);
     expect(applyPollDelay(APPLY_WINDOW_MS)).toBeNull();
   });
-  it("reads the answer of a done item, none of an open one", () => {
-    expect(doneItemAnswer({ status: "done", payload: { answer: { label: "Close", answered_at: "2026-11-28T08:00:00Z" } } } as never)).toEqual({ label: "Close", at: T0 });
-    expect(doneItemAnswer(OPEN as never)).toBeNull();
+  it("reads the answer of an answered item, open or done, none of one still waiting", () => {
+    const answer = { label: "Close", answered_at: "2026-11-28T08:00:00Z" };
+    expect(itemAnswer({ status: "done", needs_human: false, payload: { answer } } as never)).toEqual({ label: "Close", at: T0 });
+    // A single answer leaves the item open with needs_human false (answer_work_item; UX round 2 on #2757, B1).
+    expect(itemAnswer({ status: "open", needs_human: false, payload: { answer } } as never)).toEqual({ label: "Close", at: T0 });
+    expect(itemAnswer(OPEN as never)).toBeNull();
+    expect(itemAnswer({ status: "open", needs_human: true, payload: { answer } } as never)).toBeNull();
+    expect(itemAnswer({ status: "cancelled", needs_human: false, payload: { answer } } as never)).toBeNull();
+    // An answer older than the gate's ask belongs to an earlier ask.
+    expect(itemAnswer({ status: "open", needs_human: false, payload: { answer } } as never, "2026-11-28T09:00:00Z")).toBeNull();
+    expect(itemAnswer({ status: "open", needs_human: false, payload: { answer } } as never, "2026-11-28T07:00:00Z")).toEqual({ label: "Close", at: T0 });
   });
 });
 
@@ -157,10 +165,25 @@ describe("Being applied on the case page (#2746)", () => {
   });
 
   it("reads a done item as being applied while the gate still waits", () => {
-    state.byId["wi-close"] = { id: "wi-close", status: "done", needs_human: false, payload: { answer: { label: "Close without retest" } } };
+    state.byId["wi-close"] = { id: "wi-close", status: "done", needs_human: false, payload: { answer: { label: "Close without retest", answered_at: new Date().toISOString() } } };
     renderWithProviders(page([rec()]));
     expect(screen.getByTestId("ctem-case-waiting-gate-decision-applying")).toHaveTextContent("Close without retest");
     expect(screen.queryByTestId("ctem-case-waiting-gate-decision-elsewhere")).toBeNull();
+  });
+
+  it("reads an open answered item as being applied after a reload (UX round 2 on #2757, B1)", () => {
+    // No answer kept on the page (a reload, another tab, the Waiting for you list): only the item says it.
+    state.byId["wi-close"] = { id: "wi-close", status: "open", needs_human: false, payload: { answer: { option: "close", label: "Close without retest", answered_at: new Date().toISOString() } } };
+    renderWithProviders(page([rec()]));
+    expect(screen.getByTestId("ctem-case-waiting-gate-decision-applying")).toHaveTextContent("Decision recorded: Close without retest. The loop is applying it.");
+    expect(screen.queryByTestId("unified-decision-card")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-open")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-decision-record-wait")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-decision-elsewhere")).toBeNull();
+    const card = screen.getByTestId("ctem-case-waiting-gates");
+    expect(card).toHaveTextContent("Decision being applied");
+    expect(card).not.toHaveTextContent("Waits for a decision");
+    expect(card).not.toHaveTextContent("Waiting for you list");
   });
 
   it("says to refresh later past the polling window", () => {

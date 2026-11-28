@@ -26,20 +26,24 @@ import type { WorkItem } from "@/types";
 import { GATE_LABEL } from "./case-gates";
 import { CollapseFrame, GateApplyingNotice, useCollapseOut, useGateApplyingState } from "./GateApplyingNotice";
 import { GateDecisionRecord, gateAnswererName } from "./GateDecisionRecord";
-import { clearGateAnswer, doneItemAnswer, recordGateAnswer, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
+import { clearGateAnswer, itemAnswer, recordGateAnswer, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
 
 /**
  * The answer a waiting gate already has (#2746): the one this page sent, else
- * the one its work item carries once done (answered elsewhere while the case
- * still reads the gate waiting), kept in the page's store so every reader of
+ * the one its work item carries (answered elsewhere, or before a reload, while
+ * the case still reads the gate waiting; open or done, #2757 UX round 2 B1),
+ * kept in the page's store so every reader of
  * the gate (its line, the Worked-by row, the card) sees it. Null otherwise; a
  * gate that no longer waits forgets it.
  */
-export function useGateAnswerState(record: Pick<CtemCaseGateRecord, "work_item_id"> | null, waiting: boolean): GateAnswer | null {
+export function useGateAnswerState(
+  record: (Pick<CtemCaseGateRecord, "work_item_id"> & Partial<Pick<CtemCaseGateRecord, "asked_at">>) | null,
+  waiting: boolean,
+): GateAnswer | null {
   const id = record?.work_item_id ?? null;
   const kept = useGateAnswer(id);
   const raw = useWorkItem(waiting ? id : null);
-  const done = waiting && !kept ? doneItemAnswer(raw.data ?? null) : null;
+  const done = waiting && !kept ? itemAnswer(raw.data ?? null, record?.asked_at) : null;
   useEffect(() => {
     if (id && done) recordGateAnswer(id, done.label, done.at);
   }, [id, done?.label, done?.at]); // eslint-disable-line react-hooks/exhaustive-deps

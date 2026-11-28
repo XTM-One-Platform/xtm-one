@@ -5,8 +5,9 @@
  * Between the answer and the loop resolving the gate, the case still reads the
  * gate as waiting: the page keeps the answer here (by the decision's work item
  * id) and shows "being applied" in place of the waiting block, never the stale
- * "waits for a person" text. A work item read done while its gate still waits
- * (answered in another tab or in the person's list) reads the same way.
+ * "waits for a person" text. A work item read answered while its gate still
+ * waits (after a reload, in another tab or in the person's list; open or done)
+ * reads the same way.
  * Client state only: the case and its runs are refetched through their own
  * query keys, no endpoint of its own.
  */
@@ -59,15 +60,24 @@ export function useGateAnswer(workItemId: string | null | undefined): GateAnswer
   );
 }
 
-/** The answer a done work item carries (`payload.answer`, as `answer_work_item` stores it); null when it is not done. */
-export function doneItemAnswer(item: WorkItem | null | undefined): GateAnswer | null {
-  if (!item || item.status !== "done") return null;
+/**
+ * The answer a work item carries (`payload.answer`, as `answer_work_item` stores
+ * it), whatever its status: a single answer leaves the item `open` with
+ * `needs_human` false, a grouped one sets it `done` (#2757 UX round 2, B1).
+ * Null when it carries no answer, still waits for a person, was cancelled, or
+ * was answered before `askedAt` (an answer to an earlier ask of the same item).
+ */
+export function itemAnswer(item: WorkItem | null | undefined, askedAt?: string | null): GateAnswer | null {
+  if (!item || item.status === "cancelled" || item.needs_human) return null;
   const answer = (item.payload as { answer?: unknown } | null)?.answer;
-  const fields = answer && typeof answer === "object" ? (answer as Record<string, unknown>) : {};
+  if (!answer || typeof answer !== "object") return null;
+  const fields = answer as Record<string, unknown>;
+  const answeredAt = typeof fields.answered_at === "string" && fields.answered_at ? Date.parse(fields.answered_at) : Number.NaN;
+  if (!Number.isFinite(answeredAt)) return null;
+  const asked = askedAt ? Date.parse(askedAt) : Number.NaN;
+  if (Number.isFinite(asked) && answeredAt < asked) return null;
   const label = typeof fields.label === "string" && fields.label ? fields.label : null;
-  const stamp = [fields.answered_at, item.completed_at, item.updated_at].find((v): v is string => typeof v === "string" && !!v);
-  const at = stamp ? Date.parse(stamp) : Number.NaN;
-  return { label, at: Number.isFinite(at) ? at : Date.now() };
+  return { label, at: answeredAt };
 }
 
 /** The delay before the next refetch of the case, backing off; null once the window is spent. */
