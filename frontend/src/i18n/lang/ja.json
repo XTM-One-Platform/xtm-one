@@ -22034,6 +22034,7 @@
   "everyone in the company": "社内の全員",
   "the administrators": "管理者",
   "Waits for {name}: {gate}": "{name}を待機中: {gate}",
+  "Waiting for: {decision}": "待機中: {decision}",
   "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "このゲートの判断はまだ登録されていないため、誰も回答できません。フリートが次にこのケースを処理するときに登録します。",
   "This gate waits for a person: the decision is in their Waiting for you list.": "このゲートは担当者を待っています。判断はその人の「あなたの対応待ち」リストにあります。",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, other {30日間で{shown}件のシグナル}}",
