@@ -21122,7 +21122,6 @@
   "Re-test delay (days)": "Délai de re-test (jours)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "La passe OpenCRQ qui trouve les preuves expirées et les angles morts.",
   "Record decayed evidence and blind spots of the risk scenarios as signals.": "Enregistrer comme signaux les preuves expirées et les angles morts des scénarios de risque.",
-  "The integration the pass reads, with its owner's credential.": "L’intégration que lit la passe, avec l’identifiant de son propriétaire.",
   "No connected OpenCRQ integration. Connect one in Integrations first.": "Aucune intégration OpenCRQ connectée. Connectez-en une d’abord dans Intégrations.",
   "Several OpenCRQ integrations are connected: pick the one the pass reads.": "Plusieurs intégrations OpenCRQ sont connectées : choisissez celle que lit la passe.",
   "Evidence older than this has expired, 1 to 3650. Default 30.": "Une preuve plus ancienne a expiré, de 1 à 3650. 30 par défaut.",
@@ -22253,5 +22252,8 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
+  "The integration the pass reads.": "L’intégration que lit la passe.",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "L’utilisateur en tant que lequel la passe lit OpenCRQ. Par défaut : le propriétaire de l’intégration.",
+  "{name} (integration owner)": "{name} (propriétaire de l’intégration)"
 }
