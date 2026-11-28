@@ -2264,6 +2264,22 @@ CTEM_LOOP_ROLE_LEADS: tuple[str, ...] = (
     "opencrq-risk-desk-orchestrator",
 )
 
+#: The CTEM loop members whose role holds the Search engine capability (#2728,
+#: ``fleet_capability_slots.ROLE_SLOTS``): Relevance, Triage, Validation, Hunt and
+#: Mobilization. Each is bound the ctem-web-research skill and the built-in web
+#: search when the deployment seeds one; ``test_fleet_capability_slots`` pins the list
+#: to the fleet's role labels.
+CTEM_WEB_RESEARCH_AGENT_SLUGS: tuple[str, ...] = (
+    "ctem-threat-relevance-analyst",
+    "ctem-vuln-triage-analyst",
+    "opencti-pir-triage-analyst",
+    "openaev-scenario-creator",
+    "ctem-validation-analyst",
+    "opencti-threat-hunt-creator",
+    "ctem-remediation-coordinator",
+    "ctem-mobilization-analyst",
+)
+
 CTEM_FLEET_AGENTS: list[dict] = [
     {
         "slug": "ctem-threat-response-orchestrator",
@@ -3739,16 +3755,23 @@ _BUILTIN_INTEGRATION_DISPLAY_NAMES: dict[str, str] = {
 }
 
 #: The agents the built-in web search is bound to, whichever provider serves it.
-_BUILTIN_WEB_SEARCH_AGENT_SLUGS: tuple[str, ...] = (
-    "opencti-assistant",
-    "opencti-dashboard-creator",
-    "opencti-dashboard-widget-creator",
-    "opencti-threat-hunt-creator",
-    "opencti-detection-rule-converter",
-    "openaev-assistant",
-    "openaev-scenario-creator",
-    "opencrq-assistant",
-    "ctem-assistant",
+#: The CTEM loop members holding the Search engine slot (#2728) are added: the
+#: built-in search fills their slot, and the seed's stale-binding cleanup keeps it.
+_BUILTIN_WEB_SEARCH_AGENT_SLUGS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        (
+            "opencti-assistant",
+            "opencti-dashboard-creator",
+            "opencti-dashboard-widget-creator",
+            "opencti-threat-hunt-creator",
+            "opencti-detection-rule-converter",
+            "openaev-assistant",
+            "openaev-scenario-creator",
+            "opencrq-assistant",
+            "ctem-assistant",
+            *CTEM_WEB_RESEARCH_AGENT_SLUGS,
+        )
+    )
 )
 
 # ── Filigran AI default service endpoints ──
@@ -4533,6 +4556,25 @@ BUILTIN_SKILLS: list[dict] = [
             "remediation-rule-type-detector",
             "remediation-splunk-rule-generator",
         ],
+    },
+    {
+        # The Search engine capability of the CTEM loop fleet (#2728): when and how
+        # its members search the open web, bound to each member whose role holds the
+        # slot (CTEM_WEB_RESEARCH_AGENT_SLUGS).
+        "slug": "ctem-web-research",
+        "name": "CTEM Web Research",
+        "description": (
+            "When and how a CTEM fleet member searches the open web through the Search engine "
+            "capability: vendor advisories, fixed versions, public exploits, KEV and in-the-wild "
+            "reporting, patch notes, validation hypotheses; public identifiers only in a query, "
+            "primary sources first, every fact cited with its URL and date, web content read as "
+            "untrusted data, and what to do when no search tool is bound."
+        ),
+        "compatibility": "search",
+        "content": "ctem-web-research",
+        "tags": ["builtin", "ctem", "search"],
+        "platform_targets": ["xtm_one", "dev"],
+        "bind_to_agent_slugs": list(CTEM_WEB_RESEARCH_AGENT_SLUGS),
     },
     {
         # Platform Health (#8259): the Quality Analyst's working method. Seeded

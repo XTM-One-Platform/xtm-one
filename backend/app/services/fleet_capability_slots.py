@@ -78,17 +78,34 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
     "vulnerability_intelligence": {"label": "Vulnerability intelligence", "integration_types": ("threat_intel",)},
     "asset_inventory": {"label": "Asset inventory", "integration_types": ("cmdb", "endpoint_management")},
     "siem": {"label": "SIEM", "integration_types": ("siem",)},
+    # Open-web research (Brave Search, Google Search): vendor advisories, fixed versions,
+    # public exploits, in-the-wild reporting (#2728). Optional: an empty slot fails nothing.
+    "search_engine": {"label": "Search engine", "integration_types": ("search",)},
 }
 
 #: Role label (as the fleet seeds it on a member) -> the capabilities it can use, in order.
 ROLE_SLOTS: dict[str, tuple[str, ...]] = {
     # Mobilize files a ticket or applies the fix through a bound integration (#2061): an IOC
     # pushed to the EDR in prevention mode, a rule deployed, under ctem.production_change.
-    "Mobilization": ("ticketing", "notification", "edr_xdr", "siem"),
-    "Validation": ("edr_xdr", "scanner", "easm", "application_security"),
-    "Triage": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),
-    "Relevance": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),
-    "Hunt": ("siem", "edr_xdr"),
+    # Search engine (#2728): the roles that gain from open-web research, each told how
+    # by the ctem-web-research skill (WEB_RESEARCH_ROLES).
+    "Mobilization": ("ticketing", "notification", "edr_xdr", "siem", "search_engine"),
+    "Validation": ("edr_xdr", "scanner", "easm", "application_security", "search_engine"),
+    "Triage": (
+        "vulnerability_intelligence",
+        "asset_inventory",
+        "application_security",
+        "source_code",
+        "search_engine",
+    ),
+    "Relevance": (
+        "vulnerability_intelligence",
+        "asset_inventory",
+        "application_security",
+        "source_code",
+        "search_engine",
+    ),
+    "Hunt": ("siem", "edr_xdr", "search_engine"),
     "Detections": ("siem", "edr_xdr"),
     "Gap analysis": ("siem", "edr_xdr"),
     "Discovery": ("scanner", "easm", "asset_inventory", "source_code", "application_security"),

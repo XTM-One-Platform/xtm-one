@@ -121,11 +121,100 @@ def test_every_slot_names_a_known_capability() -> None:
 
 
 def test_the_ctem_roles_the_brief_names_have_their_slots() -> None:
-    assert slots.slots_for_role("Mobilization") == ("ticketing", "notification", "edr_xdr", "siem")
+    assert slots.slots_for_role("Mobilization") == ("ticketing", "notification", "edr_xdr", "siem", "search_engine")
     assert {"edr_xdr", "scanner", "easm"} <= set(slots.slots_for_role("Validation"))
     assert {"vulnerability_intelligence", "asset_inventory"} <= set(slots.slots_for_role("Triage"))
     assert slots.slots_for_role("Orchestrator") == ()
     assert slots.slots_for_role(None) == ()
+
+
+_WEB_RESEARCH_ROLES = ("Relevance", "Triage", "Validation", "Hunt", "Mobilization")
+
+
+def test_the_search_engine_capability_takes_the_web_search_providers() -> None:
+    """#2728: Brave Search and Google Search fill the Search engine slot."""
+    assert slots.CAPABILITIES["search_engine"]["label"] == "Search engine"
+    assert {"brave_search", "google_search"} <= slots.providers_for("search_engine", PROVIDER_CATALOG)
+    assert slots.builtin_for("search_engine") is None
+
+
+def test_the_web_research_roles_hold_the_search_engine_slot() -> None:
+    """#2728: the roles that gain from open-web research, and only those."""
+    for role in _WEB_RESEARCH_ROLES:
+        assert "search_engine" in slots.slots_for_role(role), role
+    for role in ("Detections", "Gap analysis", "Discovery", "Orchestrator", "Risk"):
+        assert "search_engine" not in slots.slots_for_role(role), role
+
+
+def test_the_ctem_loop_shows_eleven_capability_types() -> None:
+    """#2728: CTEM loop > Members > Capabilities reads 11 types with Search engine among them.
+
+    Slots are read from the role label at request time, so a fleet instantiated
+    before the upgrade gains the type with no migration and no binding change.
+    """
+    loop = next(f for f in BUILTIN_FLEETS if f["slug"] == "ctem-loop")
+    caps = {c for m in loop["members"] for c in slots.slots_for_role(m.get("role_label"))}
+    assert len(caps) == 11
+    assert "search_engine" in caps
+
+
+def test_an_empty_search_engine_slot_is_optional() -> None:
+    """#2728: nothing connected reads unavailable / none_connected, never an error."""
+    states = {s.capability: s for s in slots.slot_states("Relevance", {}, [], PROVIDER_CATALOG)}
+    assert states["search_engine"].state == slots.SLOT_UNAVAILABLE
+    member = slots.TypeMember(
+        member_id="m1", agent_id="g1", name="Relevance", role_label="Relevance", can_edit=True, bound=[], custom=False
+    )
+    by_cap = {t.capability: t for t in slots.type_states([(member, list(states.values()))])}
+    assert by_cap["search_engine"].state == slots.TYPE_NONE_CONNECTED
+
+
+def test_binding_brave_fills_the_slot_and_unbinding_clears_it() -> None:
+    """#2728: bound, the member holds the Brave integration (its tools); unbound, it does not."""
+    brave = _ref("b1", "brave_search")
+    bound = slots.bindings_with("Relevance", "search_engine", {"opencti": ["o1"]}, brave, PROVIDER_CATALOG)
+    assert bound == {"opencti": ["o1"], "brave_search": ["b1"]}
+    states = {s.capability: s for s in slots.slot_states("Relevance", bound, [brave], PROVIDER_CATALOG)}
+    assert states["search_engine"].state == slots.SLOT_FILLED
+    unbound = slots.bindings_without("Relevance", "search_engine", bound, "b1", PROVIDER_CATALOG)
+    assert unbound == {"opencti": ["o1"]}
+    with pytest.raises(SlotBindingRefusedError):
+        slots.bindings_with("Detections", "search_engine", {}, brave, PROVIDER_CATALOG)
+
+
+def test_the_web_research_members_match_the_fleet_roles() -> None:
+    """#2728: the skill and the built-in search go to exactly the built-in members whose role holds the slot."""
+    from app.agents.builtin_agents import CTEM_WEB_RESEARCH_AGENT_SLUGS
+
+    holders = {
+        m["agent"]
+        for fleet in BUILTIN_FLEETS
+        for m in fleet["members"]
+        if "search_engine" in slots.slots_for_role(m.get("role_label"))
+    }
+    assert holders == set(CTEM_WEB_RESEARCH_AGENT_SLUGS)
+
+
+def test_the_web_research_skill_and_personas_are_seeded() -> None:
+    """#2728: the skill is bound to every slot holder, and each persona points to it."""
+    from pathlib import Path
+
+    from app.agents.builtin_agents import _BUILTIN_WEB_SEARCH_AGENT_SLUGS, BUILTIN_SKILLS, CTEM_WEB_RESEARCH_AGENT_SLUGS
+
+    skill = next(s for s in BUILTIN_SKILLS if s["slug"] == "ctem-web-research")
+    assert set(skill["bind_to_agent_slugs"]) == set(CTEM_WEB_RESEARCH_AGENT_SLUGS)
+    assert set(CTEM_WEB_RESEARCH_AGENT_SLUGS) <= set(_BUILTIN_WEB_SEARCH_AGENT_SLUGS)
+    assert len(_BUILTIN_WEB_SEARCH_AGENT_SLUGS) == len(set(_BUILTIN_WEB_SEARCH_AGENT_SLUGS))
+    seed = Path(__file__).resolve().parents[1] / "app" / "agents" / "seed_data"
+    body = (seed / "skill_content" / "ctem-web-research.md").read_text()
+    for phrase in ("untrusted data", "URL", "hostname", "IP address", "primary", "not connected", "KEV"):
+        assert phrase in body, phrase
+    for slug in CTEM_WEB_RESEARCH_AGENT_SLUGS:
+        persona = seed / "agent_persona" / f"{slug}.md"
+        if persona.exists():
+            text = persona.read_text()
+            assert "ctem-web-research" in text, slug
+            assert "web search not connected" in text, slug
 
 
 def test_seeded_fleets_carry_slotted_roles() -> None:

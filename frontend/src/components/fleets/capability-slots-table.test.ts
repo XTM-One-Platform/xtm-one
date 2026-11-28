@@ -152,6 +152,7 @@ describe("capability types table (#1201)", () => {
       "vulnerability_intelligence",
       "asset_inventory",
       "siem",
+      "search_engine",
     ])
       expect(CAPABILITY_ICONS[capability]).toBeTruthy();
     expect(new Set(Object.values(CAPABILITY_ICONS)).size).toBe(Object.keys(CAPABILITY_ICONS).length);
@@ -181,6 +182,7 @@ describe("capability types table (#1201)", () => {
     "Vulnerability intelligence",
     "Asset inventory",
     "SIEM",
+    "Search engine",
   ];
   // 14 px body text: 7.2 px a character is above the measured average of the four catalogs.
   const textWidth = (text: string) => text.length * 7.2;
