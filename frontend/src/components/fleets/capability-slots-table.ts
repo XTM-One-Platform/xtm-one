@@ -141,6 +141,7 @@ export const CAPABILITY_ICONS: Record<string, IconName> = {
   vulnerability_intelligence: "triangle-alert",
   asset_inventory: "server",
   siem: "activity",
+  search_engine: "earth",
 };
 
 /** The icon of a capability the catalog adds before this map knows it. */

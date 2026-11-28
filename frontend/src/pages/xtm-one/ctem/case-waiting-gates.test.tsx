@@ -155,7 +155,7 @@ describe("Mobilization gates (#2464)", () => {
 });
 
 describe("Waits for a decision (#2464)", () => {
-  it("lists every waiting gate with its recipient and link, and answers a gate no section owns", () => {
+  it("lists every waiting gate with its recipient, and answers a gate no section owns", () => {
     state.byId["wi-risk"] = OPEN("wi-risk");
     const gates = [rec({}), rec({ key: "ctem.accept_risk", work_item_id: "wi-risk", asked_of: { type: "admins", name: null }, asked_at: "2026-11-26T06:30:00Z" })];
     renderWithProviders(
@@ -167,12 +167,39 @@ describe("Waits for a decision (#2464)", () => {
     expect(lines.map((l) => l.getAttribute("data-gate"))).toEqual(["ctem.mobilize", "ctem.accept_risk"]);
     expect(lines[0]).toHaveTextContent("Waits for SecOps: Mobilize: create the tickets");
     expect(lines[1]).toHaveTextContent("Waits for the administrators: Accept a residual risk beyond the policy cap");
-    expect(within(lines[0]).getByTestId("ctem-case-waiting-gate-open").getAttribute("href")).toContain("wi-mob");
+    // wi-mob is not readable here: its one way out is the line's DS button; wi-risk is answered in place.
+    const open = within(lines[0]).getByTestId("ctem-case-waiting-gate-open");
+    expect(open.getAttribute("href")).toContain("wi-mob");
+    expect(within(lines[1]).queryByTestId("ctem-case-waiting-gate-open")).toBeNull();
     // The mobilize card is answered in Mobilization; only accept_risk gets its card here.
     const cards = screen.getAllByTestId("unified-decision-card");
     expect(cards.map((c) => c.getAttribute("data-item"))).toEqual(["wi-risk"]);
     // The inline cards are set apart from the lines, never read as one more line.
     expect(within(screen.getByTestId("ctem-case-waiting-gate-decisions")).getByTestId("unified-decision-card")).toBeInTheDocument();
+  });
+
+  it("shows no Open the decision anywhere when the decision card renders in place (close_without_retest)", () => {
+    state.byId["wi-close"] = OPEN("wi-close");
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseWaitingGates state="waiting_decision" gates={[rec({ key: "ctem.close_without_retest", work_item_id: "wi-close" })]} history={[]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("unified-decision-card").getAttribute("data-item")).toBe("wi-close");
+    expect(screen.queryByText("Open the decision")).toBeNull();
+    expect(screen.getByTestId("ctem-gate-decision-anchor").getAttribute("data-gate")).toBe("ctem.close_without_retest");
+  });
+
+  it("keeps exactly one way out, a DS button, when the viewer cannot read the item", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseWaitingGates state="waiting_decision" gates={[rec({ key: "ctem.close_without_retest", work_item_id: "wi-hidden" })]} history={[]} />
+      </MemoryRouter>,
+    );
+    const links = screen.getAllByText("Open the decision");
+    expect(links).toHaveLength(1);
+    expect(screen.getByTestId("ctem-case-waiting-gate-open").getAttribute("href")).toContain("wi-hidden");
+    expect(screen.getByTestId("ctem-case-waiting-gate-decision-elsewhere")).toBeInTheDocument();
   });
 
   it("says a gate with no decision of its own filed cannot be answered yet", () => {

@@ -30,7 +30,7 @@ import {
   remediationOptionLines,
 } from "./case-gates";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { useGateDecisionItem } from "./CaseGateDecision";
+import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseRemediationDecision({
@@ -102,10 +102,12 @@ export function CaseRemediationDecision({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
-              readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={items.refetch}
-            />
+          <GateDecisionAnchor gate={REMEDIATION_GATE}>
+            <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+                readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+                onAnswered={items.refetch}
+              />
+          </GateDecisionAnchor>
         )}
         {waiting && !item && !items.isLoading && record?.decision_filed === false && (
           <p className="text-default-secondary" data-testid="ctem-case-remediation-not-filed">

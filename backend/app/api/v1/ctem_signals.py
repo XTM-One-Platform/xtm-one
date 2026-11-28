@@ -912,11 +912,20 @@ async def get_ctem_signal(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One signal the caller may see; 404 otherwise."""
+    """One signal the caller may see; 404 otherwise.
+
+    An unmatched (``to_validate``) signal also carries ``unmatched_retention_days``
+    (#2726), the window after which an unseen one is deleted, for its next step.
+    """
     _require_xtm_one()
     row = await signals.get_signal(
         db, signal_id, organization_id=await _organization_id(db), recorded_by=await _reader(db, user)
     )
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    return signals.to_dict(row)
+    shape = signals.to_dict(row)
+    if row.state == "to_validate":
+        from app.services.coordination_retention import unmatched_signal_retention_days
+
+        shape["unmatched_retention_days"] = await unmatched_signal_retention_days(db)
+    return shape

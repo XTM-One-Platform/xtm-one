@@ -5443,6 +5443,10 @@ export interface ObservabilityConfig {
     workset_resolved_days: number;
     /** Finished assignment runs (Operations > Executions), from their completion. */
     assignment_run_days?: number;
+    /** CTEM signals discarded / on the watchlist / unmatched, from their last sighting (#2581, #2726). */
+    ctem_signal_discarded_days?: number;
+    ctem_signal_watchlist_days?: number;
+    ctem_signal_unmatched_days?: number;
   } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;

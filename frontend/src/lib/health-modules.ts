@@ -14,6 +14,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /** Platform Health modules on the Health page (#101 S8): names and card copy. */
+import type { IntlShape } from "react-intl";
+
+import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import type { HealthModule, HealthModuleCard, HealthOverview } from "@/types";
 
 /** Display names of the modules (catalog keys). */
@@ -113,6 +116,7 @@ const HEALTH_EVIDENCE_LABELS = {
   last_heartbeat_at: "Last heartbeat",
   last_triggered_at: "Last triggered",
   limit: "Run limit",
+  missed_slots: "Missed slots",
   model: "Model",
   name: "Name",
   new_models: "New models",
@@ -134,6 +138,7 @@ const HEALTH_EVIDENCE_LABELS = {
   ratings: "Ratings",
   running: "Running",
   runs: "Runs",
+  schedule_resumed_at: "Last re-enabled",
   score: "Score",
   state: "State",
   status: "Status",
@@ -182,7 +187,7 @@ export const HEALTH_CHECK_RECOMMENDATIONS = {
   "agents.model_change": "Compare the agent's runs before and after the change; pin the model if the change was not intended.",
   "agents.orphaned_claims": "Released by the platform's claim sweep; if it persists, read the item's last run.",
   "agents.owner_disabled": "Hand the agent to an active owner or disable it.",
-  "agents.schedule_silent": "Check the schedule and its gate; delete the assignment if its work is over.",
+  "agents.schedule_silent": "A due slot did not fire: check the scheduler and the activation gate.",
   "openaev.agents_offline": "Check the endpoints and the agent service: simulations cannot run on offline agents.",
   "openaev.healthcheck": "Open the scenarios and simulations OpenAEV flags for this check and fix the service, agent, collector or content it names.",
   "openaev.heartbeat": "Check that OpenAEV is running and reaches XTM One (the XTM One URL and token on the OpenAEV side, PLATFORM_REGISTRATION_TOKEN here).",
@@ -259,6 +264,14 @@ export const checkRecommendation = (checkId: string, fallback: string, t: (key: 
   Object.prototype.hasOwnProperty.call(HEALTH_CHECK_RECOMMENDATIONS, checkId)
     ? t(HEALTH_CHECK_RECOMMENDATIONS[checkId as keyof typeof HEALTH_CHECK_RECOMMENDATIONS])
     : fallback;
+/**
+ * A time of the evidence (a key ending in _at) in the app language, as the Last seen column draws it;
+ * a missing one "Never" (UX round 1 B2 and round 2 B1 on #2724).
+ */
+export function evidenceTime(value: unknown, intl: Pick<IntlShape, "formatDate">, t: (key: string) => string): string {
+  if (value === null || value === undefined || value === "") return t("Never");
+  return typeof value === "string" ? formatShortDateTimeIntl(intl, value) : String(value);
+}
 /** The translated label of a category. */
 export const categoryLabel = (category: string, t: (key: string) => string) => labelOf(HEALTH_CATEGORY_LABELS, category, t);
 

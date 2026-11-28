@@ -35,8 +35,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 - After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick
-  (`recheck_parked`). A signal it confirms opens its case at the next case
-  sweep, grouped by case key, never one case per host.
+  (`recheck_parked`), only those seen within the unmatched retention window
+  (#2726, `ctem_signal_unmatched_days`, 30 by default; 0 takes every one): an
+  older one is left as it is and decided again at its next sighting. A signal
+  it confirms opens its case at the next case sweep, grouped by case key,
+  never one case per host.
 - From the Signals page, by the people who read the signals:
   `POST /api/v1/ctem-signals/triage` dismisses (state `discarded`, reason
   `dismissed_by_user`, kept out of every pass until restored), restores or
@@ -60,10 +63,10 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   OpenCRQ connection; the pass at recording time does not (no user to read
   them for), and its decision says so.
 - A signal in `case_opened` is never moved back: the case step owns it.
-- Retention (#2581, `ctem-signals.md` section 6quater): a gate-discarded
-  signal not seen for 30 days and a watchlist signal not seen for 90 days are
-  deleted by the hourly retention pass; a later sighting records the signal
-  again and this gate decides it as a first sighting. A signal a person
+- Retention (#2581, #2726, `ctem-signals.md` section 6quater): a gate-discarded
+  signal not seen for 30 days, a watchlist signal not seen for 90 days and an
+  unmatched signal not seen for 30 days are deleted by the hourly retention
+  pass; a later sighting records the signal again and this gate decides it as a first sighting. A signal a person
   dismissed (`dismissed_by_user`) or in a case is never deleted.
 
 ## 2. Reconcile
@@ -204,7 +207,13 @@ All pass: outcome `case`, state `confirmed`, with a severity.
 
 #2711: a software reference that is one joined package name (`mail-mcp-bridge 1.3.0`, `xcode_mcp_server`) names an inventory label only by its full name; a long title (more than `LONG_TITLE_WORDS` = 3 name words, versions left out) by its full name, its words after the vendor, or a run of two words or more at its start (vendor and product), the label compared with its version kept (`Windows Server 2022` does not open `Windows Server 2019 Standard Edition`) and a bare family or generic label (`Microsoft Windows`, `Client`) by the full name alone (#2628, #2685); never by one of its words (`Mail`, `mcp`, `analytics`), in the device and the repository branches alike, so such a word match is never `version_verified` either (`reference_names` in `ctem_primary_assets.py`). A `reach` hop's `software` is the inventory label the asset runs; the software reference that named it is in `reference`.
 
+#2711 (reopened after the 28 Nov 2026 reset retest): a reference's version range (`hermes-agent >= 0.21.6, < 0.23.2`) is not part of its name, so the package is still compared by its full name; an inventory label that is one joined package name (`hermes-estree`, `@apollo/server-gateway-interface`) is never reduced to one of its words in the reverse direction either (`label_names`), a distribution package of the product itself (`openssl-libs`, `python3-requests`) excepted, and only for the product part it packages (`requests` names `python3-requests`, `Python` never names `python-dateutil`). A hop is `version_verified` only when an installed row of the label reports a version that is the one the reference names or inside its range (`version_in_reference`): `FFmpeg 8.0` verifies 8.0 and 8.0.2, never 9.0; a label that names the release itself (`Microsoft SharePoint Server 2019`) keeps the former rule.
+
+#2747: a reference that names no version (`Firefox`, `VirtualBox`, `Orion`, the usual shape of the software OpenCTI links to a CVE) is no longer verified by any versioned row. It is compared with the CVE's fixed version the signal evidence carries (`fixed_version`, else `case_fix.fixed_version`, read by `evidence_fixed_version` in `ctem_scope_gate.py` and passed to `reach`): an installed version below the fix verifies the hop, one at or above it does not. With no fixed version, nothing is compared and the hop is not `version_verified`, so a name-only reach goes `to_validate` with `version_not_verified` and KEV does not make it proven (#2685): a KEV CVE no longer opens a P1 case on a version nobody placed.
+
 #2685: a bare generic product word (`GENERIC_PRODUCT_WORDS`: `client`, `agent`, `server`, `updater`...) as a CVE software reference names only an equal label, is never `version_verified`, and never reaches a code repository through its SBOM rows; a CPE whose product is such a word (`cpe:2.3:a:trueconf:client:...`) names only a label that also names its vendor. KEV proves exploitation in the wild (`exploited_in_wild`), not that the organization runs the product: a reach by a software name alone (no versioned row, no asset key, no typed software row) is never `proven` by the KEV flag.
+
+#2679 (reopened after the 28 Nov 2026 reset retest): `gateway` is a generic product word, and a one-word reference that only closes a longer reference of the same CVE (`Gateway` beside `Panabit Smart Application Gateway`, `tail_refs`) reaches nothing on its own: `JetBrains Gateway`, a `Gateway` app and `@apollo/server-gateway-interface` stay out.
 
 Every path decides with the same index and the same OpenCRQ read: a `system` signal recorded by a listener reads OpenCRQ with the owner of the enabled OpenCRQ primary-asset sync. The per-signal path (`evaluate_after_record`, called in a loop by intake such as `record_matches`) builds the index once per session and organization and the OpenCRQ read once per session and reader, kept 5 minutes in `session.info`; the batch paths pass theirs in. `recheck_held` filters the held reasons in SQL before its batch limit, so watchlist rows held for another reason never starve them. After a sync that wrote links or changed a device's software, `recheck_held` decides again the watchlist signals held by `primary_asset_below_policy`, `criticality_unknown` or `below_scope_threshold` (500 per call, idempotent); the case sweep then opens one case per fix key. `scope.threshold_source` says whether `scope_min_criticality` is the policy's or the default.
 

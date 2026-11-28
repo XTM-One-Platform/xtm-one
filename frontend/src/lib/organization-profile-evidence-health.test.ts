@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_EVIDENCE_HEALTH,
   evidenceHealthIntegrationChoice,
+  evidenceHealthRunAs,
   evidenceHealthRuns,
   evidenceHealthSavedIntegration,
+  evidenceHealthSavedRunAs,
 } from "./organization-profile";
 import { profileFieldHref } from "./organization-profile-tabs";
 
@@ -52,5 +54,30 @@ describe("evidenceHealthRuns", () => {
 
   it("opens its card on CTEM > Inventory, with the outside lens card", () => {
     expect(profileFieldHref("evidence_health")).toBe("/ctem/inventory/exposure?card=evidence_health");
+  });
+});
+
+// #2739: who the pass reads OpenCRQ as.
+describe("evidenceHealthRunAs", () => {
+  it("reads as the integration's owner until a user is picked", () => {
+    expect(DEFAULT_EVIDENCE_HEALTH.run_as_user_id).toBeNull();
+    expect(evidenceHealthRunAs(pass(), { user_id: "owner" })).toEqual({ userId: "owner", owner: true });
+    expect(evidenceHealthRunAs(pass(), undefined)).toEqual({ userId: null, owner: true });
+  });
+
+  it("reads as the picked user, never the owner instead", () => {
+    expect(evidenceHealthRunAs(pass({ run_as_user_id: "sam" }), { user_id: "owner" })).toEqual({ userId: "sam", owner: false });
+  });
+});
+
+describe("evidenceHealthSavedRunAs", () => {
+  it("keeps an unset run-as unset when the owner stays picked", () => {
+    expect(evidenceHealthSavedRunAs("owner", null, "owner")).toBeNull();
+    expect(evidenceHealthSavedRunAs("", null, "owner")).toBeNull();
+  });
+
+  it("stores another user, and the owner once a user was stored", () => {
+    expect(evidenceHealthSavedRunAs("sam", null, "owner")).toBe("sam");
+    expect(evidenceHealthSavedRunAs("owner", "sam", "owner")).toBe("owner");
   });
 });

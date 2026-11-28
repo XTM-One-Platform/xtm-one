@@ -11,8 +11,8 @@ the convention of the trace and file retentions.
 Every window counts from the row's last update (``updated_at``), except the
 abandoned-open auto-cancel, which counts from the item's last activity, and the
 assignment run window, which counts from the run's completion (a run has no
-``updated_at``), and the two CTEM signal windows, which count from the signal's
-last sighting (``last_seen_at``, #2581).
+``updated_at``), and the three CTEM signal windows, which count from the signal's
+last sighting (``last_seen_at``, #2581, #2726).
 """
 
 from __future__ import annotations
@@ -47,6 +47,9 @@ RETENTION_KEYS: dict[str, str] = {
     "ctem_signal_discarded_days": "ctem_signal_discarded_retention_days",
     # Watchlist CTEM signals, deleted N days after their last sighting (#2581).
     "ctem_signal_watchlist_days": "ctem_signal_watchlist_retention_days",
+    # Unmatched (``to_validate``) CTEM signals, deleted N days after their last sighting;
+    # also the bound of their profile-change re-decision (#2726).
+    "ctem_signal_unmatched_days": "ctem_signal_unmatched_retention_days",
 }
 
 
@@ -76,6 +79,18 @@ def coordination_retention_days(stored: Mapping[str, Any] | None) -> dict[str, i
         else:
             out[key] = _env_default(key)
     return out
+
+
+async def unmatched_signal_retention_days(db: Any) -> int:
+    """The effective unmatched CTEM signal window (#2726), read on *db*; the default on a read failure."""
+    from app.api.v1.platform_settings_helpers import peek_platform_settings
+
+    try:
+        ps = await peek_platform_settings(db)
+        stored = getattr(ps, "coordination_retention", None) if ps else None
+    except Exception:
+        stored = None
+    return coordination_retention_days(stored if isinstance(stored, Mapping) else None)["ctem_signal_unmatched_days"]
 
 
 async def effective_coordination_retention() -> dict[str, int]:

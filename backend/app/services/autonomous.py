@@ -1567,9 +1567,10 @@ async def _run_retention_pass(db: AsyncSession) -> None:
         deleted_signals, more_signals = await ctem_signal_retention.run_pass()
         if any(deleted_signals.values()):
             logger.info(
-                "CTEM signal retention: deleted %d discarded and %d watchlist signal(s)",
+                "CTEM signal retention: deleted %d discarded, %d watchlist and %d unmatched signal(s)",
                 deleted_signals.get("discarded", 0),
                 deleted_signals.get("watchlist", 0),
+                deleted_signals.get("to_validate", 0),
             )
     except Exception as e:
         logger.error("CTEM signal retention error: %s", format_exception_message(e), exc_info=True)
@@ -2075,7 +2076,11 @@ async def _run_autonomous_tick_inner() -> int:
                 # again first, so the sweep below opens their cases grouped by case key.
                 from app.services import ctem_scope_gate_store
 
-                rechecked = await ctem_scope_gate_store.recheck_parked(db)
+                # #2726: only the unmatched signals seen within their retention window.
+                from app.services.coordination_retention import effective_coordination_retention
+
+                unmatched_days = (await effective_coordination_retention()).get("ctem_signal_unmatched_days", 0)
+                rechecked = await ctem_scope_gate_store.recheck_parked(db, seen_within_days=unmatched_days)
                 await db.commit()
                 if rechecked:
                     logger.info("CTEM unmatched signals re-checked after a profile change: %s", rechecked)

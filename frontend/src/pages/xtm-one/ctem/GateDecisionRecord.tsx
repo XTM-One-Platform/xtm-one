@@ -313,8 +313,9 @@ export function GateDecisionRecord({
   const nextGate = next?.kind === "gate" && next.from ? next.from : null;
   const nextState = next?.kind === "state" && next.to && next.to in CASE_STATE_LABEL ? (next.to as CtemCaseState) : null;
   const waiting = status === "waiting";
-  // A waiting gate opens its decision from the Asked step: nobody has decided it yet (UX round 4 on #1708, B8).
-  const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at || (waiting && !!record.work_item_id));
+  // A waiting gate is answered on its card in the page, never from a link in the Asked step: the page's
+  // "Waits for a decision" line holds the single way out when the card cannot render in place.
+  const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at);
   const decisionLink = record.work_item_id ? (
     <Field label={t_i18n("Decision")} icon={CASE_FACT_ICON.decision} testId={`${testId}-decision`}>
       <Link asChild>
@@ -373,7 +374,6 @@ export function GateDecisionRecord({
               {when(record.deadline)}
             </Field>
           )}
-          {waiting && decisionLink}
         </Step>
       )}
       {!waiting && (answered || reason || wait || record.work_item_id) && (

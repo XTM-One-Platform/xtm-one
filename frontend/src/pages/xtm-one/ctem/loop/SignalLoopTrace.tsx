@@ -744,13 +744,13 @@ function LoopStages({ signal, currentCaseId }: { signal: CtemSignal; currentCase
   const stages = signalLoop(signal);
   const caseLink = signalCaseLink(signal.case_id, currentCaseId);
   const formatDay = (iso: string) => formatDayIntl(intl, iso);
-  const next = nextStepSentence(signal.decision, t_i18n, formatDay);
+  const next = nextStepSentence(signal.decision, t_i18n, formatDay, signal.unmatched_retention_days);
   return (
     <ol className="flex min-w-0 flex-col" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
       {stages.map((stage, index) => {
         const here = stage.status === "current" || stage.status === "stopped" || stage.status === "parked";
         // #874 S2: the reconcile and scope gates are drawn as steps with their decision, reason and next step.
-        const gate = gateStep(stage.key, stage.status, signal.state, signal.decision, t_i18n, formatDay);
+        const gate = gateStep(stage.key, stage.status, signal.state, signal.decision, t_i18n, formatDay, signal.unmatched_retention_days);
         return (
           <li
             key={stage.key}

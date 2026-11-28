@@ -58,7 +58,10 @@ def _case(state: str = "analyzing") -> CtemCase:
 
 
 def test_the_mobilization_role_can_be_bound_to_the_edr_and_the_siem() -> None:
-    assert {"ticketing", "notification", "edr_xdr", "siem"} == set(slots.slots_for_role("Mobilization"))
+    # Search engine (#2728): vendor advisories and fixed versions for the fix it mobilises.
+    assert {"ticketing", "notification", "edr_xdr", "siem", "search_engine"} == set(
+        slots.slots_for_role("Mobilization")
+    )
 
 
 def _action(**extra: object) -> dict[str, object]:

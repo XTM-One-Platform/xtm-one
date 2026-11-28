@@ -276,7 +276,7 @@ Default thresholds are starting points, editable where marked (E).
 | Check | Source | Default |
 |---|---|---|
 | Assignment failing | `fleet_health_signals.assignment_is_failing` | last 3 runs failed |
-| Schedule silent | `schedule_is_silent` | 14 days |
+| Schedule silent | `missed_schedule_slots` (#2723) | a cron slot due 1 hour ago or more since the later of creation, last enable (`schedule_resumed_at`) and last recorded fire, with nothing recorded |
 | Failure spike | `signals.read_failures` | 5 % over last 20 runs |
 | Feedback drop | `signals.read_feedback` | -10 points over 3 days, 10 ratings min |
 | Cost drift | `signals.read_costs`, `is_cost_spike` | +20 % over 7 days, 10 runs min; 3x day spike, 200k tokens min |

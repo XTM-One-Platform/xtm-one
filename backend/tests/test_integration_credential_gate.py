@@ -278,9 +278,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # reads the delivered scenario's assertion flag (stamp_reachability_assertion).
         "services/ctem_openaev_events.py",
         # CTEM evidence health pass (#1161): the one OpenCRQ integration an administrator
-        # declared in the profile (evidence_health.integration), for its owner
-        # (integration.user_id); the token only reads the evidence health of the
-        # tenant's risk scenarios (reader_for).
+        # declared in the profile (evidence_health.integration), for the run-as user an
+        # administrator picked (evidence_health.run_as_user_id, checked by
+        # module_run_as.integration_refusal, #2739), else its owner (integration.user_id);
+        # the token only reads the evidence health of the tenant's risk scenarios (reader_for).
         "services/ctem_evidence_health.py",
         # CTEM purge resync (#2578): the Aikido and GitHub integrations visible to the
         # administrator who started the purge (integration_visible_filter), with a token

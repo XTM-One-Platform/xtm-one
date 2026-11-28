@@ -29,4 +29,10 @@ describe("parseCoordinationRetentionDays", () => {
   it("defaults finished assignment runs to 90 days", () => {
     expect(COORDINATION_RETENTION_DEFAULTS.assignment_run_days).toBe(90);
   });
+
+  it("defaults the CTEM signal windows to the backend's 30, 90 and 30 days", () => {
+    expect(COORDINATION_RETENTION_DEFAULTS.ctem_signal_discarded_days).toBe(30);
+    expect(COORDINATION_RETENTION_DEFAULTS.ctem_signal_watchlist_days).toBe(90);
+    expect(COORDINATION_RETENTION_DEFAULTS.ctem_signal_unmatched_days).toBe(30);
+  });
 });
