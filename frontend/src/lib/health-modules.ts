@@ -14,6 +14,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /** Platform Health modules on the Health page (#101 S8): names and card copy. */
+import type { IntlShape } from "react-intl";
+
+import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import type { HealthModule, HealthModuleCard, HealthOverview } from "@/types";
 
 /** Display names of the modules (catalog keys). */
@@ -261,6 +264,14 @@ export const checkRecommendation = (checkId: string, fallback: string, t: (key: 
   Object.prototype.hasOwnProperty.call(HEALTH_CHECK_RECOMMENDATIONS, checkId)
     ? t(HEALTH_CHECK_RECOMMENDATIONS[checkId as keyof typeof HEALTH_CHECK_RECOMMENDATIONS])
     : fallback;
+/**
+ * A time of the evidence (a key ending in _at) in the app language, as the Last seen column draws it;
+ * a missing one "Never" (UX round 1 B2 and round 2 B1 on #2724).
+ */
+export function evidenceTime(value: unknown, intl: Pick<IntlShape, "formatDate">, t: (key: string) => string): string {
+  if (value === null || value === undefined || value === "") return t("Never");
+  return typeof value === "string" ? formatShortDateTimeIntl(intl, value) : String(value);
+}
 /** The translated label of a category. */
 export const categoryLabel = (category: string, t: (key: string) => string) => labelOf(HEALTH_CATEGORY_LABELS, category, t);
 
