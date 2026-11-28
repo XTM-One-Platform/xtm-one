@@ -22298,5 +22298,12 @@
   "Turn off {integration}?": "Turn off {integration}?",
   "Turn off the outside lens?": "Turn off the outside lens?",
   "Turn off the evidence health pass?": "Turn off the evidence health pass?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}",
+  "Waiting for webhook": "Waiting for webhook",
+  "On, no delivery yet": "On, no delivery yet",
+  "Last delivery: {date}": "Last delivery: {date}",
+  "Use on this source": "Use on this source",
+  "OAuth default app": "OAuth default app",
+  "Integration used on this source": "Integration used on this source",
+  "Integration taken off this source": "Integration taken off this source"
 }

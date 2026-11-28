@@ -22298,5 +22298,12 @@
   "Turn off {integration}?": "¿Desactivar {integration}?",
   "Turn off the outside lens?": "¿Desactivar la vista externa?",
   "Turn off the evidence health pass?": "¿Desactivar la pasada de salud de las evidencias?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# ruta deja de recibir sus señales:} other {# rutas dejan de recibir sus señales:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# ruta deja de recibir sus señales:} other {# rutas dejan de recibir sus señales:}}",
+  "Waiting for webhook": "Esperando el webhook",
+  "On, no delivery yet": "Activado, sin entregas aún",
+  "Last delivery: {date}": "Última entrega: {date}",
+  "Use on this source": "Usar en esta fuente",
+  "OAuth default app": "Aplicación OAuth predeterminada",
+  "Integration used on this source": "Integración usada en esta fuente",
+  "Integration taken off this source": "Integración retirada de esta fuente"
 }
