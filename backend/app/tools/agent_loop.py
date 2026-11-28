@@ -3549,9 +3549,9 @@ _NEAR_DUPLICATE_NUDGE = (
 # pages, two back-to-back are one page twice; and an ask whose ANSWER the
 # harness has since taken away is forgiven: a count is the number of
 # asks whose answer the model still has in front of it. The tool-result
-# curation clears an older large text result with a stub that reads "it is
-# stale and re-fetchable. Re-call the tool only if you still need this exact
-# data", and compaction drops old turns outright - a re-read after either is
+# curation clears an older large text result with a stub that reads "the
+# result was not empty ... it is re-fetchable. Re-call the tool before stating
+# anything about it", and compaction drops old turns outright - a re-read after either is
 # the re-read the harness asked for, not a loop. A breaker that counted it
 # would tell a run reading six source files through
 # ``get_github_file`` "the same tool call is being repeated" for
@@ -6983,18 +6983,79 @@ def _is_curation_stub(content: str) -> bool:
 #: or empty: a model whose read windows were cleared is told WHICH window
 #: went, so it re-reads that one alone instead of every range of the file
 #: (gap reread-after-context-prune, run 3350c28d: the same windows read 2-3
-#: times after two resumes).
+#: times after two resumes). ``{digest}`` is a short trace of what the body
+#: held (`` , 2 items`` or `` , first line "2 matching assets"``,
+#: :func:`_tool_result_digest`) or empty, and the sentence says the result was
+#: not empty and must be re-called before anything is stated about it: a stub
+#: that gave only a size read as "no rows" to a model writing its conclusion,
+#: a silent false negative (#2722).
 _REFETCHABLE_STUB_TEMPLATE = (
-    "[Earlier {tool} result{target} ({chars} chars) cleared to keep the working "
-    "context focused — it is stale and re-fetchable. Re-call the tool only if you "
-    "still need this exact data.]"
+    "[Earlier {tool} result{target} ({chars} chars{digest}) cleared to keep the "
+    "working context focused; the result was not empty, but its content is no "
+    "longer shown and it is re-fetchable. Re-call the tool before stating "
+    "anything about it.]"
 )
 _REFETCHABLE_STUB_RE = re.compile(
     re.escape(_REFETCHABLE_STUB_TEMPLATE)
     .replace(re.escape("{tool}"), r"[^\n]+?")
     .replace(re.escape("{target}"), r"(?: for [^\n\]]+?)?")
     .replace(re.escape("{chars}"), r"\d{1,3}(?:,\d{3})*")
+    .replace(re.escape("{digest}"), r"(?:, [^\n\]]+?)?")
 )
+
+#: Ceiling on the digest a re-fetchable stub keeps of the body it replaced.
+_TOOL_RESULT_DIGEST_MAX = 200
+
+
+def _bounded_stub_text(text: str, limit: int) -> str:
+    """*text* on one line, without ``]`` (the stub's terminator), at most *limit* chars."""
+    flat = " ".join(text.split()).replace("]", ")")
+    if len(flat) > limit:
+        flat = flat[: limit - 3].rstrip() + "..."
+    return flat
+
+
+def _tool_result_digest(body: str) -> str:
+    """`` , 2 items`` / `` , first line "..."`` for a cleared body, or ``""``.
+
+    Read from the RESULT, never from the call's arguments (a body argument is
+    never echoed, :data:`_TOOL_CALL_TARGET_KEYS`). A JSON list gives its item
+    count; a JSON object gives the count of its first non-empty list (its
+    first list when all are empty) and its ``total``
+    when present; anything else gives its first non-blank line. Bounded by
+    :data:`_TOOL_RESULT_DIGEST_MAX`, on one line and without ``]``, so the
+    stub always matches :data:`_REFETCHABLE_STUB_RE`.
+    """
+    text = body.strip()
+    digest = ""
+    if text and text[0] in "[{":
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list):
+            digest = f"{len(parsed)} item" + ("" if len(parsed) == 1 else "s")
+        elif isinstance(parsed, dict):
+            parts: list[str] = []
+            lists = [(key, value) for key, value in parsed.items() if isinstance(value, list)]
+            # The first NON-EMPTY list: `{"warnings": [], "results": [...]}` must
+            # never read "warnings: 0 items" (#2725 review); all empty, the first.
+            named = next((pair for pair in lists if pair[1]), lists[0] if lists else None)
+            if named is not None:
+                key, value = named
+                parts.append(f"{key}: {len(value)} item" + ("" if len(value) == 1 else "s"))
+            total = parsed.get("total")
+            if isinstance(total, int) and not isinstance(total, bool):
+                parts.append(f"total {total}")
+            digest = ", ".join(parts)
+    if not digest:
+        first = next((line for line in text.splitlines() if line.strip()), "")
+        line = _bounded_stub_text(first, _TOOL_RESULT_DIGEST_MAX - len('first line ""'))
+        if line:
+            digest = f'first line "{line}"'
+    digest = _bounded_stub_text(digest, _TOOL_RESULT_DIGEST_MAX)
+    return f", {digest}" if digest else ""
+
 
 #: The arguments that ADDRESS what a call read (a file, a window of it, a
 #: document, a page), in the order the stub names them. Generic names only:
@@ -7034,10 +7095,7 @@ def _tool_call_target(arguments: object) -> str:
         value = arguments.get(key)
         if value is None or value == "" or isinstance(value, (dict, list, tuple, set)):
             continue
-        flat = " ".join(str(value).split()).replace("]", ")")
-        if len(flat) > _TOOL_CALL_TARGET_VALUE_MAX:
-            flat = flat[: _TOOL_CALL_TARGET_VALUE_MAX - 3].rstrip() + "..."
-        parts.append(f"{key}={flat}")
+        parts.append(f"{key}={_bounded_stub_text(str(value), _TOOL_CALL_TARGET_VALUE_MAX)}")
     if not parts:
         return ""
     segment = ", ".join(parts)
@@ -7952,13 +8010,20 @@ def _clear_stale_tool_results(
             # The ONE stub that invites a re-call (``_is_refetchable_stub``):
             # the loop breaker forgives the re-read it invites. It names what
             # the call addressed, so the re-read is that window alone.
+            # It keeps a digest of the body, so it never reads as empty (#2722).
             if call_arguments is None:
                 call_arguments = _tool_call_arguments_by_result(messages)
-            msg.content = _REFETCHABLE_STUB_TEMPLATE.format(
+            stub = _REFETCHABLE_STUB_TEMPLATE.format(
                 tool=msg.name or "tool",
                 target=_tool_call_target(call_arguments.get(idx)),
                 chars=f"{body_len:,}",
+                digest=_tool_result_digest(body),
             )
+            if len(stub) >= body_len:
+                # A stub as long as the body frees nothing: keep the body.
+                kept_chars += body_len
+                continue
+            msg.content = stub
         freed += body_len - len(msg.content or "")
         # The stub still occupies space in the live context; count it so the
         # budget reflects the true post-clearing size.

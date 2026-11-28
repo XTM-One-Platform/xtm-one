@@ -48,7 +48,7 @@ def test_cleared_read_names_path_and_window():
 
     stub = messages[2].content
     assert stub.startswith(
-        "[Earlier sandbox_read_file result for path=repo/app/x.py, offset_line=100, max_lines=80 (5,000 chars)"
+        "[Earlier sandbox_read_file result for path=repo/app/x.py, offset_line=100, max_lines=80 (5,000 chars, "
     ), stub
     assert al._is_refetchable_stub(stub), "the loop breaker still reads it as the invited re-read"
     assert messages[4].content == "x" * 5_000, "the newest result is kept verbatim"
@@ -65,7 +65,7 @@ def test_body_arguments_never_echoed_and_values_bounded():
     assert "SECRET" not in target and "edits" not in target
     assert "]" not in target and "\n" not in target
     assert len(target) <= len(" for ") + al._TOOL_CALL_TARGET_MAX
-    stub = al._REFETCHABLE_STUB_TEMPLATE.format(tool="sandbox_read_file", target=target, chars="5,000")
+    stub = al._REFETCHABLE_STUB_TEMPLATE.format(tool="sandbox_read_file", target=target, chars="5,000", digest="")
     assert al._is_refetchable_stub(stub)
 
 
@@ -76,7 +76,9 @@ def test_no_matching_call_keeps_the_plain_stub():
         ChatMessage(role="tool", content="y" * 5_000, tool_call_id="last", name="list_x"),
     ]
     al._clear_stale_tool_results(messages, live_budget_chars=1_000)
-    assert messages[1].content == al._REFETCHABLE_STUB_TEMPLATE.format(tool="list_x", target="", chars="5,000")
+    assert messages[1].content == al._REFETCHABLE_STUB_TEMPLATE.format(
+        tool="list_x", target="", chars="5,000", digest=al._tool_result_digest("x" * 5_000)
+    )
     assert al._tool_call_target(None) == "" and al._tool_call_target({"query": "q"}) == ""
 
 
