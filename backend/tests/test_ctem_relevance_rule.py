@@ -26,7 +26,8 @@ from app.services.integration_event_filters import payload_filter_reason
 
 _PERSONAS = Path(ba.__file__).parent / "seed_data" / "agent_persona"
 _RULE_CORE = (
-    "A threat is relevant when its relevance score reaches 50 of 100, or when an organization PIR flags it "
+    "A threat is relevant when its relevance score reaches the prioritization policy's relevance_min_score_threat "
+    "(read live in the organization context, never a remembered value), or when an organization PIR flags it "
     "with a PIR score at or above the prioritization policy's pir_min_score_threat; a PIR flag below that "
     "threshold is one factor of the score, never relevance by itself."
 )
@@ -116,6 +117,65 @@ def test_one_rule_in_the_seed_the_personas_and_the_prompts():
     analyst = (_PERSONAS / "ctem-threat-relevance-analyst.md").read_text()
     # The former second definition (any PIR flag is relevance) is gone.
     assert "or when a PIR flags the threat." not in analyst
+
+
+def test_no_persona_or_prompt_hard_codes_the_relevance_bar() -> None:
+    """#2798: the bar is the policy's relevance_min_score_threat, read live, never a number in the text."""
+    bar = re.compile(r"(?i)reaches \d+ of 100|relevant from \d+|score (?:of|at) \d+ or (?:more|above)")
+    for slug in ("ctem-threat-relevance-analyst", "ctem-threat-response-orchestrator"):
+        assert not bar.search((_PERSONAS / f"{slug}.md").read_text()), slug
+    for name in (ba.CTEM_F1_THREAT_SIGNAL, "Weekly threat sweep"):
+        assert not bar.search(_assignment(name)["prompt"]), name
+
+
+def test_the_policy_relevance_bar_defaults_to_50_and_is_bounded() -> None:
+    from pydantic import ValidationError
+
+    from app.services import organization_context as org_context
+
+    assert org_context.PrioritizationPolicy().relevance_min_score_threat == 50 == ba.CTEM_RELEVANCE_MIN_SCORE
+    assert org_context.PrioritizationPolicy(relevance_min_score_threat=40).relevance_min_score_threat == 40
+    for bad in (-1, 101):
+        with pytest.raises(ValidationError):
+            org_context.PrioritizationPolicy(relevance_min_score_threat=bad)
+    assert "prioritization_policy.relevance_min_score_threat" in org_context.POLICY_SETTABLE_PATHS
+
+
+def test_a_lower_policy_bar_changes_the_outcome_without_a_persona_edit() -> None:
+    from app.services.builtin_tools.ctem_relevance import correct_relevance_answer
+
+    # Weighted total 49: not relevant at the default bar, relevant at a policy bar of 40.
+    factors = {"sector": 40, "region": 40, "software": 50, "primary_assets": 60, "pir": 40, "activity": 60}
+    assert json.loads(correct_relevance_answer(_answer(49, False, factors)))["threats"][0]["relevant"] is False
+    out = json.loads(correct_relevance_answer(_answer(49, False, factors), 40))
+    assert out["threats"][0]["relevant"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_live_bar_reads_the_policy_and_falls_back_to_the_default(monkeypatch) -> None:
+    from contextlib import asynccontextmanager
+
+    from app.services import organization_context as org_context
+    from app.services.builtin_tools import ctem_relevance
+
+    @asynccontextmanager
+    async def _session():
+        yield None
+
+    monkeypatch.setattr("app.core.database.async_session", _session)
+
+    async def profile(db, organization_id=None):
+        policy = org_context.PrioritizationPolicy(relevance_min_score_threat=40)
+        return object(), SimpleNamespace(prioritization_policy=policy)
+
+    monkeypatch.setattr(org_context, "current_profile", profile)
+    assert await ctem_relevance.live_relevance_bar() == 40
+
+    async def broken(db, organization_id=None):
+        raise RuntimeError("no profile")
+
+    monkeypatch.setattr(org_context, "current_profile", broken)
+    assert await ctem_relevance.live_relevance_bar() == 50
 
 
 # Fixed factor set and weights of the analyst (#2431), one constant for the persona and the
@@ -223,9 +283,15 @@ def test_a_threat_relevant_by_the_pir_floor_stays_relevant() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_finalize_tool_answers_the_corrected_json() -> None:
+async def test_the_finalize_tool_answers_the_corrected_json(monkeypatch) -> None:
+    from app.services.builtin_tools import ctem_relevance
     from app.services.builtin_tools.ctem_relevance import TOOL_NAME, build_ctem_relevance_score_tool
     from app.tools.base import ToolCall
+
+    async def _bar() -> int:
+        return 50
+
+    monkeypatch.setattr(ctem_relevance, "live_relevance_bar", _bar)
 
     defs, executor = build_ctem_relevance_score_tool()
     assert [d.name for d in defs] == [TOOL_NAME]

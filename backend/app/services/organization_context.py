@@ -652,6 +652,10 @@ class PrioritizationPolicy(BaseModel):
     #: set, a campaign, a malware...). Read live from OpenCTI at delivery, never the delivered score.
     pir_min_score_vulnerability: int = Field(default=70, ge=0, le=100)
     pir_min_score_threat: int = Field(default=75, ge=0, le=100)
+    #: CTEM relevance (#2798): the relevance score (0 to 100) from which a threat is relevant to the
+    #: organization. Read live by the Threat Relevance Analyst, the threat response orchestrator, the
+    #: threat signal run and the analyst's finalize step; below it the case closes at scoping.
+    relevance_min_score_threat: int = Field(default=50, ge=0, le=100)
     #: CTEM review step (CTEM-16): the label an analyst sets on the drafted Grouping in OpenCTI to
     #: approve its coverage request when the gate ``ctem.analyst_review`` waits (empty: analyst-reviewed).
     analyst_review_label: str = Field(default="", max_length=100)
@@ -1371,6 +1375,7 @@ POLICY_SETTABLE_PATHS: tuple[str, ...] = (
     "prioritization_policy.sla_hours",
     "prioritization_policy.pir_min_score_vulnerability",
     "prioritization_policy.pir_min_score_threat",
+    "prioritization_policy.relevance_min_score_threat",
     "prioritization_policy.identity_criticality",
 )
 
