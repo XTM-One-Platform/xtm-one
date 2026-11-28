@@ -26,7 +26,7 @@ import type { WorkItem } from "@/types";
 import { GATE_LABEL } from "./case-gates";
 import { CollapseFrame, GateApplyingNotice, useCollapseOut, useGateApplyingState } from "./GateApplyingNotice";
 import { GateDecisionRecord, gateAnswererName } from "./GateDecisionRecord";
-import { clearGateAnswer, itemAnswer, recordGateAnswer, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
+import { clearGateAnswer, itemAnswer, recordGateAnswer, recordGatePhase, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
 
 /**
  * The answer a waiting gate already has (#2746): the one this page sent, else
@@ -137,6 +137,11 @@ export function CaseGateDecision({
   // One read of the phase for the chip and the notice, so they never disagree (UX round 1 on #2757, B1).
   const applyingState = useGateApplyingState(waiting && !!record.work_item_id, answer);
   const applying = !!applyingState;
+  // The same phase for the waiting card's title as for this gate's chip and notice (UX round 3 on #2757, B1).
+  const phase = applyingState?.phase ?? null;
+  useEffect(() => {
+    recordGatePhase(record.work_item_id, phase);
+  }, [record.work_item_id, phase]);
   // Kept for the collapse once the loop applied it: the notice folds away instead of jumping.
   const lastState = useRef<GateApplying | null>(null);
   if (applyingState) lastState.current = applyingState;

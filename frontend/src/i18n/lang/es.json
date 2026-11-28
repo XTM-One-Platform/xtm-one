@@ -22278,6 +22278,7 @@
   "Its own receiver": "Su propio receptor",
   "Being applied": "Aplicándose",
   "Decision being applied": "Decisión aplicándose",
+  "Decision not applied": "Decisión no aplicada",
   "Not applied": "No aplicada",
   "Decision recorded: {option}. The loop is applying it.": "Decisión registrada: {option}. El bucle la está aplicando.",
   "Decision recorded. The loop is applying it.": "Decisión registrada. El bucle la está aplicando.",

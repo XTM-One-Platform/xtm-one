@@ -38,7 +38,7 @@ vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
 }));
 
 const { CaseWaitingGates } = await import("./CaseWaitingGates");
-const { APPLY_WINDOW_MS, applyPollDelay, clearGateAnswer, gateApplying, itemAnswer, recordGateAnswer } = await import("./gate-applying");
+const { APPLY_WINDOW_MS, applyPollDelay, clearGateAnswer, gateApplying, gatesAnsweredPhase, itemAnswer, recordGateAnswer, recordGatePhase } = await import("./gate-applying");
 
 const T0 = Date.parse("2026-11-28T08:00:00Z");
 
@@ -87,6 +87,7 @@ beforeEach(() => {
   state.runs = [];
   state.reduced = false;
   clearGateAnswer("wi-close");
+  clearGateAnswer("wi-other");
 });
 
 afterEach(() => {
@@ -129,6 +130,19 @@ describe("gateApplying (#2746)", () => {
     // An answer older than the gate's ask belongs to an earlier ask.
     expect(itemAnswer({ status: "open", needs_human: false, payload: { answer } } as never, "2026-11-28T09:00:00Z")).toBeNull();
     expect(itemAnswer({ status: "open", needs_human: false, payload: { answer } } as never, "2026-11-28T07:00:00Z")).toEqual({ label: "Close", at: T0 });
+  });
+  it("reads the card's phase from its gates' phases, never from answered alone (UX round 3 on #2757, B1)", () => {
+    expect(gatesAnsweredPhase([])).toBeNull();
+    recordGateAnswer("wi-close", "Close");
+    expect(gatesAnsweredPhase(["wi-close", "wi-other"])).toBeNull();
+    recordGateAnswer("wi-other", "Accept");
+    expect(gatesAnsweredPhase(["wi-close", "wi-other"])).toBe("applying");
+    recordGatePhase("wi-close", "timeout");
+    expect(gatesAnsweredPhase(["wi-close", "wi-other"])).toBe("applying");
+    recordGatePhase("wi-other", "failed");
+    expect(gatesAnsweredPhase(["wi-close", "wi-other"])).toBe("failed");
+    recordGatePhase("wi-other", null);
+    expect(gatesAnsweredPhase(["wi-close", "wi-other"])).toBe("applying");
   });
 });
 
@@ -210,6 +224,26 @@ describe("Being applied on the case page (#2746)", () => {
     expect(chip).toHaveTextContent("Not applied");
     expect(chip).not.toHaveTextContent("Being applied");
     expect(chip.getAttribute("data-phase")).toBe("failed");
+    // The card's title says the same as its gates (UX round 3 on #2757, B1): never "being applied" over a failed run.
+    const card = screen.getByTestId("ctem-case-waiting-gates");
+    expect(card).toHaveTextContent("Decision not applied");
+    expect(card).not.toHaveTextContent("Decision being applied");
+  });
+
+  it("titles a card whose gates all failed as not applied (UX round 3 on #2757, B1)", () => {
+    const at = Date.now() - 5_000;
+    state.byId["wi-other"] = { ...OPEN, id: "wi-other" };
+    recordGateAnswer("wi-close", "Close without retest", at);
+    recordGateAnswer("wi-other", "Accept the risk", at);
+    state.runs = [run({ id: "run-x", outcome: "failed", created_at: new Date(at + 1_000).toISOString() })];
+    renderWithProviders(page([rec(), rec({ key: "ctem.accept_risk", work_item_id: "wi-other" })]));
+    const chips = screen.getAllByTestId("ctem-case-waiting-gate-decision-record-status");
+    expect(chips).toHaveLength(2);
+    for (const chip of chips) expect(chip.getAttribute("data-phase")).toBe("failed");
+    const card = screen.getByTestId("ctem-case-waiting-gates");
+    expect(card).toHaveTextContent("Decision not applied");
+    expect(card).not.toHaveTextContent("Decision being applied");
+    expect(card).not.toHaveTextContent("Waits for a decision");
   });
 
   it("collapses the waiting card once the gate is applied", () => {

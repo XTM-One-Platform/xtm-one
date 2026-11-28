@@ -27,6 +27,8 @@ export const APPLY_WINDOW_MS = 120_000;
 export const COLLAPSE_MS = 300;
 
 const answers = new Map<string, GateAnswer>();
+/** The phase each answered gate reads (by its decision's work item id), written where `useGateApplyingState` runs. */
+const phases = new Map<string, GateApplyingPhase>();
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -48,7 +50,26 @@ export function recordGateAnswer(workItemId: string, label: string | null, at: n
 
 /** Forget a gate's answer once the case reads the gate applied. */
 export function clearGateAnswer(workItemId: string | null | undefined) {
-  if (workItemId && answers.delete(workItemId)) emit();
+  if (!workItemId) return;
+  const answered = answers.delete(workItemId);
+  const phased = phases.delete(workItemId);
+  if (answered || phased) emit();
+}
+
+/**
+ * Keep the phase a gate reads (applying, timeout, failed; null once it no longer
+ * applies), so the waiting card's title reads the same state as its gates
+ * (#2757 UX round 3, B1).
+ */
+export function recordGatePhase(workItemId: string | null | undefined, phase: GateApplyingPhase | null) {
+  if (!workItemId) return;
+  if (phase) {
+    if (phases.get(workItemId) === phase) return;
+    phases.set(workItemId, phase);
+  } else if (!phases.delete(workItemId)) {
+    return;
+  }
+  emit();
 }
 
 /** The answer this page sent on a decision, live; null when none. */
@@ -89,15 +110,23 @@ export function applyPollDelay(elapsedMs: number): number | null {
 }
 
 /**
- * Every one of these gates (by their decision's work item id) has an answer kept
- * on the page: the waiting card then reads "Decision being applied" instead of
- * "Waits for a decision" (#2746 UX round 1, B2). False for an empty list.
+ * Where the gates of the waiting card stand together (by their decision's work
+ * item id): null unless every one has an answer kept on the page (the card then
+ * still "Waits for a decision", #2746 UX round 1, B2); "failed" when the run
+ * applying any of them failed (the card reads "Decision not applied", #2757 UX
+ * round 3, B1); else "applying" ("Decision being applied"). Null for an empty list.
  */
-export function useGatesAnswered(workItemIds: readonly (string | null | undefined)[]): boolean {
+export function gatesAnsweredPhase(workItemIds: readonly (string | null | undefined)[]): "applying" | "failed" | null {
+  if (workItemIds.length === 0 || !workItemIds.every((id) => !!id && answers.has(id))) return null;
+  return workItemIds.some((id) => !!id && phases.get(id) === "failed") ? "failed" : "applying";
+}
+
+/** `gatesAnsweredPhase`, live. */
+export function useGatesAnsweredPhase(workItemIds: readonly (string | null | undefined)[]): "applying" | "failed" | null {
   return useSyncExternalStore(
     subscribe,
-    () => workItemIds.length > 0 && workItemIds.every((id) => !!id && answers.has(id)),
-    () => false,
+    () => gatesAnsweredPhase(workItemIds),
+    () => null,
   );
 }
 

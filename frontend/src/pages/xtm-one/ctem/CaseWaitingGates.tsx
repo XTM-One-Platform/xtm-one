@@ -23,7 +23,7 @@ import { GATE_LABEL, REMEDIATION_GATE } from "./case-gates";
 import { CASE_FACT_ICON, CaseCardTitleText } from "./case-icons";
 import { CaseGateDecision, useGateAnswerState, useGateDecisionItem } from "./CaseGateDecision";
 import { CollapseFrame, useCollapseOut } from "./GateApplyingNotice";
-import { useGatesAnswered } from "./gate-applying";
+import { useGatesAnsweredPhase } from "./gate-applying";
 import { MOBILIZATION_GATES } from "./CaseMobilization";
 import { REVIEW_GATE } from "./case-review";
 import { VALIDATION_GATE } from "./case-validation";
@@ -92,8 +92,9 @@ export function CaseWaitingGates({
   const kept = useRef<CtemCaseGateRecord[]>(live);
   if (live.length > 0) kept.current = live;
   const frame = useCollapseOut(live.length > 0);
-  // Every gate of the card answered (#2757 UX round 1, B2): it no longer waits, the loop is applying it.
-  const allAnswered = useGatesAnswered((live.length > 0 ? live : kept.current).map((record) => record.work_item_id));
+  // Every gate of the card answered (#2757 UX round 1, B2): it no longer waits, the loop is applying it,
+  // or the run applying one of them failed (UX round 3, B1): the title reads the gates' phases, never answered alone.
+  const answeredPhase = useGatesAnsweredPhase((live.length > 0 ? live : kept.current).map((record) => record.work_item_id));
   if (!frame.render) return null;
   const waiting = live.length > 0 ? live : kept.current;
   if (waiting.length === 0) return null;
@@ -108,7 +109,9 @@ export function CaseWaitingGates({
     <Card data-testid="ctem-case-waiting-gates">
       <CardHeader>
         <CardTitle>
-          {allAnswered ? (
+          {answeredPhase === "failed" ? (
+            <CaseCardTitleText icon="circle-alert">{t_i18n("Decision not applied")}</CaseCardTitleText>
+          ) : answeredPhase === "applying" ? (
             <CaseCardTitleText icon="loader-circle">{t_i18n("Decision being applied")}</CaseCardTitleText>
           ) : (
             <CaseCardTitleText icon={CASE_FACT_ICON.wait}>{t_i18n("Waits for a decision")}</CaseCardTitleText>

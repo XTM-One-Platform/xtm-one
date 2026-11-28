@@ -22278,6 +22278,7 @@
   "Its own receiver": "Its own receiver",
   "Being applied": "Being applied",
   "Decision being applied": "Decision being applied",
+  "Decision not applied": "Decision not applied",
   "Not applied": "Not applied",
   "Decision recorded: {option}. The loop is applying it.": "Decision recorded: {option}. The loop is applying it.",
   "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
