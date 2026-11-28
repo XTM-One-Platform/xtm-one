@@ -14,7 +14,7 @@
  * "Waits for a decision" line and the Worked-by card point to it in page
  * instead of a link away (one way to answer a decision).
  */
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItem, useWorkItems } from "@/hooks/api/useWorkItemApi";
@@ -24,7 +24,34 @@ import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import type { WorkItem } from "@/types";
 import { GATE_LABEL } from "./case-gates";
+import { CollapseFrame, GateApplyingNotice, useCollapseOut, useGateApplyingState } from "./GateApplyingNotice";
 import { GateDecisionRecord, gateAnswererName } from "./GateDecisionRecord";
+import { clearGateAnswer, itemAnswer, recordGateAnswer, recordGatePhase, useGateAnswer, type GateAnswer, type GateApplying } from "./gate-applying";
+
+/**
+ * The answer a waiting gate already has (#2746): the one this page sent, else
+ * the one its work item carries (answered elsewhere, or before a reload, while
+ * the case still reads the gate waiting; open or done, #2757 UX round 2 B1),
+ * kept in the page's store so every reader of
+ * the gate (its line, the Worked-by row, the card) sees it. Null otherwise; a
+ * gate that no longer waits forgets it.
+ */
+export function useGateAnswerState(
+  record: (Pick<CtemCaseGateRecord, "work_item_id"> & Partial<Pick<CtemCaseGateRecord, "asked_at">>) | null,
+  waiting: boolean,
+): GateAnswer | null {
+  const id = record?.work_item_id ?? null;
+  const kept = useGateAnswer(id);
+  const raw = useWorkItem(waiting ? id : null);
+  const done = waiting && !kept ? itemAnswer(raw.data ?? null, record?.asked_at) : null;
+  useEffect(() => {
+    if (id && done) recordGateAnswer(id, done.label, done.at);
+  }, [id, done?.label, done?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!waiting) clearGateAnswer(id);
+  }, [id, waiting]);
+  return waiting ? (kept ?? done) : null;
+}
 
 /**
  * The open decision item of a waiting gate: by the record's `work_item_id`,
@@ -106,6 +133,19 @@ export function CaseGateDecision({
   const { user, isAdmin } = useAuth();
   const waiting = record.status === "waiting";
   const { item, isLoading, refetch } = useGateDecisionItem(record, waiting);
+  const answer = useGateAnswerState(record, waiting);
+  // One read of the phase for the chip and the notice, so they never disagree (UX round 1 on #2757, B1).
+  const applyingState = useGateApplyingState(waiting && !!record.work_item_id, answer);
+  const applying = !!applyingState;
+  // The same phase for the waiting card's title as for this gate's chip and notice (UX round 3 on #2757, B1).
+  const phase = applyingState?.phase ?? null;
+  useEffect(() => {
+    recordGatePhase(record.work_item_id, phase);
+  }, [record.work_item_id, phase]);
+  // Kept for the collapse once the loop applied it: the notice folds away instead of jumping.
+  const lastState = useRef<GateApplying | null>(null);
+  if (applyingState) lastState.current = applyingState;
+  const notice = useCollapseOut(applying);
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-gate={record.key}>
@@ -113,9 +153,15 @@ export function CaseGateDecision({
         record={record}
         title={titled ? t_i18n(GATE_LABEL[record.key] ?? "Gate") : undefined}
         byLabel={gateAnswererName(record, history, personName)}
+        applying={applyingState?.phase ?? null}
         testId={`${testId}-record`}
       />
-      {waiting && item && (
+      {notice.render && record.work_item_id && (
+        <CollapseFrame closing={notice.closing} testId={`${testId}-applying-frame`}>
+          <GateApplyingNotice workItemId={record.work_item_id} state={applyingState ?? lastState.current} testId={`${testId}-applying`} />
+        </CollapseFrame>
+      )}
+      {waiting && !applying && item && (
         <GateDecisionAnchor gate={record.key}>
           <WorkItemDecisionCard
             item={item}
@@ -123,16 +169,17 @@ export function CaseGateDecision({
             canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
             readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
             onAnswered={refetch}
+            onAnswerSent={({ label }) => recordGateAnswer(item.id, label)}
           />
         </GateDecisionAnchor>
       )}
-      {waiting && !item && !isLoading && record.decision_filed === false && (
+      {waiting && !applying && !item && !isLoading && record.decision_filed === false && (
         <p className="text-default-secondary" data-testid={`${testId}-not-filed`}>
           {t_i18n("No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
         </p>
       )}
       {/* decision_filed is per gate (#2477 UX round 1): another gate's item never makes this one read filed. */}
-      {waiting && !item && !isLoading && record.decision_filed !== false && (
+      {waiting && !applying && !item && !isLoading && record.decision_filed !== false && (
         <p className="text-default-secondary" data-testid={`${testId}-elsewhere`}>
           {t_i18n("This gate waits for a person: the decision is in their Waiting for you list.")}
         </p>

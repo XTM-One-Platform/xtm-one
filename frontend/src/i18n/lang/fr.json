@@ -22283,5 +22283,14 @@
   "Off, not set up or not used here": "Désactivée, non configurée ou non utilisée ici",
   "Source states": "États des sources",
   "{count, plural, other {# not connected: {names}}}": "{count, plural, one {# non connectée : {names}} other {# non connectées : {names}}}",
-  "Its own receiver": "Son propre récepteur"
+  "Its own receiver": "Son propre récepteur",
+  "Being applied": "En cours d'application",
+  "Decision being applied": "Décision en cours d'application",
+  "Decision not applied": "Décision non appliquée",
+  "Not applied": "Non appliquée",
+  "Decision recorded: {option}. The loop is applying it.": "Décision enregistrée : {option}. La boucle l'applique.",
+  "Decision recorded. The loop is applying it.": "Décision enregistrée. La boucle l'applique.",
+  "Recorded, still being applied. Refresh later.": "Enregistrée, encore en cours d'application. Actualisez plus tard.",
+  "Decision recorded, but the run applying it failed.": "Décision enregistrée, mais l'exécution qui l'applique a échoué.",
+  "Decision recorded: {gate}": "Décision enregistrée : {gate}"
 }

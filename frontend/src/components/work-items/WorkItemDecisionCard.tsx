@@ -160,6 +160,7 @@ export function WorkItemDecisionCard({
   item,
   canAnswer,
   onAnswered,
+  onAnswerSent,
   readOnlyNote,
   inCase = false,
 }: {
@@ -171,6 +172,8 @@ export function WorkItemDecisionCard({
   readOnlyNote?: string;
   /** Runs once the answer or an ask left: the detail dialog closes. */
   onAnswered?: () => void;
+  /** Runs once an answer that hands the item back left, with the option sent and its label (the CTEM case page shows it being applied, #2746). */
+  onAnswerSent?: (sent: { option: string | null; label: string | null }) => void;
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -193,7 +196,11 @@ export function WorkItemDecisionCard({
         variant: "success",
       });
       // The card stays on a kept answer, so the person sees it recorded.
-      if (!keeps) onAnswered?.();
+      if (!keeps) {
+        const label = (option && item.ask?.options?.find((o) => o.key === option)?.label) || null;
+        onAnswerSent?.({ option: option ?? null, label });
+        onAnswered?.();
+      }
     } catch (e) {
       // The backend detail is untranslated: log it, show a translated hint.
       console.error("work item answer failed", e);
