@@ -21360,6 +21360,7 @@
   "Waited": "待機時間",
   "Answered from": "回答元",
   "Open the decision": "決定を開く",
+  "Answer on this page": "このページで回答",
   "Next step": "次のステップ",
   "Recorded on the case: pending": "ケースへの記録: 保留中",
   "{count, plural, one {# minute} other {# minutes}}": "{count, plural, other {#分}}",

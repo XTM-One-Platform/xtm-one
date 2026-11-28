@@ -21360,6 +21360,7 @@
   "Waited": "Attente",
   "Answered from": "Répondu depuis",
   "Open the decision": "Ouvrir la décision",
+  "Answer on this page": "Répondre sur cette page",
   "Next step": "Étape suivante",
   "Recorded on the case: pending": "Enregistré sur le cas : en attente",
   "{count, plural, one {# minute} other {# minutes}}": "{count, plural, one {# minute} other {# minutes}}",
