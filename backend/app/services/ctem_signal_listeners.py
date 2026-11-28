@@ -776,6 +776,7 @@ async def note_event(
     *,
     verified: bool,
     session_factory: Any = None,
+    integration_id: str | None = None,
 ) -> bool:
     """Record the signal a webhook delivery carries, if any; never raises. ``True`` when one was recorded.
 
@@ -784,6 +785,9 @@ async def note_event(
     unsigned delivery when no secret is set, and such a delivery is never
     trusted with a signal. *session_factory* opens the session (the queued
     intake passes its own engine's, #2584); the web pool's by default.
+    *integration_id* names the integration the delivery came on (``oauth_default`` for the
+    provider-level route): an integration an administrator took off the source records
+    nothing for it (#2736). ``None``: no integration filter, as before.
     """
     from app.core.config import settings
 
@@ -811,9 +815,13 @@ async def note_event(
     open_session = session_factory or async_session
     from app.services.ctem_signal_sources import (
         cached_exclusions,
+        cached_integration_exclusions,
+        excluded_integrations,
         excluded_sources,
+        integration_excluded,
         is_excluded,
         remember_exclusions,
+        remember_integration_exclusions,
     )
 
     # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
@@ -822,6 +830,9 @@ async def note_event(
     # before any database session, so an excluded catch-up never takes a connection.
     cached = cached_exclusions()
     if cached is not None and is_excluded(cached[1], row.trigger_path, provider, kind, row.source):
+        return False
+    cached_ids = cached_integration_exclusions() if integration_id else None
+    if cached_ids is not None and integration_excluded(cached_ids[1], provider, kind, row.source, integration_id):
         return False
 
     try:
@@ -833,6 +844,12 @@ async def note_event(
                 excluded = await excluded_sources(db, primary.id)
                 remember_exclusions(primary.id, excluded)
                 if is_excluded(excluded, row.trigger_path, provider, kind, row.source):
+                    return False
+            if integration_id and (cached_ids is None or cached_ids[0] != primary.id):
+                # #2736: a delivery of an integration taken off this source records nothing for it.
+                by_integration = await excluded_integrations(db, primary.id)
+                remember_integration_exclusions(primary.id, by_integration)
+                if integration_excluded(by_integration, provider, kind, row.source, integration_id):
                     return False
             if row.trigger_path in ("relevant_threat", "new_vulnerability") and fields["evidence"].get("pir"):
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY

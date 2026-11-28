@@ -221,6 +221,7 @@ from app.services import (
     ctem_openaev_events,
     ctem_signal_inbox,
     ctem_signal_listeners,
+    ctem_signal_sources,
     github_token_installations,
 )
 from app.services import event_enrichment_retry as enrichment_retry
@@ -3494,6 +3495,8 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
             event_key,
             payload,
             verified=routing.oauth_default_exists and _signed_with_webhook_secret(routing.extra_config_enc),
+            # #2736: the provider-level route delivers on the OAuth default app.
+            integration_id=ctem_signal_sources.OAUTH_DEFAULT_INTEGRATION,
         )
 
         installation_id = _event_installation_id(provider, payload)
@@ -4328,6 +4331,7 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                 event_key,
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                integration_id=str(integration.id),
             )
 
             # ── 5. Find agents bound to this integration ───────────────────
@@ -5142,6 +5146,7 @@ async def receive_assignment_webhook(
                 event_key,
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                integration_id=str(integration.id),
             )
             if provider == "opencti":
                 # The analyst's mark on a drafted Grouping answers the CTEM review

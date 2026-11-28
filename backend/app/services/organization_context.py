@@ -853,6 +853,11 @@ class SignalSourcesSettings(BaseModel):
     took off that path alone: an excluded source records nothing on it and is
     not bound on it, while it keeps feeding its other paths. ``included`` names
     the sources off by default (#2436) an administrator switched on for a path.
+    ``excluded_integrations`` names, per source key, the integrations an
+    administrator took off that source (#2736): a delivery of such an integration
+    records nothing for it, every other connected integration keeps feeding it.
+    ``oauth_default`` stands for the provider's OAuth default app (the
+    provider-level webhook route). Absent: every connected integration is used.
     ``pirs`` names, per path a PIR playbook feeds, the OpenCTI PIRs it listens
     to (#2436): a path absent takes its default (``ctem_signal_sources.pir_selection``),
     an empty list provisions no playbook for that path.
@@ -864,6 +869,32 @@ class SignalSourcesSettings(BaseModel):
     excluded: dict[str, list[str]] = Field(default_factory=dict)
     included: dict[str, list[str]] = Field(default_factory=dict)
     pirs: dict[str, list[str]] = Field(default_factory=dict)
+    excluded_integrations: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("excluded_integrations")
+    @classmethod
+    def _clean_excluded_integrations(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import OAUTH_DEFAULT_INTEGRATION, PATH_SOURCES
+
+        known = {s.key for sources in PATH_SOURCES.values() for s in sources}
+        out: dict[str, list[str]] = {}
+        for key, ids in value.items():
+            key = str(key).strip()
+            if key not in known:
+                raise ValueError(f"{key!r} is not a signal source")
+            cleaned: list[str] = []
+            for raw in ids:
+                iid = str(raw).strip().lower()
+                if iid != OAUTH_DEFAULT_INTEGRATION:
+                    try:
+                        iid = str(uuid.UUID(iid))
+                    except ValueError:
+                        raise ValueError(f"{raw!r} is not an integration id") from None
+                if iid not in cleaned:
+                    cleaned.append(iid)
+            if cleaned:
+                out[key] = sorted(cleaned)
+        return out
 
     @field_validator("pirs")
     @classmethod

@@ -118,7 +118,7 @@ async def list_ctem_signal_paths(
     """
     _require_xtm_one()
     from app.services import ctem_webhook_sources as webhook_sources
-    from app.services.ctem_signal_sources import bound_sources
+    from app.services.ctem_signal_sources import bound_sources, provider_integrations
 
     primary = await get_primary(db)
     counts: dict[str, dict[str, int]] = {}
@@ -139,6 +139,8 @@ async def list_ctem_signal_paths(
         replaying = job.get("state") == "running" and bool(job.get("resync"))
         quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
+    # #2736: each source names the integrations it reads, with their own state and switch.
+    bound.integrations = await provider_integrations(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
     # #2642: path 6's own inventory evaluation says why the path records nothing.
     from app.services.ctem_inventory_staleness import last_outcome

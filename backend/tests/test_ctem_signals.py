@@ -820,9 +820,18 @@ def store(monkeypatch):
     fake.bound = set()  # type: ignore[attr-defined]
 
     async def _bound(_db: Any, _user_id: Any) -> set[tuple[str, str]]:
-        return set(fake.bound)  # type: ignore[attr-defined]
+        from app.services.ctem_signal_sources import BoundSources
+
+        return BoundSources(fake.bound)  # type: ignore[attr-defined]
 
     monkeypatch.setattr("app.services.ctem_signal_sources.bound_sources", _bound)
+    fake.integrations = {}  # type: ignore[attr-defined]
+
+    async def _integrations(_db: Any, _user_id: Any) -> dict[str, list[dict[str, Any]]]:
+        return dict(fake.integrations)  # type: ignore[attr-defined]
+
+    # #2736: no integration named on a source unless a test adds one.
+    monkeypatch.setattr("app.services.ctem_signal_sources.provider_integrations", _integrations)
 
     async def _no_webhooks(_db):
         return []
@@ -1015,6 +1024,38 @@ async def test_the_paths_name_their_sources_status_and_30_day_activity(client: A
     assert paths["code_flaw"]["status"] == "not_connected"
     assert paths["stale_asset"]["count_30d"] == 1 and paths["stale_asset"]["last_signal_at"]
     assert paths["surface_drift"]["count_30d"] == 0 and paths["surface_drift"]["last_signal_at"] is None
+
+
+async def test_every_source_names_the_integrations_it_reads(client: Any, store: Any) -> None:
+    """#2736: a GitHub listener with two connected GitHub integrations lists both, each with its state."""
+    store.bound = {("github", "listener")}
+    store.integrations = {
+        "github": [
+            {
+                "id": "i-1",
+                "name": "GitHub prod",
+                "status": "connected",
+                "webhook_secret_set": True,
+                "last_delivery_at": None,
+            },
+            {
+                "id": "i-2",
+                "name": "GitHub lab",
+                "status": "connected",
+                "webhook_secret_set": False,
+                "last_delivery_at": None,
+            },
+        ]
+    }
+    async with client as http:
+        paths = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
+    github = next(s for s in paths["code_flaw"]["sources"] if s["key"] == "github:listener")
+    assert [(i["name"], i["webhook_secret_set"], i["used"]) for i in github["integrations"]] == [
+        ("GitHub prod", True, True),
+        ("GitHub lab", False, True),
+    ]
+    aikido = next(s for s in paths["code_flaw"]["sources"] if s["provider"] == "aikido")
+    assert aikido["integrations"] == []
 
 
 def _watchlisted(store, owner, *, code="below_scope_threshold", criticality="medium"):
