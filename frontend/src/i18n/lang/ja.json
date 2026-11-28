@@ -22290,5 +22290,13 @@
   "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
   "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
   "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
-  "Decision recorded: {gate}": "判断を記録しました: {gate}"
+  "Decision recorded: {gate}": "判断を記録しました: {gate}",
+  "Open {path}": "{path} を開く",
+  "Turn off the scheduled pass?": "スケジュールパスをオフにしますか?",
+  "Turning off Provisioned stops all of them.": "「プロビジョニング済み」をオフにすると、これらすべてが停止します。",
+  "Turning off the scheduled pass stops all of them.": "スケジュールパスをオフにすると、これらすべてが停止します。",
+  "Turn off {integration}?": "{integration} をオフにしますか?",
+  "Turn off the outside lens?": "外部ビューをオフにしますか?",
+  "Turn off the evidence health pass?": "エビデンス健全性パスをオフにしますか?",
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}"
 }

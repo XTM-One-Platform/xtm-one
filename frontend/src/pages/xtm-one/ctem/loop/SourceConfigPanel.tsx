@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Chip, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
+import { Tip } from "@/components/ui/tooltip";
 import type { CtemPlatformSource, CtemSignalPath, CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import type { OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
@@ -26,6 +27,7 @@ import {
   evidenceHealthSavedIntegration,
   passIntegrationIds,
 } from "@/lib/organization-profile";
+import { useConfirmPathsOff } from "./ConfirmPathsOffDialog";
 import { EvidenceHealthRunAsRow } from "./EvidenceHealthRunAsRow";
 import { LabelledSwitch } from "./LabelledSwitch";
 import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
@@ -81,21 +83,49 @@ function SourceFixLinks({ source, platformSources }: { source: CtemSignalPathSou
 /**
  * The paths one switch of the source feeds, as chips, this path marked first (#2740). A chip carries its path label
  * alone and sizes to it (UX round 1 B1: never a cut chip); the current path is marked by the info tone and a leading
- * check, with aria-current and a screen-reader "This path".
+ * check, with aria-current and a screen-reader "This path". Every other chip opens its path with this source's row
+ * opened (#2784), a button with its "Open <path>" tip, so no chip reads as a dead control.
  */
-function FeedChips({ pathId, feeds }: { pathId: string; feeds: readonly { path: string; label: string }[] }) {
+function FeedChips({
+  pathId,
+  feeds,
+  onOpenPath,
+}: {
+  pathId: string;
+  feeds: readonly { path: string; label: string }[];
+  onOpenPath?: (pathId: string) => void;
+}) {
   const { t_i18n } = useFormatter();
   const ordered = [...feeds].sort((a, b) => Number(b.path === pathId) - Number(a.path === pathId));
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="ctem-path-source-feeds">
       {ordered.map((f) => {
         const current = f.path === pathId;
+        if (!current && onOpenPath) {
+          const open = t_i18n("Open {path}", { path: f.label });
+          return (
+            <Tip key={f.path} content={open}>
+              <button
+                type="button"
+                className="inline-flex shrink-0 cursor-pointer items-center rounded-sm outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-focus"
+                onClick={() => onOpenPath(f.path)}
+                aria-label={open}
+                data-testid="ctem-path-source-feed"
+                data-current={false}
+                data-path={f.path}
+              >
+                <Chip label={f.label} severity="neutral" className="max-w-none shrink-0 cursor-pointer whitespace-nowrap" />
+              </button>
+            </Tip>
+          );
+        }
         return (
           <span
             key={f.path}
             className="inline-flex shrink-0 items-center gap-1"
             data-testid="ctem-path-source-feed"
             data-current={current}
+            data-path={f.path}
             aria-current={current ? "true" : undefined}
           >
             {current && <Icon name="check" size={16} className="text-feedback-info-primary" aria-hidden />}
@@ -119,6 +149,7 @@ export function SourceConfig({
   onSave,
   platformSources,
   onEnable,
+  onOpenPath,
 }: {
   path: CtemSignalPath;
   source: CtemSignalPathSource;
@@ -130,9 +161,12 @@ export function SourceConfig({
   onSave: (next: Partial<OrganizationProfile>, done: string) => void;
   platformSources: readonly CtemPlatformSource[];
   onEnable: (source: CtemPlatformSource) => void;
+  /** Opens another path of the panel with this source's row opened (#2784). */
+  onOpenPath?: (pathId: string) => void;
 }) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
+  const [confirmOff, guardOff] = useConfirmPathsOff();
   const { data: integrations = [] } = useIntegrations();
   const state = sourceState(source, connected);
   const passField = profilePassField(source);
@@ -176,7 +210,12 @@ export function SourceConfig({
   // integration row, so it gets no empty Integrations title.
   const showIntegrations = provisioned || Boolean(passField) || state === "not_connected";
 
+  // An off of the organization-wide pass stops every path it feeds: asked first when they are several (#2784).
   const togglePass = (enabled: boolean) => {
+    if (!enabled) return guardOff(feeds.map((f) => f.label), t_i18n("Turn off the scheduled pass?"), () => savePass(false));
+    savePass(true);
+  };
+  const savePass = (enabled: boolean) => {
     if (passField === "attack_surface") onSave({ attack_surface: { ...attackSurface, enabled } }, t_i18n("Scheduled pass saved"));
     // An off names the integration it ran on, as the Settings card does: `enabled: false` with none declared is the
     // legacy stored default, which `resolve_pass` reads as on, so the off would not hold (#1937).
@@ -300,11 +339,18 @@ export function SourceConfig({
         <ConfigSection title={t_i18n("Paths")} testId="ctem-path-source-paths">
           {feeds.length > 1 && (
             <span className="flex min-w-0 flex-col gap-1" data-testid="ctem-path-source-shared">
-              <FeedChips pathId={path.id} feeds={feeds} />
-              <span className="text-default-secondary">{t_i18n("Turning it off stops all of them.")}</span>
+              <FeedChips pathId={path.id} feeds={feeds} onOpenPath={onOpenPath} />
+              <span className="text-default-secondary">
+                {provisioned
+                  ? t_i18n("Turning off Provisioned stops all of them.")
+                  : passField
+                    ? t_i18n("Turning off the scheduled pass stops all of them.")
+                    : t_i18n("Turning it off stops all of them.")}
+              </span>
             </span>
           )}
           {canExclude(source) && (
+            // One path alone: "Use on this path" never asks (#2784).
             <LabelledSwitch
               label={t_i18n("Use on this path")}
               note={feeds.length > 1 ? t_i18n("Taking it off this path keeps it on for the others.") : undefined}
@@ -316,6 +362,7 @@ export function SourceConfig({
           )}
         </ConfigSection>
       )}
+      {confirmOff}
     </div>
   );
 }

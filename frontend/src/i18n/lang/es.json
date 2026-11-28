@@ -22290,5 +22290,13 @@
   "Decision recorded. The loop is applying it.": "Decisión registrada. El bucle la está aplicando.",
   "Recorded, still being applied. Refresh later.": "Registrada, todavía aplicándose. Actualice más tarde.",
   "Decision recorded, but the run applying it failed.": "Decisión registrada, pero la ejecución que la aplica ha fallado.",
-  "Decision recorded: {gate}": "Decisión registrada: {gate}"
+  "Decision recorded: {gate}": "Decisión registrada: {gate}",
+  "Open {path}": "Abrir {path}",
+  "Turn off the scheduled pass?": "¿Desactivar la pasada programada?",
+  "Turning off Provisioned stops all of them.": "Desactivar Aprovisionada los detiene todos.",
+  "Turning off the scheduled pass stops all of them.": "Desactivar la pasada programada los detiene todos.",
+  "Turn off {integration}?": "¿Desactivar {integration}?",
+  "Turn off the outside lens?": "¿Desactivar la vista externa?",
+  "Turn off the evidence health pass?": "¿Desactivar la pasada de salud de las evidencias?",
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# ruta deja de recibir sus señales:} other {# rutas dejan de recibir sus señales:}}"
 }

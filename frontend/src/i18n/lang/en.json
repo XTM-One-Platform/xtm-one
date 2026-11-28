@@ -22290,5 +22290,13 @@
   "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
   "Recorded, still being applied. Refresh later.": "Recorded, still being applied. Refresh later.",
   "Decision recorded, but the run applying it failed.": "Decision recorded, but the run applying it failed.",
-  "Decision recorded: {gate}": "Decision recorded: {gate}"
+  "Decision recorded: {gate}": "Decision recorded: {gate}",
+  "Open {path}": "Open {path}",
+  "Turn off the scheduled pass?": "Turn off the scheduled pass?",
+  "Turning off Provisioned stops all of them.": "Turning off Provisioned stops all of them.",
+  "Turning off the scheduled pass stops all of them.": "Turning off the scheduled pass stops all of them.",
+  "Turn off {integration}?": "Turn off {integration}?",
+  "Turn off the outside lens?": "Turn off the outside lens?",
+  "Turn off the evidence health pass?": "Turn off the evidence health pass?",
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}"
 }

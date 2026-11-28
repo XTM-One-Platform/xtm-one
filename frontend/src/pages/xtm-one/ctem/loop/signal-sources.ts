@@ -369,6 +369,19 @@ export function profilePassField(source: Pick<CtemSignalPathSource, "provider" |
   return field === "attack_surface" || field === "evidence_health" ? field : null;
 }
 
+/**
+ * The trigger paths a profile pass feeds (#2784): every path one of whose sources is that pass. Saving the pass off
+ * stops them all, so the Settings card asks first when they are several.
+ */
+export function profilePassPaths(
+  paths: readonly Pick<CtemSignalPath, "id" | "label" | "sources">[],
+  field: "attack_surface" | "evidence_health",
+): { path: string; label: string }[] {
+  return paths
+    .filter((p) => (p.sources ?? []).some((s) => profilePassField(s) === field))
+    .map((p) => ({ path: p.id, label: p.label }));
+}
+
 /** One icon per trigger path (design-system names); a path the table does not know takes the signal icon. */
 export const PATH_ICON: Record<string, string> = {
   new_vulnerability: "bug",

@@ -588,7 +588,7 @@ export function SignalSourcesPanel() {
         emptyLabel={t_i18n("No trigger path is known yet.")}
         rowTestId="ctem-signal-sources-path"
       />
-      <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} />
+      <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} onOpenPath={setOpenPath} />
       <PlatformSourceEnableDialog
         source={enabling}
         label={
