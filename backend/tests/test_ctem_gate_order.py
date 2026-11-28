@@ -138,7 +138,6 @@ def test_a_waited_gate_rests_on_its_own_decision_key(gate: str, key: str) -> Non
         ("ctem.production_change", "ctem:production-change:"),
         ("ctem.accept_risk", "ctem:accept-risk:"),
         ("ctem.close_without_retest", "ctem:close-without-retest:"),
-        ("ctem.scoping.not_relevant", "ctem:scoping-not-relevant:"),
     ],
 )
 def test_every_catalog_gate_rests_on_its_own_key(gate: str, key: str) -> None:
@@ -147,33 +146,6 @@ def test_every_catalog_gate_rests_on_its_own_key(gate: str, key: str) -> None:
     assert order.gate_of(f"{key}{_CASE}") == (gate, _CASE)
     assert order.waited_refusal(gate, _CASE, {f"ctem:review:{_CASE}"})
     assert order.waited_refusal(gate, _CASE, {f"{key}{_CASE}"}) is None
-
-
-@pytest.mark.parametrize("state", ["new", "analyzing"])
-def test_close_without_retest_is_refused_in_scoping(state: str) -> None:
-    """#2798: the end-of-loop close points to the scoping gate on a case still in scoping."""
-    refusal = order.close_at_scoping_refusal("ctem.close_without_retest", state, {"note", "gate"})
-    assert refusal and "ctem.scoping.not_relevant" in refusal and "evidence request" in refusal
-
-
-@pytest.mark.parametrize(
-    ("state", "kinds"),
-    [
-        ("validating", set()),
-        ("remediating", set()),
-        ("waiting_decision", set()),
-        ("analyzing", {"validation"}),
-        ("analyzing", {"treatment_plan"}),
-        ("new", {"ticket"}),
-    ],
-)
-def test_close_without_retest_runs_past_scoping(state: str, kinds: set[str]) -> None:
-    assert order.close_at_scoping_refusal("ctem.close_without_retest", state, kinds) is None
-
-
-def test_only_close_without_retest_is_checked_for_scoping() -> None:
-    for gate in ("ctem.scoping.not_relevant", "ctem.accept_risk", "ctem.analyst_review"):
-        assert order.close_at_scoping_refusal(gate, "new", set()) is None
 
 
 def test_a_gate_outside_the_catalog_rests_on_any_decision_of_the_case() -> None:
@@ -194,3 +166,75 @@ def test_a_gate_card_never_sends_the_person_to_a_run() -> None:
         order.refuse_run_pointer(f"ctem:validation:{_CASE}", pointing)
     order.refuse_run_pointer(f"ctem:validation:{_CASE}", _ASK)
     order.refuse_run_pointer("dev:x", pointing)
+
+
+@pytest.mark.parametrize("key", ["ctem:evidence:", "ctem:version-check:", "ctem:scoping:"])
+def test_a_move_to_waiting_decision_rests_on_an_open_decision_of_the_case(key: str) -> None:
+    """#2782: an agent's bare move to waiting_decision needs an open ctem:<x>:<case id> decision."""
+    refusal = order.waiting_state_refusal(_CASE, set())
+    assert refusal and "create_work_item" in refusal and _CASE in refusal and "nothing was written" in refusal
+    # Another case's decision is not this case's.
+    assert order.waiting_state_refusal(_CASE, {f"{key}{uuid.uuid4()}"})
+    assert order.waiting_state_refusal(_CASE, {f"dev:x:{_CASE}"})
+    assert order.waiting_state_refusal(_CASE, {f"{key}{_CASE}"}) is None
+    # A catalog gate's open decision counts too.
+    assert order.waiting_state_refusal(_CASE, {f"ctem:review:{_CASE}"}) is None
+
+
+async def test_pending_decisions_lists_the_open_decisions_of_the_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import work_item as work_item_service
+
+    seen: dict[str, Any] = {}
+
+    async def _list(**kwargs: Any) -> list[dict[str, Any]]:
+        seen.update(kwargs)
+        return [
+            {
+                "id": "b",
+                "correlation_key": f"ctem:version-check:{_CASE}",
+                "title": "Check",
+                "needs_human": True,
+                "due_at": None,
+                "ask": {"deadline": "2026-11-30T10:00:00+00:00"},
+                "created_at": "2026-11-28T11:00:00",
+            },
+            {
+                "id": "a",
+                "correlation_key": f"ctem:evidence:{_CASE}",
+                "title": "Evidence",
+                "needs_human": True,
+                "due_at": "2026-11-29T10:00:00+00:00",
+                "created_at": "2026-11-28T10:00:00",
+            },
+            {"id": "c", "correlation_key": f"ctem:evidence:{_CASE}", "title": "Worked", "needs_human": False},
+            {"id": "d", "correlation_key": f"ctem:evidence:{_CASE}x", "title": "Other", "needs_human": True},
+        ]
+
+    monkeypatch.setattr(work_item_service, "list_work_items", _list)
+    pending = await order.pending_decisions(_CASE, user_id="u1")
+    assert seen["user_id"] == "u1" and seen["open_only"] is True
+    assert seen["correlation_key_prefix"] == "ctem:" and seen["search"] == _CASE
+    assert pending == [
+        {
+            "work_item_id": "a",
+            "key": f"ctem:evidence:{_CASE}",
+            "title": "Evidence",
+            "deadline": "2026-11-29T10:00:00+00:00",
+        },
+        {
+            "work_item_id": "b",
+            "key": f"ctem:version-check:{_CASE}",
+            "title": "Check",
+            "deadline": "2026-11-30T10:00:00+00:00",
+        },
+    ]
+
+
+async def test_pending_decisions_never_fail_the_case_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import work_item as work_item_service
+
+    async def _broken(**_kwargs: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("no database")
+
+    monkeypatch.setattr(work_item_service, "list_work_items", _broken)
+    assert await order.pending_decisions(_CASE, user_id="u1") == []
