@@ -101,7 +101,8 @@ def test_the_decision_records_the_narrowing_and_names_no_repository() -> None:
     assert all(h["asset"] == DEVICE for h in reconcile["primary_assets"])
     assert REPOSITORY not in str(reconcile["primary_assets"]) and reconcile["repositories"] == []
     hop = reconcile["primary_assets"][0]
-    assert hop["software"] == PRODUCT and hop["version_verified"] is True
+    # #2747: the reference names no version and the signal no fixed version: nothing was compared.
+    assert hop["software"] == PRODUCT and hop["version_verified"] is False
 
 
 def test_without_named_assets_the_product_expansion_is_unchanged() -> None:
