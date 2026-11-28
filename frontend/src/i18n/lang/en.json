@@ -21363,6 +21363,7 @@
   "Waited": "Waited",
   "Answered from": "Answered from",
   "Open the decision": "Open the decision",
+  "Answer on this page": "Answer on this page",
   "Next step": "Next step",
   "Recorded on the case: pending": "Recorded on the case: pending",
   "{count, plural, one {# minute} other {# minutes}}": "{count, plural, one {# minute} other {# minutes}}",

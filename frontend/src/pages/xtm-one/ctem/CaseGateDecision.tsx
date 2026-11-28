@@ -10,7 +10,11 @@
  * older API that serves no id. A viewer who cannot read the item reads that the
  * decision is in the person's list; a gate with no decision of its own filed
  * (`decision_filed`, per gate) reads that nobody can answer it yet.
+ * Every card rendered in place sits in `GateDecisionAnchor`, so the page's
+ * "Waits for a decision" line and the Worked-by card point to it in page
+ * instead of a link away (one way to answer a decision).
  */
+import type { ReactNode } from "react";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItem, useWorkItems } from "@/hooks/api/useWorkItemApi";
@@ -48,6 +52,41 @@ export function useGateDecisionItem(
   };
 }
 
+/** The in-page anchor of a gate's decision card, one per gate key. */
+function gateDecisionAnchorId(gate: string): string {
+  return `ctem-gate-decision-${gate.replace(/[^a-z0-9]+/gi, "-")}`;
+}
+
+/** Scroll to a gate's decision card on the page and focus it; false when the page does not show it. */
+export function focusGateDecision(gate: string): boolean {
+  const el = document.getElementById(gateDecisionAnchorId(gate));
+  if (!el) return false;
+  el.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  el.focus({ preventScroll: true });
+  return true;
+}
+
+/**
+ * Where a gate's decision card sits on the page relative to `from` (the control
+ * that points to it): "up" when the card comes before it, "down" when after,
+ * null when the page does not show the card. The control's icon says what is
+ * true: the page's waiting card is above the Worked-by row, a section card below.
+ */
+export function gateDecisionDirection(gate: string, from: Element | null): "up" | "down" | null {
+  const el = document.getElementById(gateDecisionAnchorId(gate));
+  if (!el || !from) return null;
+  return el.compareDocumentPosition(from) & Node.DOCUMENT_POSITION_FOLLOWING ? "up" : "down";
+}
+
+/** The wrapper of a decision card rendered in place: the target of "Answer on this page". */
+export function GateDecisionAnchor({ gate, children }: { gate: string; children: ReactNode }) {
+  return (
+    <div id={gateDecisionAnchorId(gate)} tabIndex={-1} className="scroll-mt-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-focus" data-testid="ctem-gate-decision-anchor" data-gate={gate}>
+      {children}
+    </div>
+  );
+}
+
 export function CaseGateDecision({
   record,
   history,
@@ -77,13 +116,15 @@ export function CaseGateDecision({
         testId={`${testId}-record`}
       />
       {waiting && item && (
-        <WorkItemDecisionCard
-          item={item}
-          inCase
-          canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
-          readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-          onAnswered={refetch}
-        />
+        <GateDecisionAnchor gate={record.key}>
+          <WorkItemDecisionCard
+            item={item}
+            inCase
+            canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+            readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+            onAnswered={refetch}
+          />
+        </GateDecisionAnchor>
       )}
       {waiting && !item && !isLoading && record.decision_filed === false && (
         <p className="text-default-secondary" data-testid={`${testId}-not-filed`}>

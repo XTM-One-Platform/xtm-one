@@ -22,7 +22,7 @@ import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { PROVIDER_NAMES } from "./case-loop";
 import { VALIDATION_GATE, autoPassReason, chosenOptionLabel, latestValidations, validationDecisionKey } from "./case-validation";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { useGateDecisionItem } from "./CaseGateDecision";
+import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
@@ -179,10 +179,12 @@ export function CaseValidation({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
-              readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={open.refetch}
-            />
+          <GateDecisionAnchor gate={VALIDATION_GATE}>
+            <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+                readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+                onAnswered={open.refetch}
+              />
+          </GateDecisionAnchor>
         )}
         {waiting && !item && !open.isLoading && record?.decision_filed === false && (
           <p className="text-default-secondary" data-testid="ctem-case-validation-not-filed">
