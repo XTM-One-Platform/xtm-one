@@ -66,6 +66,12 @@ def test_an_object_result_names_its_list_count_and_total() -> None:
     assert al._tool_result_digest(json.dumps([{"a": 1}])) == ", 1 item"
 
 
+def test_an_object_result_names_its_first_non_empty_list() -> None:
+    body = json.dumps({"warnings": [], "results": _ROWS})
+    assert al._tool_result_digest(body) == ", results: 2 items"
+    assert al._tool_result_digest(json.dumps({"warnings": [], "results": []})) == ", warnings: 0 items"
+
+
 def test_a_plain_text_result_keeps_its_first_line_capped_and_never_a_body_argument() -> None:
     body = "\n\n2 matching assets ] for scope " + "w" * 600 + "\nrow 1\nrow 2"
     messages = [ChatMessage(role="user", content="go")]

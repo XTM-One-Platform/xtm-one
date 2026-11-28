@@ -7020,7 +7020,8 @@ def _tool_result_digest(body: str) -> str:
 
     Read from the RESULT, never from the call's arguments (a body argument is
     never echoed, :data:`_TOOL_CALL_TARGET_KEYS`). A JSON list gives its item
-    count; a JSON object gives the count of its first list and its ``total``
+    count; a JSON object gives the count of its first non-empty list (its
+    first list when all are empty) and its ``total``
     when present; anything else gives its first non-blank line. Bounded by
     :data:`_TOOL_RESULT_DIGEST_MAX`, on one line and without ``]``, so the
     stub always matches :data:`_REFETCHABLE_STUB_RE`.
@@ -7036,10 +7037,13 @@ def _tool_result_digest(body: str) -> str:
             digest = f"{len(parsed)} item" + ("" if len(parsed) == 1 else "s")
         elif isinstance(parsed, dict):
             parts: list[str] = []
-            for key, value in parsed.items():
-                if isinstance(value, list):
-                    parts.append(f"{key}: {len(value)} item" + ("" if len(value) == 1 else "s"))
-                    break
+            lists = [(key, value) for key, value in parsed.items() if isinstance(value, list)]
+            # The first NON-EMPTY list: `{"warnings": [], "results": [...]}` must
+            # never read "warnings: 0 items" (#2725 review); all empty, the first.
+            named = next((pair for pair in lists if pair[1]), lists[0] if lists else None)
+            if named is not None:
+                key, value = named
+                parts.append(f"{key}: {len(value)} item" + ("" if len(value) == 1 else "s"))
             total = parsed.get("total")
             if isinstance(total, int) and not isinstance(total, bool):
                 parts.append(f"total {total}")
