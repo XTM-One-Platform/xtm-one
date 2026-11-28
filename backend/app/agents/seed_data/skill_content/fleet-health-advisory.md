@@ -28,7 +28,7 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `member_disabled` | owner | a member is disabled |
 | `disabled_owner` | owner | a disabled member still owns open items |
 | `assignment_failing` | owner | an assignment failed its last 3 judged runs |
-| `assignment_silent` | owner | a schedule has not fired for 14 days |
+| `assignment_silent` | owner | a schedule's cron slot came due while it was enabled and nothing was recorded for it (no run, no gate skip, no recorded miss); a monthly or yearly cron between two slots, or a schedule enabled again after its slots, is never silent. Check the scheduler and the activation gate; deletion is advised only after several missed slots in a row |
 | `past_due` | owner | an open item is past its due date |
 | `not_picked_up` | owner | an open item no inbox will take: no owner, an owner with no work-item inbox, or inboxes whose correlation prefix or priority leave it out; the fix is an owner whose inbox takes it, a wider inbox, or cancelling it |
 | `blocked_without_blocker` | owner | a blocked item is not black or white: no owner, only a free-text reason, needs_human without an ask card, or its blocked_on items all cancelled; the fix is a valid blocker (`blocked_on`, `blocked_on_refs`, or `needs_human` with an ask; skill "Fleet design and operations" section 4), or `not_before` for a deferral |
