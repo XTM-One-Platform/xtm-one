@@ -61,7 +61,8 @@ describe("Objects a source holds in its platform (#2583 point 2, #2740)", () => 
     expect(within(radius).queryByTestId("ctem-platform-source-objects-toggle")).toBeNull();
     const rows = within(radius).getAllByTestId("ctem-platform-source-object");
     expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual(["notifier", "trigger"]);
-    expect(within(rows[1]).getByTestId("ctem-platform-source-object-what")).toHaveAttribute("title", "XTM One - Signals - OpenCTI live listener - Trigger");
+    // UX r1 #2743 B4: the full name lives in the design-system Tip alone, never a second browser title.
+    expect(within(rows[1]).getByTestId("ctem-platform-source-object-what")).not.toHaveAttribute("title");
     expect(within(rows[1]).getByTestId("ctem-platform-source-object-open")).toHaveAttribute("href", "https://octi.example.com/dashboard/profile/triggers");
   });
 });
@@ -239,5 +240,11 @@ describe("Open in links of a per-path source (#2627)", () => {
     expect(screen.getByTestId("ctem-platform-source-switch").parentElement).not.toContainElement(objects);
     expect(screen.getByTestId("ctem-platform-source-switch").closest("label")).toHaveTextContent("Provisioned");
     expect(screen.getByTestId("ctem-platform-source-name")).toHaveTextContent(pir.integration_name);
+  });
+
+  it("gives a cut object name the design-system tooltip alone, never a browser title (UX r1 #2743 B4)", () => {
+    const pir = listener({ kind: "pir_playbook", objects: [{ kind: "trigger", id: "t6", name: "XTM One - Signals - OpenAEV listener - Trigger" }] });
+    renderWithProviders(<PlatformSourceObjects source={{ provider: "opencti", kind: "pir_playbook" }} platformSources={[pir]} />);
+    for (const what of screen.getAllByTestId("ctem-platform-source-object-what")) expect(what.hasAttribute("title")).toBe(false);
   });
 });

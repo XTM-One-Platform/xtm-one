@@ -192,6 +192,40 @@ describe("the sources side panel (#1445)", () => {
     state.admin = true;
   });
 
+  it("marks the current path chip by tone and a check, never by a longer label (UX r1 #2743 B1)", () => {
+    open();
+    const current = within(configOf("shodan")).getAllByTestId("ctem-path-source-feed")[0];
+    expect(current.getAttribute("aria-current")).toBe("true");
+    expect(current.querySelector(".sr-only")?.textContent).toBe("This path");
+    expect(current.textContent).not.toContain("(this path)");
+  });
+
+  it("draws no empty Integrations section for a pass XTM One runs itself (UX r1 #2743 B2)", () => {
+    const stale: CtemSignalPath = {
+      ...EXPOSURE,
+      id: "stale_asset",
+      label: "Stale or orphaned asset",
+      sources: [{ provider: "xtm_one", kind: "pass", event: "An asset no sync has seen", bound: true, available: true, also_feeds: ["surface_drift"] }],
+    };
+    open(stale);
+    const row = configOf("xtm_one");
+    expect(within(row).queryByTestId("ctem-path-source-integrations")).toBeNull();
+    expect(within(row).getByTestId("ctem-path-source-paths")).toBeTruthy();
+  });
+
+  it("puts every switch next to its label, the same component in every section (UX r1 #2743 B3)", () => {
+    open();
+    const shodan = configOf("shodan");
+    for (const [id, label] of [
+      ["ctem-path-source-pass", "Scheduled pass on"],
+      ["ctem-path-source-use", "Use on this path"],
+    ]) {
+      const control = within(shodan).getByTestId(id);
+      expect(control.closest("label")).toHaveTextContent(label);
+      expect(within(shodan).getByTestId(`${id}-row`)).toContainElement(control);
+    }
+  });
+
   it("moves focus into the panel, keeps Tab inside it and gives focus back on close (UX r1 #1461 B2)", () => {
     const opener = document.createElement("button");
     opener.textContent = "row";

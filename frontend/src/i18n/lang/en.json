@@ -22264,7 +22264,7 @@
   "{count, plural, one {# notifier} other {# notifiers}}": "{count, plural, one {# notifier} other {# notifiers}}",
   "{count, plural, one {# trigger} other {# triggers}}": "{count, plural, one {# trigger} other {# triggers}}",
   "{count, plural, one {# playbook} other {# playbooks}}": "{count, plural, one {# playbook} other {# playbooks}}",
-  "{label} (this path)": "{label} (this path)",
+  "This path": "This path",
   "Runs on": "Runs on",
   "Every {count, plural, one {# hour} other {# hours}}": "Every {count, plural, one {# hour} other {# hours}}",
   "No integration of this provider is connected.": "No integration of this provider is connected.",

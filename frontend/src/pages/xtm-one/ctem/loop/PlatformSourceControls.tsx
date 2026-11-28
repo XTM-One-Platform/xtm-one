@@ -16,7 +16,6 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { userSelectOption } from "@/components/ui/entity-select-options";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { useUsers } from "@/hooks/api/useAuthApi";
@@ -31,6 +30,7 @@ import {
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatList } from "@/lib/format-list";
+import { LabelledSwitch } from "./LabelledSwitch";
 import {
   PLATFORM_NAME,
   PLATFORM_OBJECT_COUNT_TEXT,
@@ -254,17 +254,16 @@ function PlatformSourceLine({
           data-testid="ctem-platform-source-status"
         />
       </span>
-      <label className="flex items-center gap-2 justify-self-end">
-        <span className="text-default-secondary">{t_i18n("Provisioned")}</span>
-        <Switch
-          className="shrink-0"
-          checked={source.enabled}
-          disabled={!isAdmin || disable.isPending || !source.integration_connected}
-          onCheckedChange={toggle}
-          aria-label={t_i18n("Source on {integration}", { integration: source.integration_name })}
-          data-testid="ctem-platform-source-switch"
-        />
-      </label>
+      {/* UX round 1 B3: the one LabelledSwitch of the panel, label next to its switch at the row's end. */}
+      <LabelledSwitch
+        className="justify-self-end"
+        label={t_i18n("Provisioned")}
+        checked={source.enabled}
+        disabled={!isAdmin || disable.isPending || !source.integration_connected}
+        onCheckedChange={toggle}
+        ariaLabel={t_i18n("Source on {integration}", { integration: source.integration_name })}
+        testId="ctem-platform-source-switch"
+      />
       {source.enabled && (
         <dl className="col-span-2 grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
           <dt className="text-default-secondary">{t_i18n("Runs as")}</dt>
@@ -419,7 +418,7 @@ function PlatformObjectRow({ object, source }: { object: CtemPlatformSourceObjec
     >
       <span className="truncate text-default-secondary">{t_i18n(PLATFORM_OBJECT_KIND_ONE[object.kind])}</span>
       <Tip content={name || what}>
-        <span className="min-w-0 truncate" data-testid="ctem-platform-source-object-what" title={name}>
+        <span className="min-w-0 truncate" data-testid="ctem-platform-source-object-what">
           {what}
         </span>
       </Tip>

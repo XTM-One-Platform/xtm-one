@@ -14,7 +14,6 @@ import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Chip, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import type { CtemPlatformSource, CtemSignalPath, CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import type { OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
@@ -27,6 +26,7 @@ import {
   evidenceHealthSavedIntegration,
   passIntegrationIds,
 } from "@/lib/organization-profile";
+import { LabelledSwitch } from "./LabelledSwitch";
 import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
 import { PLATFORM_NAME, isProvisioned, platformSourceFixRoute, sourceReasonLine } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
@@ -43,33 +43,6 @@ function ConfigSection({ title, testId, children }: { title: string; testId: str
       <h3 className="pt-1.5 font-medium">{title}</h3>
       <div className="flex min-w-0 flex-col gap-1.5">{children}</div>
     </section>
-  );
-}
-
-/** A switch with its label on its left, on its own line (#2740: every switch carries a visible label). */
-function LabelledSwitch({
-  label,
-  note,
-  checked,
-  disabled,
-  onCheckedChange,
-  testId,
-}: {
-  label: string;
-  note?: string;
-  checked: boolean;
-  disabled: boolean;
-  onCheckedChange: (on: boolean) => void;
-  testId: string;
-}) {
-  return (
-    <label className="flex min-w-0 items-center justify-between gap-3">
-      <span className="flex min-w-0 flex-col">
-        <span>{label}</span>
-        {note && <span className="text-default-secondary">{note}</span>}
-      </span>
-      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-label={label} data-testid={testId} />
-    </label>
   );
 }
 
@@ -104,21 +77,32 @@ function SourceFixLinks({ source, platformSources }: { source: CtemSignalPathSou
   );
 }
 
-/** The paths one switch of the source feeds, as chips, this path marked first (#2740). */
+/**
+ * The paths one switch of the source feeds, as chips, this path marked first (#2740). A chip carries its path label
+ * alone and sizes to it (UX round 1 B1: never a cut chip); the current path is marked by the info tone and a leading
+ * check, with aria-current and a screen-reader "This path".
+ */
 function FeedChips({ pathId, feeds }: { pathId: string; feeds: readonly { path: string; label: string }[] }) {
   const { t_i18n } = useFormatter();
   const ordered = [...feeds].sort((a, b) => Number(b.path === pathId) - Number(a.path === pathId));
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="ctem-path-source-feeds">
-      {ordered.map((f) => (
-        <Chip
-          key={f.path}
-          label={f.path === pathId ? t_i18n("{label} (this path)", { label: f.label }) : f.label}
-          severity={f.path === pathId ? "info" : "neutral"}
-          data-testid="ctem-path-source-feed"
-          data-current={f.path === pathId}
-        />
-      ))}
+      {ordered.map((f) => {
+        const current = f.path === pathId;
+        return (
+          <span
+            key={f.path}
+            className="inline-flex shrink-0 items-center gap-1"
+            data-testid="ctem-path-source-feed"
+            data-current={current}
+            aria-current={current ? "true" : undefined}
+          >
+            {current && <Icon name="check" size={16} className="text-feedback-info-primary" aria-hidden />}
+            <Chip label={f.label} severity={current ? "info" : "neutral"} className="max-w-none shrink-0 whitespace-nowrap" />
+            {current && <span className="sr-only">{t_i18n("This path")}</span>}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -187,6 +171,9 @@ export function SourceConfig({
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
   const showObjects = provisioned && state !== "not_connected" && own.some((s) => (s.objects ?? []).length > 0 || (s.fleet_objects ?? []).length > 0);
   const showPaths = feeds.length > 1 || canExclude(source);
+  // A section renders only with content (UX round 1 B2): a source XTM One runs itself (the inventory pass) has no
+  // integration row, so it gets no empty Integrations title.
+  const showIntegrations = provisioned || Boolean(passField) || state === "not_connected";
 
   const togglePass = (enabled: boolean) => {
     if (passField === "attack_surface") onSave({ attack_surface: { ...attackSurface, enabled } }, t_i18n("Scheduled pass saved"));
@@ -219,6 +206,7 @@ export function SourceConfig({
         )}
       </div>
 
+      {showIntegrations && (
       <ConfigSection title={t_i18n("Integrations")} testId="ctem-path-source-integrations">
         {provisioned && state === "error" && <SourceFixLinks source={source} platformSources={platformSources} />}
         {provisioned && state !== "not_connected" && (
@@ -283,6 +271,7 @@ export function SourceConfig({
           </span>
         )}
       </ConfigSection>
+      )}
 
       {source.kind === "pir_playbook" && state !== "not_connected" && (
         <ConfigSection title={t_i18n("PIRs")} testId="ctem-path-source-pir-section">

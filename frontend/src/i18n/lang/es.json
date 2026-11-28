@@ -22264,7 +22264,7 @@
   "{count, plural, one {# notifier} other {# notifiers}}": "{count, plural, one {# notificador} other {# notificadores}}",
   "{count, plural, one {# trigger} other {# triggers}}": "{count, plural, one {# disparador} other {# disparadores}}",
   "{count, plural, one {# playbook} other {# playbooks}}": "{count, plural, one {# playbook} other {# playbooks}}",
-  "{label} (this path)": "{label} (esta ruta)",
+  "This path": "Esta ruta",
   "Runs on": "Se ejecuta en",
   "Every {count, plural, one {# hour} other {# hours}}": "Cada {count, plural, one {# hora} other {# horas}}",
   "No integration of this provider is connected.": "Ninguna integración de este proveedor está conectada.",
