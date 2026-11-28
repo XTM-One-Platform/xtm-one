@@ -537,6 +537,37 @@ async def test_a_pass_or_an_answer_needs_no_decision_item(
         assert "updated" in body
 
 
+async def test_a_move_to_waiting_decision_needs_an_open_decision_of_the_case(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2782: an agent's bare move to waiting_decision rests on an open ctem:<x>:<case id> decision."""
+    from app.services import ctem_gate_order
+
+    open_keys: set[str] = set()
+
+    async def _open(_db: object, case_id: str) -> set[str]:
+        assert case_id == str(env.case.id)
+        return set(open_keys)
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case", case_id=str(env.case.id), state="waiting_decision", reason="needs the asset owner"
+    )
+    assert refused.startswith("Refused:") and "create_work_item" in refused and "nothing was written" in refused
+    assert env.db.commits == commits and env.db.added == []
+    # Another case's decision does not count.
+    open_keys.add(f"ctem:evidence:{uuid.uuid4()}")
+    assert (
+        await env.call("update_ctem_case", case_id=str(env.case.id), state="waiting_decision", reason="x")
+    ).startswith("Refused:")
+    open_keys.add(f"ctem:evidence:{env.case.id}")
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), state="waiting_decision", reason="x")
+    )
+    assert "updated" in body
+
+
 _REMEDIATION_OPTIONS = [
     {"key": "A", "label": "Disable HTTP/2", "cost": 6000, "expected_loss_before": 500, "expected_loss_after": 50},
     {"key": "B", "label": "Upgrade", "cost": 45000, "expected_loss_before": 500, "expected_loss_after": 10},

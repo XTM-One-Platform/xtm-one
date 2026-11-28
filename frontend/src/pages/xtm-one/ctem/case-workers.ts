@@ -260,7 +260,7 @@ export function caseWork(input: {
 /** What the loop waits on for a case it owns while no run works it. */
 export type CaseLoopWait =
   /** A gate waits for a person: its key and the decision item, when one was filed. */
-  | { kind: "gate"; gate: string; workItemId: string | null }
+  | { kind: "gate"; gate: string; workItemId: string | null; title?: string | null }
   /** No gate is open: the stage the case reached. */
   | { kind: "stage"; state: CtemCaseState }
   /** Nothing the page can name. */
@@ -271,11 +271,16 @@ export type CaseLoopWait =
  * waiting, else the case state, read from the case itself, never a generic
  * sentence. A waiting record without a filed decision still names its gate.
  */
-export function caseLoopWait(input: { state: CtemCaseState | null | undefined; gates: readonly CtemCaseGateRecord[] | undefined }): CaseLoopWait {
-  const waiting = (input.gates ?? []).filter((g) => g.status === "waiting");
+export function caseLoopWait(input: {
+  state: CtemCaseState | null | undefined;
+  gates: readonly CtemCaseGateRecord[] | undefined;
+  /** The open decisions keyed outside the gate catalog (#2782): the row names one by its title. */
+  otherDecisions?: readonly CtemCaseGateRecord[];
+}): CaseLoopWait {
+  const waiting = [...(input.gates ?? []), ...(input.otherDecisions ?? [])].filter((g) => g.status === "waiting");
   if (waiting.length > 0) {
     const gate = waiting.reduce((a, b) => ((a.asked_at ?? "") >= (b.asked_at ?? "") ? a : b));
-    return { kind: "gate", gate: gate.key, workItemId: gate.work_item_id };
+    return { kind: "gate", gate: gate.key, workItemId: gate.work_item_id, title: gate.title ?? null };
   }
   return input.state ? { kind: "stage", state: input.state } : { kind: "unknown" };
 }

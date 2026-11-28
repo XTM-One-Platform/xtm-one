@@ -2326,6 +2326,10 @@ async def create_work_item(
 
     impact = normalize_fleet_impact(fleet_impact)
     gate_warning: str | None = None
+    from app.services.work_item_ask import cut_warnings
+
+    # A text the card's caps cut is said to the writer, never lost silently (#2778).
+    ask_warnings: list[str] = cut_warnings(ask) if structured_ask else []
 
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
@@ -2346,6 +2350,9 @@ async def create_work_item(
             gate_warning = await ctem_gate_order.mobilize_before_review_warning(
                 db, key, needs_human, user_id=user_uuid, workspace_id=workspace_id
             )
+            if needs_human and structured_ask:
+                # A case the card names must exist (#2778): a warning, never a refusal.
+                ask_warnings += await ctem_gate_order.case_reference_warnings(db, key, structured_ask, reason)
         if red_key:
             await _lock_main_red(db, red_key)
             carriers = await _main_red_carriers(db, user_id, red_key)
@@ -2459,6 +2466,7 @@ async def create_work_item(
                     waits_for_user_id=waits_for,
                     waits_for_group_ids=waits_for_groups,
                     now=now,
+                    ask=structured_ask,
                 )
             if grouped is not None:
                 group_item = grouped[0]
@@ -2556,8 +2564,9 @@ async def create_work_item(
 
         schedule_tag_check(item_id)
     created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
-    if gate_warning:
-        created = {**created, "warnings": [gate_warning]}
+    warnings = [w for w in (gate_warning, *ask_warnings) if w]
+    if warnings:
+        created = {**created, "warnings": warnings}
     return created
 
 
@@ -2704,6 +2713,10 @@ async def update_work_item(
     from app.services.work_item_ask import normalize_ask
 
     new_ask = normalize_ask(ask) if ask is not None else None
+    from app.services.work_item_ask import cut_warnings
+
+    # A text the card's caps cut is said to the writer, never lost silently (#2778).
+    ask_warnings: list[str] = cut_warnings(ask) if new_ask else []
     from app.services.work_item_programs import program_key as _program_root_key
     from app.services.work_item_programs import with_program_key
 
@@ -2873,6 +2886,9 @@ async def update_work_item(
                     user_id=item.user_id,
                     workspace_id=getattr(item, "workspace_id", None),
                 )
+            if new_ask and human:
+                # A case the card names must exist (#2778): a warning, never a refusal.
+                ask_warnings += await ctem_gate_order.case_reference_warnings(db, item.correlation_key, new_ask, reason)
         why_written = (
             any(v is not None for v in (status, blockers, refs, needs_human, ask)) or owner_agent_id == ""
         )  # re-routing a blocked item or refreshing its reason (context, never the blocker) stays free;
@@ -3170,8 +3186,9 @@ async def update_work_item(
 
         schedule_tag_check(item_id)
     updated = await _read_back(item_id, user_id=user_id, writer=writer)
-    if gate_warning and updated is not None:
-        updated = {**updated, "warnings": [gate_warning]}
+    warnings = [w for w in (gate_warning, *ask_warnings) if w]
+    if warnings and updated is not None:
+        updated = {**updated, "warnings": warnings}
     return updated
 
 
@@ -5348,7 +5365,8 @@ async def answer_work_item(
         fanned: list[uuid.UUID] = []
         from app.services import ctem_decision_groups
 
-        if ctem_decision_groups.is_group_key(item.correlation_key) and key:
+        group_answer = bool(ctem_decision_groups.is_group_key(item.correlation_key) and key)
+        if group_answer:
             # One answer to a grouped CTEM decision answers each case it lists (#2451).
             fanned, still_waiting = await ctem_decision_groups.fan_out(db, item, option=key, answer=answer, note=note)
             if still_waiting:
@@ -5358,8 +5376,9 @@ async def answer_work_item(
                     await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
                 return await _read_back(work_item_id, user_id=user_id, writer=writer)
         previous_status = item.status
-        item.status = "done" if fanned else "open"
-        if fanned:
+        # A group answered whole is done, even when each case went back to its own card (#2801).
+        item.status = "done" if fanned or group_answer else "open"
+        if fanned or group_answer:
             item.completed_at = now
             item.result = f"Answered for {len(fanned)} grouped case(s): {said}"
         item.claimed_by_agent_id = None

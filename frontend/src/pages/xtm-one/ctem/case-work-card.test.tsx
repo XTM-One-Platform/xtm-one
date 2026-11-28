@@ -87,6 +87,14 @@ describe("CaseWorkCard", () => {
     expect(screen.queryByRole("button", { name: "Switch on" })).toBeNull();
   });
 
+  it("names a decision keyed outside the gate catalog by its title (#2782)", () => {
+    const other = gate({ key: "ctem:evidence", title: "Provide the exploit evidence", work_item_id: "wi-ev" });
+    const wait = caseLoopWait({ state: "waiting_decision", gates: [], otherDecisions: [other] });
+    expect(wait).toMatchObject({ kind: "gate", gate: "ctem:evidence", workItemId: "wi-ev", title: "Provide the exploit evidence" });
+    renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);
+    expect(screen.getByTestId("ctem-case-work-gate")).toHaveTextContent("Waiting for: Provide the exploit evidence");
+  });
+
   it("puts the gate and the last run on one row grid", () => {
     const wait = caseLoopWait({ state: "analyzing", gates: [gate({ key: "ctem.analyst_review", work_item_id: "wi-1" })] });
     renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);

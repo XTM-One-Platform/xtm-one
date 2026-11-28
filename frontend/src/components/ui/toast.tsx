@@ -25,7 +25,7 @@ import { showToast } from "./toast-list";
 // Types
 // ---------------------------------------------------------------------------
 
-export type ToastVariant = "default" | "success" | "error" | "info";
+export type ToastVariant = "default" | "success" | "error" | "info" | "warning";
 
 /** One button that also dismisses the toast; `label` doubles as its
  *  screen-reader alternative, so it must say what clicking does. */
@@ -65,6 +65,7 @@ const VARIANT_SEVERITY: Record<ToastVariant, SnackbarSeverity> = {
   success: "success",
   error: "error",
   info: "info",
+  warning: "warning",
 };
 
 // ---------------------------------------------------------------------------

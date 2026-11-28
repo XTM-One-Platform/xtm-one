@@ -476,6 +476,11 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   owner_fleet?: CtemCaseOwnerFleet | null;
   /** One resolved decision record per gate the case met (#1518); absent on an API older than #1524. */
   gates?: CtemCaseGateRecord[];
+  /**
+   * The open decisions of the case keyed outside the gate catalog (#2782), one gate-shaped record each
+   * with its `title`: drawn with the same decision card; absent on an older API.
+   */
+  other_decisions?: CtemCaseGateRecord[];
   /** Why the case has its owner, as data (#2571): null when unexplained; absent on an API older than #2571. */
   owner_basis?: CtemCaseOwnerBasis | null;
   /** The other asset group owners who contribute (#2560); `group` is absent on an API older than #2571. */
@@ -531,6 +536,8 @@ export interface CtemCaseGateRecipient {
  */
 export interface CtemCaseGateRecord {
   key: string;
+  /** A decision outside the gate catalog (#2782): its work item's title, the name the page shows. */
+  title?: string | null;
   phase: string | null;
   status: CtemCaseGateStatus;
   asked_at: string | null;

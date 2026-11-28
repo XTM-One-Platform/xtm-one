@@ -91,6 +91,7 @@ const GALLERY_TOASTS: Record<ToastVariant, { title: string; description?: string
   default: { title: "Copied to clipboard" },
   success: { title: "Agent updated", description: "The new persona applies to the next conversation." },
   error: { title: "Could not save", description: "The server refused the change." },
+  warning: { title: "The sync ran with a warning", description: "The rows landed; a step after them did not finish." },
   info: {
     title: "A new version is available",
     description: "This tab still runs the previous version. Reload it to use the new one.",

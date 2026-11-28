@@ -535,7 +535,11 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 "properties": {
                     "trigger_path": path_enum,
                     "source_provider": {"type": "string", "description": "Who saw it, or 'manual'."},
-                    "subject_kind": {"type": "string", "enum": list(SUBJECT_KINDS)},
+                    "subject_kind": {
+                        "type": "string",
+                        "enum": list(SUBJECT_KINDS),
+                        "description": "relevant_threat takes threat only; a CVE on a running product is new_vulnerability.",
+                    },
                     "subject_ref": {"type": "string", "description": "Stable key: host, IP, URL, CPE, CVE, account."},
                     "lens": lens_enum,
                     "source_external_id": {"type": "string"},

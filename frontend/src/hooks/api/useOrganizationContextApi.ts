@@ -655,7 +655,15 @@ export interface OrganizationSync {
   run_as_name?: string | null;
   next_run_at: string | null;
   last_run_at: string | null;
-  last_result: { added?: number; updated?: number; removed?: number; version?: number | null; error?: string | null } | null;
+  last_result: {
+    added?: number;
+    updated?: number;
+    removed?: number;
+    version?: number | null;
+    error?: string | null;
+    /** #2781: the sync landed but a post-step (the held-signal recheck) failed. */
+    warning?: string | null;
+  } | null;
 }
 
 export type OrganizationSyncBody = Pick<
@@ -853,9 +861,13 @@ export function useRunOrganizationSync() {
   });
 }
 
-/** What Run all syncs did: the syncs that ran and those whose run was refused or failed (#1548). */
+/**
+ * What Run all syncs did: the syncs that ran, those whose run was refused or failed (#1548), and those that ran with a
+ * warning (`last_result.warning`, #2795), counted apart from both.
+ */
 export interface RunAllSyncsResult {
   ran: number;
+  warned: number;
   failed: number;
 }
 
@@ -869,18 +881,20 @@ export function useRunOrganizationSyncs() {
   return useMutation<RunAllSyncsResult, Error, string[]>({
     mutationFn: async (ids) => {
       let ran = 0;
+      let warned = 0;
       let failed = 0;
       for (const id of ids) {
         try {
           const done: OrganizationSync = await api.post(`/organization-context/syncs/${id}/run`, {});
           if (done?.last_result?.error) failed += 1;
+          else if (done?.last_result?.warning) warned += 1;
           else ran += 1;
         } catch {
           failed += 1;
         }
         await qc.invalidateQueries({ queryKey: KEY });
       }
-      return { ran, failed };
+      return { ran, warned, failed };
     },
     meta: { suppressGlobalErrorToast: true },
   });

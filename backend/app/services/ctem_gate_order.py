@@ -29,17 +29,23 @@ One rule holds at the case write (#1954): a gate reaches ``waited`` only
 through its decision. :func:`waited_refusal` refuses a ``waited`` gate event
 while no open ``needs_human`` decision item keyed for that gate and case
 exists (:func:`open_gate_item_keys`), so a case never reads "waiting for a
-person" with nothing in anyone's Waiting for you list.
+person" with nothing in anyone's Waiting for you list. The same holds for an
+agent's bare state move to ``waiting_decision`` (#2782):
+:func:`waiting_state_refusal` refuses it while no open decision of the case,
+whatever its key, exists.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from collections.abc import Mapping
 from typing import Any
 
 from app.services.ctem_case_gate_records import GATE_ITEM_PREFIXES
+
+logger = logging.getLogger(__name__)
 
 MOBILIZE = "ctem.mobilize"
 #: The decisions a mobilize decision waits behind, for the same case.
@@ -105,6 +111,55 @@ def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
         "question, options and recommendation, addressed to the person or team who decides), then write the "
         "gate outcome waited"
     )
+
+
+def waiting_state_refusal(case_id: str, open_keys: set[str]) -> str | None:
+    """Why an agent may not move *case_id* to ``waiting_decision`` without a waited gate (#2782), else ``None``. Pure.
+
+    The case then waits on a decision the page can show: one open ``needs_human``
+    item keyed ``ctem:<x>:<case id>`` (*open_keys*, :func:`open_gate_item_keys`).
+    A person moving the state by hand with a reason is not bound (UX r1 B2 on #1515).
+    """
+    if any(key.startswith("ctem:") and key.endswith(case_id) for key in open_keys):
+        return None
+    return (
+        f"the case waits only on a decision, and no open decision item of this case exists: file it first with "
+        f"create_work_item (correlation_key ctem:, then what it decides, then :{case_id}, for instance "
+        f"ctem:evidence:{case_id}; needs_human true, an ask with "
+        "its question, options and recommendation, addressed to the person or team who decides), then move the "
+        "case to waiting_decision; nothing was written"
+    )
+
+
+async def pending_decisions(case_id: str, *, user_id: str) -> list[dict[str, Any]]:
+    """The open decisions *case_id* waits on that *user_id* may read (#2782), oldest first.
+
+    One ``{work_item_id, key, title, deadline}`` per open ``needs_human`` item keyed
+    ``ctem:<x>:<case id>``, read with the user's own work-item visibility. Never
+    raises: an unreadable list answers ``[]``, so a case read never fails on it.
+    """
+    from app.services import work_item as work_item_service
+
+    try:
+        found = await work_item_service.list_work_items(
+            user_id=user_id, correlation_key_prefix="ctem:", search=case_id, open_only=True, limit=50
+        )
+    except Exception:
+        logger.warning("CTEM case pending decisions unreadable; the case read answers without them", exc_info=True)
+        return []
+    pending = [
+        {
+            "work_item_id": item.get("id"),
+            "key": item.get("correlation_key"),
+            "title": item.get("title"),
+            "deadline": item.get("due_at") or ((item.get("ask") or {}).get("deadline")),
+            "_at": item.get("created_at") or "",
+        }
+        for item in found
+        if item.get("needs_human") and str(item.get("correlation_key") or "").endswith(case_id)
+    ]
+    pending.sort(key=lambda p: str(p.pop("_at")))
+    return pending
 
 
 async def open_gate_item_keys(db: Any, case_id: str) -> set[str]:
@@ -182,6 +237,78 @@ async def mobilize_before_review_warning(
     return mobilize_blocked_message(sorted({str(k) for k in waiting})) if waiting else None
 
 
+#: An option or context saying another case holds part of the exposure (#2778).
+_OTHER_CASE_CLAIM = re.compile(
+    r"\b(?:tracked|held|followed|covered|handled|kept)\b[^.\n]{0,60}?\b(?:its own|own|a separate|separate|"
+    r"another|a new|new|other|a different|different)\s+case\b",
+    re.I,
+)
+_UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
+
+
+def claims_other_case(ask: object) -> bool:
+    """Whether a gate card says another case tracks part of the exposure. Pure."""
+    if not isinstance(ask, Mapping):
+        return False
+    texts = [ask.get("context")]
+    texts += [o.get(f) for o in ask.get("options") or [] if isinstance(o, Mapping) for f in ("label", "effect")]
+    return any(isinstance(text, str) and _OTHER_CASE_CLAIM.search(text) for text in texts)
+
+
+def _case_ids(text: object) -> set[uuid.UUID]:
+    return {uuid.UUID(found) for found in _UUID.findall(text)} if isinstance(text, str) else set()
+
+
+def missing_case_message(subject: str) -> str:
+    """The warning on a gate whose key names no case. Pure."""
+    return (
+        f"this gate's key names the case {subject}, and no such case exists: the decision will not show on any "
+        "case page and its answer resumes nothing. Check the case id and file the decision under the right key"
+    )
+
+
+UNCHECKED_CASE_CLAIM_MESSAGE = (
+    "this gate card says another case tracks part of the exposure, and no existing case id is cited in "
+    "blocked_reason: the platform cannot check that case exists. Cite its id in blocked_reason, or, when "
+    "record_ctem_signal was refused or not yet recorded, write the exposure as pending with its retry item "
+    "instead of tracked in a case"
+)
+
+
+async def case_reference_warnings(db: Any, correlation_key: object, ask: object, blocked_reason: object) -> list[str]:
+    """What a CTEM gate card states about cases that the platform could not find (#2778). Never a refusal.
+
+    (1) The case the gate key names must exist. (2) A card saying another case
+    tracks part of the exposure must cite that case's id in *blocked_reason*
+    (the card itself carries no id, #776), and that case must exist. One read of
+    ``ctem_cases``; a key that is not a CTEM gate reads nothing.
+    """
+    found = gate_of(correlation_key)
+    if found is None:
+        return []
+    try:
+        subject = uuid.UUID(found[1])
+    except ValueError:
+        subject = None
+    claim = claims_other_case(ask)
+    cited = _case_ids(blocked_reason) - ({subject} if subject else set())
+    wanted = ({subject} if subject else set()) | (cited if claim else set())
+    if not wanted:
+        return [UNCHECKED_CASE_CLAIM_MESSAGE] if claim else []
+    from sqlalchemy import select
+
+    from app.models.ctem_case import CtemCase
+
+    rows = await db.execute(select(CtemCase.id).where(CtemCase.id.in_(sorted(wanted, key=str))))
+    existing = {uuid.UUID(str(row)) for row in rows.scalars().all() if row}
+    warnings: list[str] = []
+    if subject is not None and subject not in existing:
+        warnings.append(missing_case_message(found[1]))
+    if claim and not (cited & existing):
+        warnings.append(UNCHECKED_CASE_CLAIM_MESSAGE)
+    return warnings
+
+
 def _question(ask: object) -> str:
     if not isinstance(ask, Mapping):
         return ""
@@ -217,13 +344,19 @@ def refuse_run_pointer(correlation_key: object, ask: object) -> None:
 __all__ = [
     "MOBILIZE",
     "MOBILIZE_PREREQUISITES",
+    "UNCHECKED_CASE_CLAIM_MESSAGE",
+    "case_reference_warnings",
+    "claims_other_case",
     "gate_of",
+    "missing_case_message",
     "mobilize_before_review_warning",
     "mobilize_blocked_message",
     "open_gate_item_keys",
+    "pending_decisions",
     "prerequisite_keys",
     "refuse_question_change",
     "refuse_run_pointer",
     "waited_item_keys",
     "waited_refusal",
+    "waiting_state_refusal",
 ]

@@ -9,7 +9,9 @@
  * (`gates`) alone, never from who works the case, so a running, failed or
  * unknown worker never hides a waiting decision. A gate no section of the page
  * owns (`ctem.accept_risk`, `ctem.close_without_retest`, any gate added later)
- * gets its decision card here; a gate a section owns is answered in it.
+ * gets its decision card here; a gate a section owns is answered in it. A
+ * decision keyed outside the gate catalog (`other_decisions`, #2782, e.g.
+ * `ctem:evidence:<case>`) is named by its title and answered here too.
  */
 import { useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
@@ -40,9 +42,15 @@ const RECIPIENT_FALLBACK = {
 } as const;
 
 /** The waiting records of a case, oldest asked first; none unless the case waits for a decision or a record waits. */
-export function waitingGateRecords(state: CtemCaseState | null | undefined, gates: readonly CtemCaseGateRecord[] | undefined): CtemCaseGateRecord[] {
+export function waitingGateRecords(
+  state: CtemCaseState | null | undefined,
+  gates: readonly CtemCaseGateRecord[] | undefined,
+  others: readonly CtemCaseGateRecord[] | undefined = undefined,
+): CtemCaseGateRecord[] {
   if (state === "resolved" || state === "accepted_risk") return [];
-  return (gates ?? [])
+  // A catalog gate's item is never listed twice (#2782): the backend keeps it out of `others`, the page checks too.
+  const items = new Set((gates ?? []).map((g) => g.work_item_id).filter(Boolean));
+  return [...(gates ?? []), ...(others ?? []).filter((o) => !o.work_item_id || !items.has(o.work_item_id))]
     .filter((g) => g.status === "waiting")
     .slice()
     .sort((a, b) => (a.asked_at ?? "").localeCompare(b.asked_at ?? ""));
@@ -56,12 +64,13 @@ function WaitingGateLine({ record, recipient }: { record: CtemCaseGateRecord; re
   // Answered and being applied (#2746): no link to a decision that is no longer open.
   const answer = useGateAnswerState(record, record.status === "waiting");
   const linkAway = !!record.work_item_id && !item && !isLoading && !answer;
+  const gate = record.title || t_i18n(GATE_LABEL[record.key] ?? "Gate");
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ctem-case-waiting-gate" data-gate={record.key}>
       <span>
         {answer
-          ? t_i18n("Decision recorded: {gate}", { gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })
-          : t_i18n("Waits for {name}: {gate}", { name: recipient, gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })}
+          ? t_i18n("Decision recorded: {gate}", { gate })
+          : t_i18n("Waits for {name}: {gate}", { name: recipient, gate })}
       </span>
       {linkAway && (
         <Button variant="outline" size="sm" className="gap-1.5" asChild>
@@ -78,16 +87,19 @@ function WaitingGateLine({ record, recipient }: { record: CtemCaseGateRecord; re
 export function CaseWaitingGates({
   state,
   gates,
+  otherDecisions,
   history,
   personName,
 }: {
   state: CtemCaseState | null | undefined;
   gates?: readonly CtemCaseGateRecord[];
+  /** The open decisions keyed outside the gate catalog (#2782), answered on this card. */
+  otherDecisions?: readonly CtemCaseGateRecord[];
   history: readonly CtemCaseEvent[];
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n } = useFormatter();
-  const live = waitingGateRecords(state, gates);
+  const live = waitingGateRecords(state, gates, otherDecisions);
   // The last waiting records stay for the collapse once the loop applied them (#2746): the card folds away, never jumps.
   const kept = useRef<CtemCaseGateRecord[]>(live);
   if (live.length > 0) kept.current = live;

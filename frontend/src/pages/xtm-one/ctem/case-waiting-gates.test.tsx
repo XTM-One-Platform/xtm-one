@@ -213,6 +213,27 @@ describe("Waits for a decision (#2464)", () => {
     expect(screen.queryByTestId("ctem-case-waiting-gate-open")).toBeNull();
   });
 
+  it("draws a decision keyed outside the gate catalog with its title and its card (#2782)", () => {
+    state.byId["wi-evidence"] = OPEN("wi-evidence");
+    const other = rec({ key: "ctem:evidence", title: "Provide the exploit evidence", work_item_id: "wi-evidence", phase: null });
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseWaitingGates state="waiting_decision" gates={[]} otherDecisions={[other]} history={[]} />
+      </MemoryRouter>,
+    );
+    const line = screen.getByTestId("ctem-case-waiting-gate");
+    expect(line).toHaveTextContent("Waits for SecOps: Provide the exploit evidence");
+    const card = within(screen.getByTestId("ctem-case-waiting-gate-decisions")).getByTestId("unified-decision-card");
+    expect(card.getAttribute("data-item")).toBe("wi-evidence");
+    expect(screen.queryByText("Open the decision")).toBeNull();
+  });
+
+  it("never draws a catalog gate's decision twice", () => {
+    const gate = rec({ key: "ctem.accept_risk", work_item_id: "wi-risk" });
+    const twin = rec({ key: "ctem:accept-risk", title: "Accept", work_item_id: "wi-risk" });
+    expect(waitingGateRecords("waiting_decision", [gate], [twin]).map((r) => r.key)).toEqual(["ctem.accept_risk"]);
+  });
+
   it("draws nothing when no gate waits or the case is closed", () => {
     expect(waitingGateRecords("waiting_decision", [rec({ status: "answered" })])).toEqual([]);
     expect(waitingGateRecords("resolved", [rec({})])).toEqual([]);
@@ -233,6 +254,7 @@ describe("Waits for a decision (#2464)", () => {
       "the administrators",
       "Waits for a decision",
       "Waits for {name}: {gate}",
+      "Waiting for: {decision}",
       "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.",
       "This gate waits for a person: the decision is in their Waiting for you list.",
     ];

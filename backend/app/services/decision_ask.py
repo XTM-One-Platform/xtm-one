@@ -286,22 +286,98 @@ def _deadline(value: object) -> str | None:
     return parsed.astimezone(UTC).isoformat()
 
 
-def _context(value: object) -> str:
-    """The context lines, each trimmed, blank lines dropped, line breaks kept."""
+def _context_text(value: object) -> str:
+    """The context lines, each trimmed, blank lines dropped, line breaks kept, before any cut."""
     if value in (None, ""):
         return ""
     if isinstance(value, list):
         value = "\n".join(str(line) for line in value)
     lines = [" ".join(line.split()) for line in str(value).splitlines()]
-    return fit("\n".join(line for line in lines if line), MAX_CONTEXT_CHARS)
+    return "\n".join(line for line in lines if line)
 
 
-# The card marks the recommended option itself (dev-docs/human-gates.md, J.1):
-# an effect that opens with the word repeats it beside the pill.
-_RECOMMENDED_LEAD = re.compile(r"^\W*recommended\b", re.IGNORECASE)
-RECOMMENDED_EFFECT_MESSAGE = (
-    "the card marks the recommended option itself: drop the leading 'Recommended' from ask.options[].effect"
+def _context(value: object) -> str:
+    """The context as stored: :func:`_context_text` within :data:`MAX_CONTEXT_CHARS`."""
+    return fit(_context_text(value), MAX_CONTEXT_CHARS)
+
+
+def _cut_warning(field: str, text: str, limit: int) -> str | None:
+    if len(text) <= limit:
+        return None
+    kept = fit(text, limit)[: -len(CUT_MARK)].rstrip()
+    tail = " ".join(kept.split()[-6:])
+    return (
+        f"ask.{field} is {len(text)} characters and the card shows {limit}: it was cut after '{tail}', "
+        "so the reader does not see the rest. Rewrite it shorter with the decisive facts first"
+    )
+
+
+def cut_warnings(value: object) -> list[str]:
+    """What of a written ask its caps cut, one warning per text, for the caller to shorten on purpose (#2778).
+
+    :func:`normalize_ask` cuts the question, the context and the option texts
+    to their caps with a visible mark; the person reads the cut text, so the
+    writer is told which text lost its end. Pure; an ask it cannot read
+    answers no warning (:func:`normalize_ask` refuses it).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else None
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, dict):
+        return []
+    found: list[str | None] = []
+    if value.get("question") is not None:
+        found.append(_cut_warning("question", " ".join(str(value["question"]).split()), MAX_QUESTION_CHARS))
+    found.append(_cut_warning("context", _context_text(value.get("context")), MAX_CONTEXT_CHARS))
+    options = value.get("options")
+    for raw in options if isinstance(options, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        key = " ".join(str(raw.get("key") or "").split())
+        for name, limit in (("label", MAX_LABEL_CHARS), ("effect", MAX_EFFECT_CHARS)):
+            if raw.get(name) is not None:
+                text = " ".join(str(raw[name]).split())
+                found.append(_cut_warning(f"options[{key}].{name}", text, limit))
+    return [warning for warning in found if warning]
+
+
+# The card marks the recommended option itself (dev-docs/human-gates.md, J.1),
+# from ask.recommendation: a label or an effect that carries the mark too shows
+# a second recommendation beside the pill (#2799). A mark is the word as a
+# marker: in parentheses or brackets, opening the text, or closing it after a
+# separator. The word used in a sentence ("the vendor's recommended patch") is
+# not a mark.
+_MARK_WORD = r"(?:recommended|recommand[ée]e?s?)"
+_RECOMMENDED_MARK = re.compile(
+    rf"[(\[]\s*{_MARK_WORD}\s*[)\]]"
+    rf"|^\W*{_MARK_WORD}\b\W*"
+    rf"|[-\u2013\u2014:,;|/]\s*{_MARK_WORD}\W*$",
+    re.IGNORECASE,
 )
+RECOMMENDED_EFFECT_MESSAGE = (
+    "the card marks the recommended option itself: drop 'recommended' from ask.options[].label/effect "
+    "and set ask.recommendation"
+)
+
+
+def has_recommended_mark(text: object) -> bool:
+    """Whether *text* carries a 'recommended' marker the card would repeat (#2799)."""
+    return bool(text) and _RECOMMENDED_MARK.search(str(text)) is not None
+
+
+def without_recommended_mark(text: object) -> str:
+    """*text* without its 'recommended' markers, for an ask stored before the guard (#2799).
+
+    The renderers mark the recommended option from ask.recommendation alone; a
+    text that is nothing but the mark is kept as written.
+    """
+    raw = "" if text is None else str(text)
+    if not has_recommended_mark(raw):
+        return raw
+    cleaned = " ".join(_RECOMMENDED_MARK.sub(" ", raw).split())
+    return cleaned or raw
 
 
 def keeps_waiting(option: object) -> bool:
@@ -325,13 +401,15 @@ def _options(value: object) -> list[dict[str, Any]]:
         label = _text(raw.get("label"), MAX_LABEL_CHARS) or key
         if not key:
             raise ValueError("every ask option needs a key")
+        if has_recommended_mark(label):
+            raise ValueError(f"ask.options[{key}].label carries a 'recommended' mark: {RECOMMENDED_EFFECT_MESSAGE}")
         if key.casefold() in seen:
             raise ValueError(f"ask option key {key!r} is given twice")
         seen.add(key.casefold())
         option: dict[str, Any] = {"key": key, "label": label}
         effect = _text(raw.get("effect"), MAX_EFFECT_CHARS)
-        if _RECOMMENDED_LEAD.match(effect):
-            raise ValueError(RECOMMENDED_EFFECT_MESSAGE)
+        if has_recommended_mark(effect):
+            raise ValueError(f"ask.options[{key}].effect carries a 'recommended' mark: {RECOMMENDED_EFFECT_MESSAGE}")
         if effect:
             option["effect"] = effect
         keeps = raw.get("keeps_waiting")
@@ -754,8 +832,8 @@ def run_question_text(ask: dict[str, Any]) -> str:
         lines = []
         for option in options:
             mark = " (recommended)" if option.get("key") == recommended else ""
-            effect = f": {option['effect']}" if option.get("effect") else ""
-            lines.append(f"- {option['key']}. {option['label']}{mark}{effect}")
+            effect = f": {without_recommended_mark(option['effect'])}" if option.get("effect") else ""
+            lines.append(f"- {option['key']}. {without_recommended_mark(option['label'])}{mark}{effect}")
         parts.append("Options:\n" + "\n".join(lines))
     return "\n\n".join(parts)
 
@@ -819,9 +897,10 @@ def ask_lines(ask: object) -> list[str]:
     recommended = ask.get("recommendation")
     for option in ask.get("options") or []:
         mark = " (recommended)" if option.get("key") == recommended else ""
-        effect = f": {option['effect']}" if option.get("effect") else ""
+        effect = f": {without_recommended_mark(option['effect'])}" if option.get("effect") else ""
         stays = " (keeps it waiting)" if keeps_waiting(option) else ""
-        lines.append(f"    - [{option.get('key')}] {option.get('label')}{mark}{stays}{effect}")
+        label = without_recommended_mark(option.get("label"))
+        lines.append(f"    - [{option.get('key')}] {label}{mark}{stays}{effect}")
     if ask.get("deadline"):
         lines.append(f"    - answer needed by {ask['deadline']}")
     for link in ask.get("links") or []:
