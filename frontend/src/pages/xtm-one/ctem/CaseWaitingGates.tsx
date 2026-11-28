@@ -2,22 +2,25 @@
 
 /**
  * The decisions a case waits on, at the top of its page (#2464): one line per
- * waiting gate record, "Waits for <recipient>: <gate>", with "Open the
- * decision" when an item was filed. Read from the case's resolved records
+ * waiting gate record, "Waits for <recipient>: <gate>". The decision is
+ * answered on the page: no link away while its card renders in place (here or
+ * in its section); "Open the decision", a DS button, only when the viewer
+ * cannot read the item on the page. Read from the case's resolved records
  * (`gates`) alone, never from who works the case, so a running, failed or
  * unknown worker never hides a waiting decision. A gate no section of the page
  * owns (`ctem.accept_risk`, `ctem.close_without_retest`, any gate added later)
  * gets its decision card here; a gate a section owns is answered in it.
  */
 import { Link as RouterLink } from "react-router-dom";
-import { Link } from "@filigran/design-system";
+import { Icon } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { workItemPath } from "@/lib/task-routes";
 import { GATE_LABEL, REMEDIATION_GATE } from "./case-gates";
 import { CASE_FACT_ICON, CaseCardTitleText } from "./case-icons";
-import { CaseGateDecision } from "./CaseGateDecision";
+import { CaseGateDecision, useGateDecisionItem } from "./CaseGateDecision";
 import { MOBILIZATION_GATES } from "./CaseMobilization";
 import { REVIEW_GATE } from "./case-review";
 import { VALIDATION_GATE } from "./case-validation";
@@ -40,6 +43,27 @@ export function waitingGateRecords(state: CtemCaseState | null | undefined, gate
     .filter((g) => g.status === "waiting")
     .slice()
     .sort((a, b) => (a.asked_at ?? "").localeCompare(b.asked_at ?? ""));
+}
+
+/** One waiting line; its link away only when the decision card cannot render on the page. */
+function WaitingGateLine({ record, recipient }: { record: CtemCaseGateRecord; recipient: string }) {
+  const { t_i18n } = useFormatter();
+  // The same read as the card's own (CaseGateDecision, the sections): found, the card is on the page.
+  const { item, isLoading } = useGateDecisionItem(record, true);
+  const linkAway = !!record.work_item_id && !item && !isLoading;
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ctem-case-waiting-gate" data-gate={record.key}>
+      <span>{t_i18n("Waits for {name}: {gate}", { name: recipient, gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })}</span>
+      {linkAway && (
+        <Button variant="outline" size="sm" className="gap-1.5" asChild>
+          <RouterLink to={workItemPath(record.work_item_id!)} data-testid="ctem-case-waiting-gate-open">
+            <Icon name="external-link" size={16} />
+            {t_i18n("Open the decision")}
+          </RouterLink>
+        </Button>
+      )}
+    </li>
+  );
 }
 
 export function CaseWaitingGates({
@@ -72,18 +96,7 @@ export function CaseWaitingGates({
       <CardContent className="space-y-3 content-base">
         <ul className="space-y-1">
           {waiting.map((record) => (
-            <li key={record.key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="ctem-case-waiting-gate" data-gate={record.key}>
-              <span>
-                {t_i18n("Waits for {name}: {gate}", { name: recipient(record), gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })}
-              </span>
-              {record.work_item_id && (
-                <Link asChild>
-                  <RouterLink to={workItemPath(record.work_item_id)} data-testid="ctem-case-waiting-gate-open">
-                    {t_i18n("Open the decision")}
-                  </RouterLink>
-                </Link>
-              )}
-            </li>
+            <WaitingGateLine key={record.key} record={record} recipient={recipient(record)} />
           ))}
         </ul>
         {inline.length > 0 && (

@@ -42,6 +42,7 @@ import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline
 import { workItemPath } from "@/lib/task-routes";
 import { cn } from "@/lib/utils";
 import { GATE_LABEL } from "./case-gates";
+import { focusGateDecision, useGateDecisionItem } from "./CaseGateDecision";
 import type { CaseAutomation, CaseLoopWait, CaseWork } from "./case-workers";
 
 interface CaseWorkCardProps {
@@ -342,6 +343,9 @@ function LoopRow({ testId, children }: { testId: string; children: React.ReactNo
 function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: CtemCaseRun | null; unknownAgent: string }) {
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
+  const gateWait = wait.kind === "gate" ? wait : null;
+  // Readable, the decision's card is on this page (the waiting card or its section): point to it, never away.
+  const { item: decisionInPage } = useGateDecisionItem({ work_item_id: gateWait?.workItemId ?? null }, !!gateWait?.workItemId);
   const outcome = last ? timelineOutcome(last.outcome, last.status) : null;
   const ended = last ? (last.completed_at ?? last.created_at) : null;
   return (
@@ -352,7 +356,21 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
             <span className="content-compact text-default-secondary">{t_i18n("Waits for a decision")}</span>
             <span className="font-medium content-base">{t_i18n(GATE_LABEL[wait.gate] ?? "A decision")}</span>
           </span>
-          {wait.workItemId && (
+          {wait.workItemId && decisionInPage && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              data-testid="ctem-case-work-gate-answer"
+              onClick={() => {
+                if (!focusGateDecision(wait.gate)) navigate(workItemPath(wait.workItemId!));
+              }}
+            >
+              <Icon name="arrow-down" size={16} />
+              {t_i18n("Answer on this page")}
+            </Button>
+          )}
+          {wait.workItemId && !decisionInPage && (
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate(workItemPath(wait.workItemId!))}>
               <Icon name="external-link" size={16} />
               {t_i18n("Open the decision")}

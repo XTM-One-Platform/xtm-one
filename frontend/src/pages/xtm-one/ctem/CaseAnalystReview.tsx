@@ -23,7 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
-import { useGateDecisionItem } from "./CaseGateDecision";
+import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
@@ -151,10 +151,12 @@ export function CaseAnalystReview({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
-              readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={items.refetch}
-            />
+          <GateDecisionAnchor gate={REVIEW_GATE}>
+            <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+                readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+                onAnswered={items.refetch}
+              />
+          </GateDecisionAnchor>
         )}
         {waiting && !item && !items.isLoading && record?.decision_filed === false && (
           <p className="text-default-secondary" data-testid="ctem-case-analyst-review-not-filed">
