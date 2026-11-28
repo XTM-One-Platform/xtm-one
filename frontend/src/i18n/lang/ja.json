@@ -22292,5 +22292,12 @@
   "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
   "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
   "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
-  "Decision recorded: {gate}": "判断を記録しました: {gate}"
+  "Decision recorded: {gate}": "判断を記録しました: {gate}",
+  "Waiting for webhook": "Webhook 待ち",
+  "On, no delivery yet": "オン、まだ配信なし",
+  "Last delivery: {date}": "最終配信: {date}",
+  "Use on this source": "このソースで使用",
+  "OAuth default app": "OAuth 既定アプリ",
+  "Integration used on this source": "このソースでインテグレーションを使用します",
+  "Integration taken off this source": "このソースからインテグレーションを外しました"
 }
