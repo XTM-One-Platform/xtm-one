@@ -66,6 +66,8 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
                 # The field writes mark_sub_agent_tasks_cancelled_for_runs
                 # delegates to (shared with the emergency stop's sweep).
                 "app.services.sub_agent._mark_task_cancelled",
+                # Its child run ended cancelled with the task (#2721), same path.
+                "app.services.sub_agent._cancel_child_run",
             }
         ),
         "the refused cancel ('Task is already terminal'): request_cancel returns "

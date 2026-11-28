@@ -55,11 +55,18 @@ async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeyp
     user_id, agent_id = str(uuid.uuid4()), str(uuid.uuid4())
     running, done, foreign = (str(uuid.uuid4()) for _ in range(3))
     calls: list[tuple[str, str, bool, str | None]] = []
+    by_runs: set[str | None] = set()
 
     async def _cancel(
-        task_id: str, requester_id: str, *, is_admin: bool = False, spawned_by: str | None = None
+        task_id: str,
+        requester_id: str,
+        *,
+        is_admin: bool = False,
+        spawned_by: str | None = None,
+        cancelled_by_run_id: str | None = None,
     ) -> dict[str, Any] | None:
         calls.append((task_id, requester_id, is_admin, spawned_by))
+        by_runs.add(cancelled_by_run_id)
         if task_id == running:
             return {"task_id": task_id, "status": "cancelled", "was_running": True}
         if task_id == done:
@@ -78,6 +85,9 @@ async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeyp
     assert "nope" in lines[3]
     # Never as an administrator, always narrowed to this agent's own tasks.
     assert {(c[1], c[2], c[3]) for c in calls} == {(user_id, False, agent_id)}
+    # The run the agent cancels from is named, so the task's error says who stopped it (#2721).
+    (by_run,) = by_runs
+    assert by_run is not None
 
 
 class _Result:

@@ -370,9 +370,11 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     "run.failed": {
         "description": (
             "A run failed: an assignment run, or a delegated child run (no assignment; parent_run_id "
-            "names the run that delegated it)."
+            "names the run that delegated it). A delegated child run whose background task was "
+            "cancelled (by its parent run, the user or an administrator) is stored cancelled and "
+            "raises it with reason cancelled and cancelled true; filter cancelled false for failures only."
         ),
-        "filter_keys": (*_RUN_KEYS, "error"),
+        "filter_keys": (*_RUN_KEYS, "error", "cancelled"),
     },
     "run.orphaned": {
         "description": "A run or background task ended without finishing (its worker gone) while holding work items.",
@@ -935,6 +937,8 @@ def run_data(
         # A completed run that stopped before its task was done, said outright:
         # a listener never has to know the list of unfinished stop reasons.
         "partial": bool(stop_reason),
+        # A run stopped on purpose (its task cancelled, #2721), not a failure.
+        "cancelled": reason == "cancelled",
         # The agent whose run it is raised the event (ignore_self_triggered_events).
         "actor_agent_id": _str(agent_id),
         "participant_agent_ids": sorted(participants),
