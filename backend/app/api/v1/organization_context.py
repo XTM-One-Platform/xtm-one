@@ -862,8 +862,12 @@ class AssetLookupMatch(BaseModel):
     criticality: Any = None
     internet_facing: Any = None
     owner: Any = None
-    #: How many assets hold the key (a shared IP): the first by name answers.
+    #: How many assets the answering reading holds (a shared IP): the first by name answers.
     matches: int
+    #: The reading that answered, strongest first (#2803): reference, fqdn, name, hostname, ip, mac.
+    match_kind: str = ""
+    #: Several assets hold the answering reading.
+    ambiguous: bool = False
     #: The asset's page in the CTEM inventory.
     url: str
 

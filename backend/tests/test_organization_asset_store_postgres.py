@@ -231,7 +231,20 @@ async def test_a_lookup_finds_an_asset_by_any_identifier_a_platform_holds_and_ne
     assert {m["name"] for k, m in found.items() if k != "web-02"} == {"db-01"}
     assert found["web-02"]["name"] == "web-02"
     assert found["DB-01"]["matches"] == 1
-    assert set(found["DB-01"]) == {"id", "name", "category", "criticality", "internet_facing", "owner", "matches"}
+    assert set(found["DB-01"]) == {
+        "id",
+        "name",
+        "category",
+        "criticality",
+        "internet_facing",
+        "owner",
+        "matches",
+        "match_kind",
+        "ambiguous",
+    }
+    assert found["db-01.corp.example."]["match_kind"] == "fqdn"
+    assert found["DB-01"]["match_kind"] == "name"
+    assert found["10.0.0.5"]["match_kind"] == "ip"
 
 
 async def test_a_lookup_never_reads_a_free_value_as_a_serial() -> None:
