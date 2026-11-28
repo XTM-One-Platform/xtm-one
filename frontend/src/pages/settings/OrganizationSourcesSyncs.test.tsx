@@ -222,6 +222,19 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(await screen.findByText("5 added, 0 updated, 1 removed")).toBeTruthy();
   });
 
+  it("shows a warning toast carrying the warning text, never Sync run, when Run now ends with a warning (#2795)", async () => {
+    serve([sync()], [source()]);
+    post.mockResolvedValue(
+      sync({ last_result: { added: 0, updated: 2, removed: 0, version: null, error: null, warning: "Held signals not decided again: closed transaction" } }),
+    );
+    render();
+    const [row] = await rows();
+    fireEvent.click(within(row).getByRole("button", { name: "Run OpenCTI now" }));
+    expect(await screen.findByText("The sync ran with a warning")).toBeTruthy();
+    expect(screen.getByText("Held signals not decided again: closed transaction")).toBeTruthy();
+    expect(screen.queryByText("Sync run")).toBeNull();
+  });
+
   it("disables a sync from its menu", async () => {
     serve([sync()], [source()]);
     put.mockResolvedValue(sync({ enabled: false }));
@@ -337,6 +350,10 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(text).toContain("Warning");
     expect(text).not.toContain("Failed");
     expect(await screen.findByTestId("organization-sources.last-warning")).toBeInTheDocument();
+    // #2795: the summary counts the warning apart from the failures.
+    const summary = screen.getByTestId("organization-sources.summary");
+    expect(within(summary).getByRole("button", { name: "1 warning" })).toBeTruthy();
+    expect(within(summary).queryByRole("button", { name: /failed/ })).toBeNull();
   });
 
   it("names an agent or partner row by its source, its agent on the subline (lab retest of #1294, D2)", async () => {
@@ -405,6 +422,18 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     await rows();
     fireEvent.click(screen.getByRole("button", { name: /Run all syncs/ }));
     expect(await screen.findByText("1 sync failed")).toBeTruthy();
+  });
+
+  it("counts the syncs that ran with a warning apart from the failed ones after Run all syncs (#2795)", async () => {
+    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "software" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
+    post
+      .mockResolvedValueOnce(sync({ id: "s-1", last_result: { added: 0, updated: 1, removed: 0, version: null, error: null, warning: "Held signals not decided again" } }))
+      .mockRejectedValueOnce(new Error("Timeout"));
+    render("inventory");
+    await rows();
+    fireEvent.click(screen.getByRole("button", { name: /Run all syncs/ }));
+    expect(await screen.findByText("1 sync failed")).toBeTruthy();
+    expect(await screen.findByText("1 sync ran with a warning")).toBeTruthy();
   });
 
   it("shows no Run all syncs to a reader", async () => {

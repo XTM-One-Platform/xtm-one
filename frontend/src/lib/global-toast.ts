@@ -11,7 +11,7 @@
 interface GlobalToastOpts {
   title: string;
   description?: string;
-  variant?: "default" | "success" | "error" | "info";
+  variant?: "default" | "success" | "error" | "info" | "warning";
 }
 
 let _fn: ((opts: GlobalToastOpts) => void) | null = null;

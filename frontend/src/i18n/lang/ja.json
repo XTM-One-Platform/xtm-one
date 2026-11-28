@@ -18416,9 +18416,11 @@
   "The sync could not run": "同期を実行できませんでした",
   "The syncs could not run": "同期を実行できませんでした",
   "{count, plural, one {# sync failed} other {# syncs failed}}": "{count, plural, other {# 件の同期が失敗しました}}",
+  "{count, plural, one {# sync ran with a warning} other {# syncs ran with a warning}}": "{count, plural, other {# 件の同期が警告付きで実行されました}}",
   "{count, plural, one {# sync started} other {# syncs started}}": "{count, plural, other {# 件の同期を開始しました}}",
   "Run all syncs": "すべての同期を実行",
   "The sync ran and failed": "同期は実行されましたが失敗しました",
+  "The sync ran with a warning": "同期は実行されましたが警告があります",
   "The sync was not saved. Try again in a moment.": "同期は保存されていません。しばらくしてからもう一度お試しください。",
   "The time the run starts, in the time zone below.": "実行を開始する時刻 (下のタイムゾーン) です。",
   "This import runs again on the schedule below, with the same filters and the same choice for the rows that left.": "このインポートは、同じフィルターと、なくなった行に対する同じ選択で、下のスケジュールに従って再実行されます。",
@@ -22299,5 +22301,6 @@
   "Turn off {integration}?": "{integration} をオフにしますか?",
   "Turn off the outside lens?": "外部ビューをオフにしますか?",
   "Turn off the evidence health pass?": "エビデンス健全性パスをオフにしますか?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}",
+  "{count, plural, one {# warning} other {# warnings}}": "{count, plural, other {# 件の警告}}"
 }

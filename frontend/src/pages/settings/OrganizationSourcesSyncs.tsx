@@ -297,7 +297,10 @@ export function OrganizationSourcesSyncs({
       onSuccess: (done) =>
         done.last_result?.error
           ? toast({ title: t_i18n("The sync ran and failed"), description: done.last_result.error || done.paused_reason || undefined, variant: "error" })
-          : toast({
+          : done.last_result?.warning
+            ? // #2795: the rows landed but a post-step failed: a warning toast carrying its text, never the green one.
+              toast({ title: t_i18n("The sync ran with a warning"), description: done.last_result.warning, variant: "warning" })
+            : toast({
               title: t_i18n("Sync run"),
               description: t_i18n("{added} added, {updated} updated, {removed} removed", {
                 added: done.last_result?.added ?? 0,
@@ -319,8 +322,10 @@ export function OrganizationSourcesSyncs({
     if (ids.length === 0) return;
     toast({ title: t_i18n("{count, plural, one {# sync started} other {# syncs started}}", { count: ids.length }), variant: "success" });
     runAll.mutate(ids, {
-      onSuccess: ({ failed }) => {
+      onSuccess: ({ warned, failed }) => {
         if (failed > 0) toast({ title: t_i18n("{count, plural, one {# sync failed} other {# syncs failed}}", { count: failed }), variant: "error" });
+        if (warned > 0)
+          toast({ title: t_i18n("{count, plural, one {# sync ran with a warning} other {# syncs ran with a warning}}", { count: warned }), variant: "warning" });
       },
       onError: reportFailure(t_i18n("The syncs could not run")),
     });
@@ -588,6 +593,7 @@ export function OrganizationSourcesSyncs({
   // The summary line: what feeds the page, when it next runs, what failed.
   const sectionSyncs = syncs.filter((sync) => sync.section !== "all");
   const failed = rows.filter((row) => rowStateOf(row) === "failed");
+  const warned = rows.filter((row) => rowStateOf(row) === "warning");
   const nextRuns = syncs
     .filter((sync) => sync.enabled && !sync.paused_reason && sync.next_run_at)
     .map((sync) => sync.next_run_at as string)
@@ -639,6 +645,15 @@ export function OrganizationSourcesSyncs({
       {failed.length > 0 && (
         <Button variant="link" className="h-auto p-0 text-feedback-error-primary" onClick={() => failed[0].sync && setHistory(failed[0].sync)}>
           {t_i18n("{count, plural, one {# failed} other {# failed}}", { count: failed.length })}
+        </Button>
+      )}
+      {warned.length > 0 && (
+        <Button
+          variant="link"
+          className="h-auto p-0 text-feedback-warning-primary light:text-feedback-warning-tertiary"
+          onClick={() => warned[0].sync && setHistory(warned[0].sync)}
+        >
+          {t_i18n("{count, plural, one {# warning} other {# warnings}}", { count: warned.length })}
         </Button>
       )}
     </p>
