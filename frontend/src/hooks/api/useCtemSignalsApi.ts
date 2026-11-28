@@ -107,6 +107,25 @@ export function useRecentCtemSignals(limit = 6) {
   });
 }
 
+/** The slowest floor of a full signal read (the Signals page): a refetch re-reads every page (#2767). */
+export const SIGNAL_FULL_READ_POLL_MS = 5 * 60_000;
+
+/** The offset of the next page of a signal list, or undefined once every signal of its total is loaded. */
+export function nextSignalPageOffset(last: CtemSignalList, pages: CtemSignalList[]): number | undefined {
+  const loaded = pages.reduce((sum, page) => sum + page.signals.length, 0);
+  return last.signals.length > 0 && loaded < last.total ? loaded : undefined;
+}
+
+/**
+ * Whether a full read loads its next page now. Only while the query is idle: a next page asked
+ * during a background refetch cancels that refetch (fetchNextPage's default), whose restart asks
+ * again, a loop that re-read every loaded page about once a second until the tab ran out of
+ * memory (#2767).
+ */
+export function shouldLoadNextSignalPage(query: { hasNextPage: boolean; isFetching: boolean; isError: boolean }): boolean {
+  return query.hasNextPage && !query.isFetching && !query.isError;
+}
+
 /**
  * The signals in one state (or every state), a page of 50 at a time through
  * `offset`, for the signal list of the loop trace (CTEM-01-UI; #877 UX round 1
@@ -114,20 +133,33 @@ export function useRecentCtemSignals(limit = 6) {
  * recorded signal joins the open list without a reload. `triggerPath` narrows
  * it to one trigger path (#1189). The Signals page (#1263) reads every page of
  * one path at 200 a time, so its table searches, sorts and exports them all.
+ *
+ * A refetch of an infinite query re-reads every loaded page, so a full read
+ * (`fullRead`, the Signals page) never polls at the cases' 30 s floor: it
+ * re-read every signal of the state twice a minute and drove the tab out of
+ * memory with 3,000 signals (#2767). Its floor is SIGNAL_FULL_READ_POLL_MS;
+ * the coalesced `ctem_signal_update` frames (useActivityStream) are the
+ * accelerator.
  */
-export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true, triggerPath: string | null = null) {
+export function useCtemSignalList(
+  state: CtemSignalState | null,
+  limit = 50,
+  enabled = true,
+  triggerPath: string | null = null,
+  fullRead = false,
+) {
   const query = `${state ? `&state=${state}` : ""}${triggerPath ? `&trigger_path=${encodeURIComponent(triggerPath)}` : ""}`;
   return useInfiniteQuery({
     queryKey: ["ctem-signals", "list", state ?? "all", limit, triggerPath ?? "all"],
     queryFn: ({ pageParam }): Promise<CtemSignalList> => api.get(`/ctem-signals?limit=${limit}&offset=${pageParam}${query}`),
     initialPageParam: 0,
-    getNextPageParam: (last: CtemSignalList, pages: CtemSignalList[]) => {
-      const loaded = pages.reduce((sum, page) => sum + page.signals.length, 0);
-      return last.signals.length > 0 && loaded < last.total ? loaded : undefined;
-    },
+    getNextPageParam: nextSignalPageOffset,
     enabled,
     retry: ctemCasesRetry,
-    refetchInterval: (q) => ctemCasesPollInterval(q.state.status, q.state.error),
+    refetchInterval: (q) => {
+      const floor = ctemCasesPollInterval(q.state.status, q.state.error);
+      return fullRead && floor !== false ? Math.max(floor, SIGNAL_FULL_READ_POLL_MS) : floor;
+    },
     throwOnError: false,
   });
 }
