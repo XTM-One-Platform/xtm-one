@@ -72,7 +72,12 @@ async def record(
             event_key, payload, integration_id=str(integration_id), verified=verified
         )
     recorded = await ctem_signal_listeners.note_event(
-        provider, event_key, payload, verified=verified, session_factory=intake_session
+        provider,
+        event_key,
+        payload,
+        verified=verified,
+        session_factory=intake_session,
+        integration_id=str(integration_id) if integration_id else None,
     )
     if provider == "opencti":
         await ctem_analyst_mark.note_event(provider, payload, verified=verified)

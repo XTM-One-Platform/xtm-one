@@ -282,6 +282,20 @@ surface pass, which skips a finding only excluded providers saw
 controls are an administrator's; a reader sees the same states, controls
 disabled.
 
+Each source also names the integrations it reads (`integrations` on every
+source of `GET /api/v1/ctem-signals/paths`, from
+`ctem_signal_sources.provider_integrations`): `id`, `name`, `status`,
+`webhook_secret_set` (a delivery records a signal only when signed with it),
+`last_delivery_at` (`null` until a delivery time is stored) and `used`. A
+provider whose OAuth default app is configured lists it as `oauth_default`:
+the provider-level webhook route delivers on it. `used` is false for an
+integration in `signal_sources.excluded_integrations`, `{"provider:kind[:name]":
+[integration id | "oauth_default"]}`; absent, every connected integration is
+used. `note_event` takes the delivery's `integration_id` (the integration
+routes and the durable inbox pass it, the provider route passes
+`oauth_default`) and records nothing for a source that integration was taken
+off (`integration_excluded`, cached like the path exclusions).
+
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
 One row per `(organization_id, recorded_by, dedupe_key)`.

@@ -93,6 +93,16 @@ class BoundSources(set[tuple[str, str]]):
         #: The provisioned sources switched off after a refused enable for a missing setting (#2637):
         #: Not configured, never Error.
         self.not_configured: set[tuple[str, str]] = set()
+        #: Per provider, the integrations a source of that provider reads (#2736): set by
+        #: :func:`provider_integrations`, empty when the caller did not ask for them.
+        self.integrations: dict[str, list[dict[str, Any]]] = {}
+        #: Per source key, the integration ids an administrator took off that source (#2736).
+        self.excluded_integrations: dict[str, set[str]] = {}
+
+
+#: The integration id that stands for a provider's OAuth default app: the provider-level webhook
+#: route delivers on it, with no integration of its own (#2736).
+OAUTH_DEFAULT_INTEGRATION = "oauth_default"
 
 
 def source_key(provider: str, kind: str, name: str = "") -> str:
@@ -319,6 +329,8 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
     errors = getattr(bound, "error", None) or {}
     details = getattr(bound, "error_details", None) or {}
     not_configured = getattr(bound, "not_configured", None) or set()
+    integrations = getattr(bound, "integrations", None) or {}
+    excluded_integrations = getattr(bound, "excluded_integrations", None) or {}
     out: list[dict[str, Any]] = []
     for s in PATH_SOURCES.get(path, ()):
         pair = (s.provider, s.kind)
@@ -350,6 +362,11 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
                     other
                     for other, sources in PATH_SOURCES.items()
                     if other != path and any(o.key == s.key for o in sources)
+                ],
+                # #2736: each integration this source reads, by name, with its own state and switch.
+                "integrations": [
+                    {**i, "used": i["id"] not in excluded_integrations.get(s.key, set())}
+                    for i in integrations.get(s.provider, [])
                 ],
             }
         )
@@ -418,9 +435,110 @@ def remember_exclusions(organization_id: Any, excluded: dict[str, set[tuple[str,
 
 
 def forget_exclusions() -> None:
-    """Drop the cached exclusion map: the next delivery reads the profile again."""
-    global _exclusions_cache
+    """Drop the cached exclusion maps: the next delivery reads the profile again."""
+    global _exclusions_cache, _integration_exclusions_cache
     _exclusions_cache = None
+    _integration_exclusions_cache = None
+
+
+def parse_excluded_integrations(profile: Any) -> dict[str, set[str]]:
+    """Per source key, the integration ids taken off it: ``signal_sources.excluded_integrations`` (#2736)."""
+    settings = getattr(profile, "signal_sources", None)
+    raw = getattr(settings, "excluded_integrations", None) or {}
+    return {key: set(ids) for key, ids in raw.items() if ids}
+
+
+async def excluded_integrations(db: AsyncSession, organization_id: Any) -> dict[str, set[str]]:
+    """The integrations taken off each source in the organization's current profile; ``{}`` on a read failure."""
+    from app.services import organization_context as org_context
+
+    try:
+        version = await org_context.current_version(db, organization_id)
+        return parse_excluded_integrations(org_context.parse_profile(version.profile if version else {}))
+    except Exception:  # a profile that cannot be read never stops a signal: every integration is used
+        return {}
+
+
+_integration_exclusions_cache: tuple[float, Any, dict[str, set[str]]] | None = None
+
+
+def cached_integration_exclusions() -> tuple[Any, dict[str, set[str]]] | None:
+    """The primary organization's id and its integration exclusions as last read, while fresh; else ``None``."""
+    import time
+
+    cached = _integration_exclusions_cache
+    if cached is None or time.monotonic() - cached[0] > EXCLUSIONS_TTL_SECONDS:
+        return None
+    return cached[1], cached[2]
+
+
+def remember_integration_exclusions(organization_id: Any, excluded: dict[str, set[str]]) -> None:
+    """Keep the integration exclusions just read for :data:`EXCLUSIONS_TTL_SECONDS`."""
+    import time
+
+    global _integration_exclusions_cache
+    _integration_exclusions_cache = (time.monotonic(), organization_id, excluded)
+
+
+def integration_excluded(
+    excluded: dict[str, set[str]], provider: str, kind: str, name: str, integration_id: str | None
+) -> bool:
+    """Whether the delivery of *integration_id* records nothing for the source ``provider:kind[:name]`` (#2736)."""
+    if not integration_id:
+        return False
+    return str(integration_id).lower() in excluded.get(source_key(provider, kind, name), set())
+
+
+async def provider_integrations(db: AsyncSession, user_id: Any) -> dict[str, list[dict[str, Any]]]:
+    """Per provider of a signal source, the integrations its sources read, visible to the caller (#2736).
+
+    One entry each: ``id``, ``name``, ``status`` (the integration's), ``webhook_secret_set`` (a
+    delivery is trusted with a signal only when signed with it) and ``last_delivery_at`` (``None``
+    until recorded). A provider whose OAuth default app is configured also lists that app under
+    :data:`OAUTH_DEFAULT_INTEGRATION`: the provider-level webhook route delivers on it.
+    """
+    from app.api.v1.helpers import integration_visible_filter
+    from app.models.integration import Integration
+    from app.models.oauth_default import OAuthDefault
+    from app.services.trigger_provisioning import webhook_secret_state
+
+    providers = sorted({s.provider for sources in PATH_SOURCES.values() for s in sources})
+    rows = (
+        (
+            await db.execute(
+                select(Integration)
+                .where(Integration.provider.in_(providers), await integration_visible_filter(db, user_id))
+                .order_by(Integration.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: dict[str, list[dict[str, Any]]] = {}
+    for integration in rows:
+        state = await webhook_secret_state(integration)
+        out.setdefault(integration.provider, []).append(
+            {
+                "id": str(integration.id),
+                "name": integration.name,
+                "status": integration.status,
+                "webhook_secret_set": state.startswith("set"),
+                "last_delivery_at": None,
+            }
+        )
+    defaults = (await db.execute(select(OAuthDefault).where(OAuthDefault.provider.in_(providers)))).scalars().all()
+    for default in defaults:
+        state = await webhook_secret_state(default)
+        out.setdefault(default.provider, []).append(
+            {
+                "id": OAUTH_DEFAULT_INTEGRATION,
+                "name": "OAuth default app",
+                "status": "connected",
+                "webhook_secret_set": state.startswith("set"),
+                "last_delivery_at": None,
+            }
+        )
+    return out
 
 
 def is_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str, kind: str, name: str = "") -> bool:
@@ -512,6 +630,7 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
         version = await org_context.current_version(db, primary.id)
         profile = org_context.parse_profile(version.profile if version else {})
         bound.excluded = parse_excluded(profile)
+        bound.excluded_integrations = parse_excluded_integrations(profile)
         surface = profile.attack_surface
         ids = {i for i in [surface.integration, *surface.integrations] if i}
         for provider in ATTACK_SURFACE_PROVIDERS:

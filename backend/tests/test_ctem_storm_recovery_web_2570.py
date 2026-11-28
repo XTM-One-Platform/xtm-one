@@ -43,11 +43,18 @@ async def test_record_hands_a_delivery_to_its_recorders(monkeypatch: pytest.Monk
     calls: list[str] = []
 
     async def listeners(
-        provider: str, event_key: str, payload: Any, *, verified: bool, session_factory: Any = None
+        provider: str,
+        event_key: str,
+        payload: Any,
+        *,
+        verified: bool,
+        session_factory: Any = None,
+        integration_id: str | None = None,
     ) -> bool:
         from app.core.database import intake_session
 
         assert session_factory is intake_session  # #2584: never the web pool
+        assert integration_id == "i"  # #2736: the delivery's integration reaches the source filter
         calls.append(f"signal:{provider}")
         return True
 
