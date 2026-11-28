@@ -352,7 +352,50 @@ async def _checked_profile(
     ticketing_problem = await target_problem(db, profile)
     if ticketing_problem:
         raise HTTPException(status_code=422, detail=ticketing_problem)
+    run_as_problem = await _evidence_health_run_as_problem(db, profile, stored)
+    if run_as_problem:
+        raise HTTPException(status_code=422, detail=run_as_problem)
     return await name_saved_pirs(db, user_id=admin.id, profile=profile)
+
+
+async def _evidence_health_run_as_problem(
+    db: AsyncSession, profile: org_context.OrganizationProfile, stored: dict[str, Any] | None
+) -> str | None:
+    """Why ``evidence_health.run_as_user_id`` cannot read the pass's integration, or ``None`` (#2739).
+
+    Judged on the integration the pass reads (the declared one, else the single
+    connected one, ``resolve_pass``); with none to read yet, only the user is checked.
+    Only when the run-as or the integration changes: a save of another section never
+    fails on a run-as that lost its connection since (the pass shows that error).
+    """
+    from app.services import ctem_evidence_health as evidence_health
+    from app.services import module_run_as
+
+    settings = profile.evidence_health
+    run_as = (settings.run_as_user_id or "").strip()
+    if not run_as:
+        return None
+    before = (stored or {}).get("evidence_health") or {}
+    if isinstance(before, dict) and (before.get("run_as_user_id") or "").strip() == run_as and (
+        before.get("integration") or ""
+    ).strip() == (settings.integration or "").strip():
+        return None
+    integration = (settings.integration or "").strip()
+    if not integration:
+        _state, integration = evidence_health.resolve_pass(
+            settings.model_copy(update={"enabled": None}), await evidence_health.connected_integration_ids(db)
+        )
+    if integration:
+        refusal = await module_run_as.integration_refusal(db, run_as, integration)
+    else:
+        from app.models.user import User
+
+        try:
+            user = await db.get(User, uuid.UUID(run_as))
+        except ValueError:
+            user = None
+        refusal = None if user is not None and user.is_active else "the run-as user is deactivated or no longer exists"
+    return f"evidence_health.run_as_user_id: {refusal}" if refusal else None
 
 
 async def _lock_base(db: AsyncSession, current: OrganizationContextVersion | None) -> dict[str, Any] | None:

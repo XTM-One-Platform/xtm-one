@@ -44,6 +44,7 @@ export function ModuleRunAsField({
   error,
   helper,
   active = true,
+  required = true,
 }: {
   module: RunAsModule;
   value: string;
@@ -53,6 +54,8 @@ export function ModuleRunAsField({
   helper?: string;
   /** False while the host dialog is closed: nothing is read. */
   active?: boolean;
+  /** False where an unset value has a default (the evidence health pass reads as the integration's owner). */
+  required?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const fieldId = useId();
@@ -79,7 +82,7 @@ export function ModuleRunAsField({
     <SettingsField
       id={fieldId}
       label={t_i18n("Act in {module} as", { module: name })}
-      required
+      required={required}
       info={t_i18n(
         "The XTM One user whose {module} connection, markings and rights XTM One uses here. You by default; an administrator can pick any active user with {module} connected. If that user is deactivated or loses the connection, this stops until you pick another user.",
         { module: name },

@@ -523,8 +523,15 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
         state, picked = evidence_health.resolve_pass(
             profile.evidence_health, await evidence_health.connected_integration_ids(db)
         )
+        # #2739: a run-as user who cannot read the integration is the pass's error, with its reason.
+        refusal = await evidence_health.run_as_refusal(db, profile.evidence_health, picked) if state == evidence_health.PASS_ON else None
         for provider in EVIDENCE_HEALTH_PROVIDERS:
-            if state == evidence_health.PASS_ON and picked in platform.get(provider, set()):
+            if refusal and picked in platform.get(provider, set()):
+                from app.services.ctem_platform_sources import error_detail
+
+                bound.error[(provider, "pass")] = 1
+                bound.error_details[(provider, "pass")] = [error_detail(picked, refusal, None, enabled=True)]
+            elif state == evidence_health.PASS_ON and picked in platform.get(provider, set()):
                 bound.add((provider, "pass"))
             elif state != evidence_health.PASS_NONE and platform.get(provider):
                 bound.off.add((provider, "pass"))

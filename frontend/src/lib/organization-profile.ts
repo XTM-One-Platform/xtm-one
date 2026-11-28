@@ -152,11 +152,39 @@ export interface EvidenceHealthPass {
   enabled: boolean | null;
   /** The id of the OpenCRQ integration the pass reads; empty: the single connected one. */
   integration: string;
+  /** The user the pass reads OpenCRQ as (#2739); null: the integration's owner. */
+  run_as_user_id: string | null;
   max_age_days: number;
   cadence_hours: number;
 }
 
-export const DEFAULT_EVIDENCE_HEALTH: EvidenceHealthPass = { enabled: null, integration: "", max_age_days: 30, cadence_hours: 24 };
+export const DEFAULT_EVIDENCE_HEALTH: EvidenceHealthPass = {
+  enabled: null,
+  integration: "",
+  run_as_user_id: null,
+  max_age_days: 30,
+  cadence_hours: 24,
+};
+
+/**
+ * Who the pass reads OpenCRQ as (#2739): the picked user, else the owner of the integration it reads; `owner`
+ * says the second, so the card and the drawer can write "(integration owner)". Null id: no integration to read.
+ */
+export function evidenceHealthRunAs(
+  pass: Pick<EvidenceHealthPass, "run_as_user_id">,
+  integration: { user_id: string | null } | undefined,
+): { userId: string | null; owner: boolean } {
+  const picked = (pass.run_as_user_id ?? "").trim();
+  if (picked) return { userId: picked, owner: false };
+  return { userId: integration?.user_id ?? null, owner: true };
+}
+
+/** The run-as a save writes: null when the pick is the integration's owner and none was stored, so nothing changes. */
+export function evidenceHealthSavedRunAs(picked: string, stored: string | null, ownerId: string | null): string | null {
+  const value = picked.trim();
+  if (!value) return null;
+  return !stored && value === ownerId ? null : value;
+}
 /** The bounds the backend's `EvidenceHealthPass` enforces. */
 export const EVIDENCE_HEALTH_BOUNDS = { max_age_days: { min: 1, max: 3650 }, cadence_hours: { min: 1, max: 24 * 30 } } as const;
 
