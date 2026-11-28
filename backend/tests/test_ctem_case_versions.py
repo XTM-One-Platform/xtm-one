@@ -37,7 +37,8 @@ def test_the_platform_read_binds_the_product_keys_never_the_asset_ids() -> None:
     sql = str(compiled)
     assert "organization_asset_software" in sql
     assert "organization_assets.id IN" not in sql
-    assert len(compiled.params) <= 6
+    # Bounded by the product patterns, never by the assets (#2748 adds the qualifier-suffix patterns).
+    assert len(compiled.params) <= 8
 
 
 def test_versions_are_listed_with_their_asset_counts_and_sources():
