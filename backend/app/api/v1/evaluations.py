@@ -22,6 +22,7 @@ import logging
 import time
 import uuid
 import zipfile
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -62,6 +63,7 @@ from app.api.v1.helpers import (
     parse_path_id,
     parse_uuid,
     require_admin_for_company_managed,
+    user_visible_filter,
     user_visible_query,
     validation_detail,
     wants_access_restriction,
@@ -176,6 +178,7 @@ from app.services.evaluation.launch import (
     check_runs_served,
     family_gate_error,
     plan_launch,
+    subjects_hidden_from,
 )
 from app.services.evaluation.metric_package import (
     is_macro_key,
@@ -360,6 +363,26 @@ def _unavailable_model_warnings(response: dict) -> list[str]:
         f"Model {mid} is kept but cannot run: no provider you can use offers it"
         for mid in response["unavailable_model_ids"]
     ]
+
+
+#: Why an evaluation may not take an agent or flow its owner cannot see.
+SUBJECT_NOT_VISIBLE_TO_OWNER = (
+    "An evaluation runs only its owner's own agents and flows, those shared with them "
+    "and company-managed ones: its owner cannot see one of these."
+)
+
+
+async def _refuse_hidden_subjects(
+    db: AsyncSession,
+    owner_id: uuid.UUID | None,
+    *,
+    agent_ids: Iterable[uuid.UUID] = (),
+    flow_ids: Iterable[uuid.UUID] = (),
+) -> None:
+    """422 when an evaluation owned by *owner_id* would link an agent or flow
+    outside its owner's three tiers. An ownerless evaluation is not checked."""
+    if owner_id is not None and await subjects_hidden_from(db, owner_id, agent_ids=agent_ids, flow_ids=flow_ids):
+        raise HTTPException(status_code=422, detail=SUBJECT_NOT_VISIBLE_TO_OWNER)
 
 
 async def _require_launchable(db: AsyncSession, evaluation) -> None:
@@ -2901,15 +2924,17 @@ async def list_all_agents_for_evaluations(
     exclude_ids: str | None = Query(
         None, description="Comma-separated agent IDs to exclude"
     ),
-    _user: User = Depends(require_admin),
+    user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search agents across the platform (admin-only, no per-user filtering).
+    """Search the agents the caller may evaluate, for the evaluation agent pickers.
 
-    Used by the evaluation agent pickers so admins can benchmark any agent,
-    whoever owns it. Results are limited (default 10, max 50) and can be
-    filtered by a search term and an exclusion list.
+    The caller's three tiers, with no admin bypass (``subjects_hidden_from``):
+    their own agents, those shared with them and company-managed ones.
+    Results are limited (default 10, max 50) and can be filtered by a search
+    term and an exclusion list.
     """
+    user_group_ids = await get_user_group_ids(db, user.id)
     query = select(
         Agent.id,
         Agent.name,
@@ -2917,7 +2942,11 @@ async def list_all_agents_for_evaluations(
         Agent.icon,
         Agent.is_company_managed,
         Agent.enabled,
-    ).where(Agent.enabled.is_(True), hidden_rows_excluded(Agent))
+    ).where(
+        Agent.enabled.is_(True),
+        hidden_rows_excluded(Agent),
+        user_visible_filter(Agent, user.id, user_group_ids),
+    )
 
     if search:
         q = f"%{search.strip()}%"
@@ -3031,8 +3060,9 @@ async def create_evaluation(
     await db.flush()
 
     if body.agent_ids:
-        for aid_str in body.agent_ids:
-            aid = parse_uuid(aid_str, label="Agent ID")
+        agent_uuids = [parse_uuid(aid_str, label="Agent ID") for aid_str in body.agent_ids]
+        await _refuse_hidden_subjects(db, user.id, agent_ids=agent_uuids)
+        for aid in agent_uuids:
             db.add(EvaluationAgent(evaluation_id=evaluation.id, agent_id=aid))
 
     # Per-agent prediction extractors, validated against the family and
@@ -3119,21 +3149,32 @@ async def copy_evaluation(
     db.add(copy)
     await db.flush()
 
-    # Each agent with its extractor, tags and baseline flag in this evaluation.
-    for link in await load_evaluation_agents(db, source.id):
+    # Each agent with its extractor, tags and baseline flag in this evaluation,
+    # and each flow subject, which takes no extractor.
+    agent_links = await load_evaluation_agents(db, source.id)
+    flow_links = list(
+        (
+            await db.execute(
+                select(EvaluationAgent).where(
+                    EvaluationAgent.evaluation_id == source.id, EvaluationAgent.flow_id.is_not(None)
+                )
+            )
+        ).scalars()
+    )
+    # The copy runs as its new owner: every subject must be one they may evaluate.
+    await _refuse_hidden_subjects(
+        db,
+        user.id,
+        agent_ids=[link.agent_id for link in agent_links if link.agent_id is not None],
+        flow_ids=[link.flow_id for link in flow_links if link.flow_id is not None],
+    )
+    for link in agent_links:
         db.add(
             EvaluationAgent(
                 evaluation_id=copy.id, agent_id=link.agent_id, **evaluation_agent_settings(link)
             )
         )
-    # And each flow subject (#8257), which takes no extractor.
-    for flow_link in (
-        await db.execute(
-            select(EvaluationAgent).where(
-                EvaluationAgent.evaluation_id == source.id, EvaluationAgent.flow_id.is_not(None)
-            )
-        )
-    ).scalars():
+    for flow_link in flow_links:
         db.add(EvaluationAgent(evaluation_id=copy.id, flow_id=flow_link.flow_id, **evaluation_agent_settings(flow_link)))
 
     ds_rows_result = await db.execute(
@@ -4479,8 +4520,9 @@ async def add_agents(
     )
     require_admin_for_company_managed(evaluation, user)
 
-    for aid_str in body.agent_ids:
-        aid = parse_uuid(aid_str, label="Agent ID")
+    agent_uuids = [parse_uuid(aid_str, label="Agent ID") for aid_str in body.agent_ids]
+    await _refuse_hidden_subjects(db, evaluation.user_id, agent_ids=agent_uuids)
+    for aid in agent_uuids:
         existing = await db.execute(
             select(EvaluationAgent).where(
                 EvaluationAgent.evaluation_id == evaluation.id,

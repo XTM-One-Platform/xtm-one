@@ -70,9 +70,12 @@ async def _seed(
         admin, owner, other = _user("admin"), _user(), _user()
         db.add_all([admin, owner, other])
         await db.flush()
-        agent = Agent(id=uuid.uuid4(), name="Invoice agent", user_id=owner.id, persona=BASE_PERSONA)
+        # Shared with the admin, who evaluates it as its owner lent it.
+        agent = Agent(
+            id=uuid.uuid4(), name="Invoice agent", user_id=owner.id, persona=BASE_PERSONA, shared_user_ids=[str(admin.id)]
+        )
         if grantee:
-            agent.shared_user_ids = [str(other.id)]
+            agent.shared_user_ids = [str(admin.id), str(other.id)]
             agent.shared_user_permissions = {str(other.id): "config"}
         db.add(agent)
         await db.flush()
