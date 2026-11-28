@@ -247,6 +247,7 @@ GENERIC_PRODUCT_WORDS: frozenset[str] = frozenset(
         "desktop",
         "driver",
         "framework",
+        "gateway",
         "helper",
         "installer",
         "launcher",
@@ -420,6 +421,37 @@ def label_names(ref: str, label: str) -> bool | None:
     ):
         return None
     return ref_words == words
+
+
+def tail_word_only(product: str, ref: str) -> bool:
+    """Whether *product* is one generic word that only closes a vendor-qualified name *ref* (#2679 reopened).
+
+    ``Gateway`` closes ``Panabit Smart Application Gateway`` and ``JetBrains Gateway``: a generic last
+    word (:data:`GENERIC_PRODUCT_WORDS`) of a name of two words or more names a kind of thing, never
+    the product. A CPE reference is read by its product part.
+    """
+    text = str(ref or "").strip()
+    if text.lower().startswith("cpe:"):
+        text = _haystack(text)
+    word = _TOKEN.findall(_needle(str(product or "")))
+    words = [w for w in _name_words(text)[0] if not w.isdigit()]
+    return (
+        len(word) == 1
+        and word[0] in GENERIC_PRODUCT_WORDS
+        and len(words) >= 2
+        and words[-1] == word[0]
+        and words[0] != word[0]
+    )
+
+
+def tail_refs(software: Iterable[str]) -> frozenset[str]:
+    """The one-word references of *software* that only close a longer reference of the list (#2679 reopened).
+
+    ``Gateway`` beside ``Panabit Smart Application Gateway`` is the generic last word OpenCTI keeps as
+    a second Software name: it reaches nothing on its own (``JetBrains Gateway``, a ``Gateway`` app).
+    """
+    refs = [str(r) for r in software if str(r or "").strip()]
+    return frozenset(ref for ref in refs if any(other != ref and tail_word_only(ref, other) for other in refs))
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
@@ -676,7 +708,8 @@ class PrimaryAssetIndex:
         name are kept; *software* still says which reference each of them runs.
         """
         wanted = {k for k in (keys or []) if k}
-        refs = [(ref, is_family_word(ref)) for ref in software if ref]
+        tails = tail_refs(software)
+        refs = [(ref, is_family_word(ref)) for ref in software if ref and ref not in tails]
         out: list[tuple[Reacher, str]] = []
         for i, reacher in enumerate(self.reachers):
             if keys_only and not wanted & reacher.keys:
