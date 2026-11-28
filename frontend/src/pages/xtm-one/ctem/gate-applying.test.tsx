@@ -246,6 +246,25 @@ describe("Being applied on the case page (#2746)", () => {
     expect(card).not.toHaveTextContent("Waits for a decision");
   });
 
+  it("shows the decision card of a gate re-asked after an answer kept on the page (#2779)", () => {
+    // The answer kept from the first ask of the same item is older than the gate's current ask.
+    recordGateAnswer("wi-close", "Close without retest", T0);
+    renderWithProviders(page([rec({ asked_at: "2026-11-28T09:00:00Z" })]));
+    expect(screen.getByTestId("unified-decision-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-decision-applying")).toBeNull();
+    expect(screen.getByTestId("ctem-case-waiting-gates")).toHaveTextContent("Waits for a decision");
+    // The stale answer is dropped from the page's store, so no other reader of the gate sees it.
+    expect(gatesAnsweredPhase(["wi-close"])).toBeNull();
+  });
+
+  it("keeps an answer kept on the page that is newer than the gate's ask (#2779)", () => {
+    const at = Date.now() - 5_000;
+    recordGateAnswer("wi-close", "Close without retest", at);
+    renderWithProviders(page([rec({ asked_at: new Date(at - 60_000).toISOString() })]));
+    expect(screen.getByTestId("ctem-case-waiting-gate-decision-applying")).toHaveTextContent("Close without retest");
+    expect(screen.queryByTestId("unified-decision-card")).toBeNull();
+  });
+
   it("collapses the waiting card once the gate is applied", () => {
     vi.useFakeTimers();
     const view = renderWithProviders(page([rec()]));
