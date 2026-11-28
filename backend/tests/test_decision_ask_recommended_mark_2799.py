@@ -7,8 +7,11 @@ write, and an ask stored before the guard renders with the marker dropped.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from app.services.decision_answer_links import _option_row
 from app.services.decision_ask import (
     RECOMMENDED_EFFECT_MESSAGE,
     ask_lines,
@@ -17,11 +20,10 @@ from app.services.decision_ask import (
     run_question_text,
     without_recommended_mark,
 )
-from app.services.decision_answer_links import _option_row
 
 
-def _ask(label_a: str, effect_a: str | None = None) -> dict:
-    option_a = {"key": "a", "label": label_a}
+def _ask(label_a: str, effect_a: str | None = None) -> dict[str, Any]:
+    option_a: dict[str, Any] = {"key": "a", "label": label_a}
     if effect_a is not None:
         option_a["effect"] = effect_a
     return {
@@ -71,7 +73,11 @@ def test_an_effect_with_a_trailing_mark_is_refused() -> None:
 def test_a_clean_ask_is_unchanged_and_shows_one_recommendation() -> None:
     ask = normalize_ask(_ask("Apply the vendor's recommended patch", "Patches the host"))
     assert ask is not None
-    assert ask["options"][0] == {"key": "a", "label": "Apply the vendor's recommended patch", "effect": "Patches the host"}
+    assert ask["options"][0] == {
+        "key": "a",
+        "label": "Apply the vendor's recommended patch",
+        "effect": "Patches the host",
+    }
     assert ask["recommendation"] == "b"
     assert run_question_text(ask).count("(recommended)") == 1
     assert sum("(recommended)" in line for line in ask_lines(ask)) == 1

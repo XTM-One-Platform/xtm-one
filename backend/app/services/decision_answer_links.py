@@ -189,6 +189,7 @@ def _option_row(option: dict[str, Any], recommended: bool, language: str | None)
     from app.services.channel_notices import notice
     from app.services.decision_ask import without_recommended_mark
 
+    label = without_recommended_mark(option.get("label")) or option.get("key")
     items: list[dict[str, Any]] = []
     if recommended:
         items.append(
@@ -204,7 +205,7 @@ def _option_row(option: dict[str, Any], recommended: bool, language: str | None)
     items.append(
         {
             "type": "TextBlock",
-            "text": f"**{option.get('key')}.** {without_recommended_mark(option.get('label')) or option.get('key')}"[:300],
+            "text": f"**{option.get('key')}.** {label}"[:300],
             "wrap": True,
             "spacing": "None",
         }
