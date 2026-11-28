@@ -27,7 +27,7 @@ def _former_rule(product: str, ref: str, *, family_exact: bool = True, ref_exact
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
     if not p or not r:
         return False
-    named = pa.reference_names(product, ref) if ref_exact else None
+    named = pa.reference_names(product, ref) if ref_exact else pa.label_names(product, ref)
     if named is not None:
         return named
     if r.startswith("cpe:"):

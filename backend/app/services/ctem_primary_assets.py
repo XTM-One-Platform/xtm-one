@@ -312,12 +312,34 @@ def _compound_token(token: str) -> bool:
     return len(words) >= (2 if "-" in token else 3)
 
 
+#: #2711 reopened: the operator that opens a version range of a reference (``hermes-agent >= 0.21.6, < 0.23.2``).
+_RANGE_START = re.compile(r"\s*(?:<=|>=|==|!=|<|>|=)\s*v?\d")
+#: One bound of a version range: an operator and the version it compares with.
+_RANGE_BOUND = re.compile(r"(<=|>=|==|!=|<|>|=)\s*(v?\d[0-9a-z.+~:_-]*)")
+
+
+def _name_part(value: str) -> str:
+    """*value* without the version range that closes it: ``hermes-agent`` of ``hermes-agent >= 0.21.6, < 0.23.2``."""
+    text = str(value or "")
+    if text.strip().lower().startswith("cpe:"):
+        return text
+    match = _RANGE_START.search(text)
+    return text[: match.start()].rstrip(" ,;") if match else text
+
+
+@lru_cache(maxsize=65536)
+def _name_tokens(value: str) -> tuple[str, ...]:
+    """The name tokens of a software name: its version range and closing version tokens left out (#2711)."""
+    tokens = _name_part(value).strip().lower().split()
+    while len(tokens) > 1 and _VERSION_TOKEN.fullmatch(tokens[-1].rstrip(",")):
+        tokens.pop()
+    return tuple(tokens)
+
+
 @lru_cache(maxsize=65536)
 def _name_words(value: str) -> tuple[tuple[str, ...], bool]:
-    """``(words, compound)`` of a software name, its closing version tokens left out (#2711)."""
-    tokens = value.strip().lower().split()
-    while len(tokens) > 1 and _VERSION_TOKEN.fullmatch(tokens[-1]):
-        tokens.pop()
+    """``(words, compound)`` of a software name, its version range and closing version tokens left out (#2711)."""
+    tokens = list(_name_tokens(value))
     # Only a reference that is one joined package token is a package name (``mail-mcp-bridge``):
     # ``Microsoft Edge (Chromium-based)`` stays a product title.
     return tuple(_TOKEN.findall(" ".join(tokens))), len(tokens) == 1 and _compound_token(tokens[0])
@@ -348,7 +370,7 @@ def reference_names(product: str, ref: str) -> bool | None:
     named = _name_words(label)[0]
     if not named:
         return False
-    label_full, ref_full = tuple(_TOKEN.findall(label.lower())), tuple(_TOKEN.findall(text.lower()))
+    label_full, ref_full = tuple(_TOKEN.findall(label.lower())), tuple(_TOKEN.findall(_name_part(text).lower()))
     if named == words or label_full == ref_full:
         return True
     if compound:
@@ -364,6 +386,40 @@ def reference_names(product: str, ref: str) -> bool | None:
         if size >= 2 and (seq[:size] == label_full or seq[1 : 1 + size] == label_full):
             return True
     return False
+
+
+#: #2711 reopened: the packaging suffixes a distribution adds to a product's own package name:
+#: ``openssl-libs`` or ``curl-devel`` is still OpenSSL or curl, unlike ``hermes-estree``.
+PACKAGE_SUFFIXES: frozenset[str] = frozenset(
+    {"bin", "common", "data", "dev", "devel", "doc", "docs", "lib", "libs", "runtime", "utils"}
+)
+#: The ecosystem prefixes a distribution puts before a library's own name: ``python3-requests`` is ``requests``.
+PACKAGE_PREFIXES: frozenset[str] = frozenset(
+    {"golang", "lib", "node", "perl", "php", "py", "python", "python2", "python3", "ruby", "rust"}
+)
+
+
+def label_names(ref: str, label: str) -> bool | None:
+    """Whether software *ref* names an inventory *label* that is one joined package name; ``None`` otherwise (#2711).
+
+    ``hermes-estree`` or ``@apollo/server-gateway-interface`` is never reduced to one of its words:
+    ``Hermes`` or ``Gateway`` names it only by its full name. A distribution package of the product
+    itself (``openssl-libs``, :data:`PACKAGE_SUFFIXES`) keeps the whole-word rule only for the product
+    part it packages: ``requests`` names ``python3-requests``, ``Python`` never names ``python-dateutil``.
+    A CPE answers ``None``.
+    """
+    if str(label or "").strip().lower().startswith("cpe:") or str(ref or "").strip().lower().startswith("cpe:"):
+        return None
+    words, compound = _name_words(str(label or ""))
+    if not compound:
+        return None
+    ref_words = _name_words(str(ref or ""))[0]
+    if len(words) == 2 and (
+        (words[-1] in PACKAGE_SUFFIXES and ref_words == words[:-1])
+        or (words[0] in PACKAGE_PREFIXES and ref_words == words[1:])
+    ):
+        return None
+    return ref_words == words
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
@@ -396,6 +452,10 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_ex
         return contains_word(vendor, p) and contains_word(word, p)
     if ref_exact:
         named = reference_names(str(product or ""), str(ref or ""))
+        if named is not None:
+            return named
+    else:
+        named = label_names(str(product or ""), str(ref or ""))
         if named is not None:
             return named
     if p in GENERIC_PRODUCT_WORDS:
@@ -553,6 +613,9 @@ class Reacher:
     os_family: str = ""
     #: #2628: the product labels an installed software row reports with a version (a running version known).
     versioned: set[str] = field(default_factory=set)
+    #: #2711 reopened: label -> the versions its installed rows report, so a hop is verified only when one
+    #: of them is the version or in the range the reference names. A label absent here has no version read.
+    versions: dict[str, set[str]] = field(default_factory=dict)
     #: #2680 / #2685: a code repository record: a bare family reference never reaches it, and its
     #: SBOM dependencies never run a bare generic word (``client``).
     repository: bool = False
@@ -793,8 +856,81 @@ def runs_versioned(reacher: Reacher, ref: str) -> bool:
     if not ref or is_family_word(ref) or is_generic_word(ref):
         return False
     return any(
-        product_matches(label, ref) or product_matches(ref, label, ref_exact=False) for label in reacher.versioned
+        (product_matches(label, ref) or product_matches(ref, label, ref_exact=False))
+        and version_in_reference(label, reacher.versions.get(label), ref)
+        for label in reacher.versioned
     )
+
+
+def reference_versions(ref: str) -> tuple[tuple[str, str], ...] | None:
+    """The version constraint a software reference names, ``None`` when it names none (#2711 reopened).
+
+    ``(operator, version)`` bounds: ``hermes-agent >= 0.21.6, < 0.23.2`` is ``((">=", "0.21.6"), ("<", "0.23.2"))``;
+    a closing version (``FFmpeg 8.0``) or a CPE version field is ``(("=", "8.0"),)``.
+    """
+    text = str(ref or "").strip()
+    if text.lower().startswith("cpe:"):
+        parts = text.lower().split(":")
+        index = 5 if text.lower().startswith("cpe:2.3:") else 4
+        version = parts[index] if len(parts) > index else ""
+        return (("=", version),) if version not in {"", "*", "-"} else None
+    rest = text[len(_name_part(text)) :]
+    bounds = tuple((op, version.rstrip(",;")) for op, version in _RANGE_BOUND.findall(rest.lower()))
+    if bounds:
+        return bounds
+    tokens = text.lower().split()
+    if len(tokens) > 1 and _VERSION_TOKEN.fullmatch(tokens[-1]):
+        span = _VERSION_SPAN.fullmatch(tokens[-1])
+        if span:
+            return ((">=", span.group(1)), ("<=", span.group(2)))
+        return (("=", tokens[-1]),)
+    return None
+
+
+#: A closing version span ``1.3.0-1.3.3`` (both sides dotted, so ``1.0.0-1`` stays one version).
+_VERSION_SPAN = re.compile(r"(v?\d+(?:\.[0-9a-z]+)+)-(v?\d+(?:\.[0-9a-z]+)+)")
+
+
+_EPOCH_PREFIX = re.compile(r"^\d+:(.+)$")
+
+
+def _release_tokens(value: str) -> list[str]:
+    """The release tokens of a version, its epoch (``7:4.4.2-0ubuntu0``) and ``v`` prefix left out."""
+    text = value.strip().lower()
+    epoch = _EPOCH_PREFIX.match(text)
+    if epoch:
+        text = epoch.group(1)
+    if text.startswith("v") and text[1:2].isdigit():
+        text = text[1:]
+    return _TOKEN.findall(text)
+
+
+def _satisfies(installed: str, op: str, version: str) -> bool:
+    from app.services.ctem_fixed_version import compare_versions
+
+    if op in {"=", "=="}:
+        # ``8.0`` names the 8.0 release line: 8.0 and 8.0.2, never 9.0 nor 8.01.
+        want, have = _release_tokens(version), _release_tokens(installed)
+        return bool(want) and have[: len(want)] == want
+    cmp = compare_versions(installed, version)
+    if cmp is None:
+        return False
+    return {"<": cmp < 0, "<=": cmp <= 0, ">": cmp > 0, ">=": cmp >= 0, "!=": cmp != 0}.get(op, False)
+
+
+def version_in_reference(label: str, installed: Iterable[str] | None, ref: str) -> bool:
+    """Whether one *installed* version of *label* is the version or in the range *ref* names (#2711 reopened).
+
+    A reference that names no version (``nginx_plus``) is verified by any versioned row, as before.
+    A label that names the reference's version itself (``Microsoft SharePoint Server 2019`` for
+    ``SharePoint Server 2019``) is the release named. *installed* ``None``: no version read for the label.
+    """
+    bounds = reference_versions(ref)
+    if bounds is None or installed is None:
+        return True
+    if len(bounds) == 1 and bounds[0][0] == "=" and contains_word(bounds[0][1].lower(), str(label or "").lower()):
+        return True
+    return any(all(_satisfies(str(v), op, version) for op, version in bounds) for v in installed)
 
 
 #: Versions an installed software row stores when the source reported none.
@@ -939,6 +1075,7 @@ async def load_index(
                 owner.products.setdefault(str(product_key or _key(product)), str(product))
                 if str(version or "").strip().lower() not in _UNKNOWN_VERSIONS:
                     owner.versioned.add(str(product))
+                    owner.versions.setdefault(str(product), set()).add(str(version).strip())
     index.reachers = [r for r in by_asset.values() if r.links]
     return index
 
