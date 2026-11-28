@@ -39,15 +39,15 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.agents.builtin_agents import CTEM_F1_GATE_PREFIXES, CTEM_F2_GATE_PREFIXES
+
 logger = logging.getLogger(__name__)
 
-#: The work item key prefixes that name a CTEM case: the shared gates and every key of the two seeded fleets.
-CTEM_CASE_KEY_PREFIXES: tuple[str, ...] = (
-    "ctem:review:",
-    "ctem:validation:",
-    "ctem:remediation:",
-    "ctem:f1:",
-    "ctem:f2:",
+#: The work item key prefixes that name a CTEM case: every gate key of the two seeded fleets
+#: (``builtin_agents.CTEM_F1_GATE_PREFIXES`` / ``CTEM_F2_GATE_PREFIXES``, the single source,
+#: so a gate added there names its case here too) and every other key of those fleets.
+CTEM_CASE_KEY_PREFIXES: tuple[str, ...] = tuple(
+    dict.fromkeys((*CTEM_F1_GATE_PREFIXES, *CTEM_F2_GATE_PREFIXES, "ctem:f1:", "ctem:f2:"))
 )
 
 #: The ``kind`` of the derived case link in ``ask.links``: its button is worded from the catalog.

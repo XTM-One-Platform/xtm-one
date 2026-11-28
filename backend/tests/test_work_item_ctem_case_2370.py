@@ -56,6 +56,18 @@ def test_every_ctem_gate_key_names_its_case(key: str) -> None:
     assert ctem_case.case_id_of(key) == CASE
 
 
+def test_every_gate_prefix_of_both_fleets_names_its_case() -> None:
+    """A gate added to the fleets' catalog names its case without another edit (#2370 follow-up)."""
+    from app.agents.builtin_agents import CTEM_F1_GATE_PREFIXES, CTEM_F2_GATE_PREFIXES
+
+    prefixes = {*CTEM_F1_GATE_PREFIXES, *CTEM_F2_GATE_PREFIXES}
+    assert {"ctem:production-change:", "ctem:accept-risk:", "ctem:close-without-retest:"} <= prefixes
+    for prefix in sorted(prefixes):
+        assert ctem_case.case_id_of(f"{prefix}{CASE}") == CASE, prefix
+        ask = ctem_case.with_case_link({"question": "q"}, f"{prefix}{CASE}", None, "https://one.example.test")
+        assert ask["links"][0]["url"] == f"https://one.example.test/ctem/cases/{CASE}", prefix
+
+
 @pytest.mark.parametrize(
     "key",
     [
