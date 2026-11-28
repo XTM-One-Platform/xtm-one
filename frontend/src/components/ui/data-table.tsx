@@ -219,6 +219,17 @@ const DEFAULT_PAGE_SIZE = 25;
 export const ROW_HEIGHT = { 1: "h-10", 2: "h-14" } as const;
 export type RowLines = keyof typeof ROW_HEIGHT;
 
+/**
+ * The row height a table takes from its rows: the two-line height only when at least one
+ * row draws a second line, else the one-line height (Sam, 28 Nov 2026: the CTEM case
+ * Issues table took 56 px rows next to the 40 px rows of Affected assets while none of its
+ * rows had a second line). Read over every row, not the page, so the height never changes
+ * from one page to the next (one height per table).
+ */
+export function rowLinesOf<T>(rows: readonly T[], hasSecondLine: (row: T) => boolean): RowLines {
+  return rows.some(hasSecondLine) ? 2 : 1;
+}
+
 /** ROW_HEIGHT in pixels, for the loading rows to fill the window. */
 const ROW_HEIGHT_PX: Record<RowLines, number> = { 1: 40, 2: 56 };
 
