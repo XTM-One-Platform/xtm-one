@@ -22277,5 +22277,6 @@
   "The switch is organization-wide.": "El interruptor se aplica a toda la organización.",
   "The integration the pass reads.": "La integración que lee la pasada.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "El usuario con el que la pasada lee OpenCRQ. Por defecto: el propietario de la integración.",
-  "{name} (integration owner)": "{name} (propietario de la integración)"
+  "{name} (integration owner)": "{name} (propietario de la integración)",
+  "Runs as: {user}": "Se ejecuta como: {user}"
 }

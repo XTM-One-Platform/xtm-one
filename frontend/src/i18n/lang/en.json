@@ -22277,5 +22277,6 @@
   "The switch is organization-wide.": "The switch is organization-wide.",
   "The integration the pass reads.": "The integration the pass reads.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
-  "{name} (integration owner)": "{name} (integration owner)"
+  "{name} (integration owner)": "{name} (integration owner)",
+  "Runs as: {user}": "Runs as: {user}"
 }
