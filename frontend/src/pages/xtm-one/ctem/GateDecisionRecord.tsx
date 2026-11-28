@@ -277,9 +277,12 @@ export function GateDecisionRecord({
   record,
   title,
   byLabel,
+  applying = false,
   testId = "ctem-gate-record",
 }: {
   record: CtemCaseGateRecord;
+  /** Answered on this page and not yet applied by the loop (#2746): no wait, deadline or waiting sentence; the chip reads "Being applied". */
+  applying?: boolean;
   /** The gate's own title when the record stands alone (the History dialog); a card already titles it. */
   title?: string;
   /** Who answered when the record does not name them (gateAnswererName, or the analyst's mark in OpenCTI). */
@@ -313,6 +316,7 @@ export function GateDecisionRecord({
   const nextGate = next?.kind === "gate" && next.from ? next.from : null;
   const nextState = next?.kind === "state" && next.to && next.to in CASE_STATE_LABEL ? (next.to as CtemCaseState) : null;
   const waiting = status === "waiting";
+  const stillWaits = waiting && !applying;
   // A waiting gate is answered on its card in the page, never from a link in the Asked step: the page's
   // "Waits for a decision" line holds the single way out when the card cannot render in place.
   const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at);
@@ -340,9 +344,15 @@ export function GateDecisionRecord({
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-status={status} data-chip={chip}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {title && <span className="font-medium">{title}</span>}
-        <ToneBadge tone={GATE_CHIP_TONE[chip]} icon={<CaseIcon name={GATE_CHIP_ICON[chip]} />} data-testid={`${testId}-status`}>
-          {t_i18n(GATE_CHIP_LABEL[chip])}
-        </ToneBadge>
+        {applying && waiting ? (
+          <ToneBadge tone="blue" icon={<CaseIcon name="circle-check" />} data-testid={`${testId}-status`}>
+            {t_i18n("Being applied")}
+          </ToneBadge>
+        ) : (
+          <ToneBadge tone={GATE_CHIP_TONE[chip]} icon={<CaseIcon name={GATE_CHIP_ICON[chip]} />} data-testid={`${testId}-status`}>
+            {t_i18n(GATE_CHIP_LABEL[chip])}
+          </ToneBadge>
+        )}
         {statusAt && <span className="ml-auto whitespace-nowrap text-default-secondary">{when(statusAt)}</span>}
       </div>
       {showAsked && (
@@ -364,12 +374,12 @@ export function GateDecisionRecord({
               {when(record.asked_at)}
             </Field>
           )}
-          {status === "waiting" && wait && (
+          {stillWaits && wait && (
             <Field label={t_i18n("Waiting for")} icon={CASE_FACT_ICON.wait} testId={`${testId}-wait`}>
               <CaseFactChip icon={CASE_FACT_ICON.wait} tone="yellow">{wait}</CaseFactChip>
             </Field>
           )}
-          {status === "waiting" && record.deadline && (
+          {stillWaits && record.deadline && (
             <Field label={t_i18n("Deadline")} icon={CASE_FACT_ICON.deadline} testId={`${testId}-deadline`}>
               {when(record.deadline)}
             </Field>
@@ -438,6 +448,8 @@ export function GateDecisionRecord({
         </Step>
       )}
       {/* Two columns only for two facts: one fact alone spans the body (UX round 1 on #1708, B2). */}
+      {/* Being applied, the waiting sentences are no longer true (#2746): the notice under the record says what happens. */}
+      {!(applying && waiting) && (
       <dl className={nextSentence ? "grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2" : "grid grid-cols-1 gap-y-2"} data-testid={`${testId}-explain`}>
         <Field label={t_i18n("What it means")} icon={CASE_FACT_ICON.meaning} testId={`${testId}-meaning`}>
           {t_i18n(GATE_CHIP_MEANING[chip])}
@@ -448,6 +460,7 @@ export function GateDecisionRecord({
           </Field>
         )}
       </dl>
+      )}
       {answered && !record.recorded_on_case && (
         <p className="content-compact text-default-secondary" data-testid={`${testId}-pending`}>
           {t_i18n("Recorded on the case: pending")}

@@ -22267,5 +22267,11 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user."
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
+  "Being applied": "Being applied",
+  "Decision recorded: {option}. The loop is applying it.": "Decision recorded: {option}. The loop is applying it.",
+  "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
+  "Recorded, still being applied. Refresh later.": "Recorded, still being applied. Refresh later.",
+  "Decision recorded, but the run applying it failed.": "Decision recorded, but the run applying it failed.",
+  "Decision recorded: {gate}": "Decision recorded: {gate}"
 }

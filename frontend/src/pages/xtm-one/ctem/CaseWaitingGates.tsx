@@ -11,6 +11,7 @@
  * owns (`ctem.accept_risk`, `ctem.close_without_retest`, any gate added later)
  * gets its decision card here; a gate a section owns is answered in it.
  */
+import { useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,8 @@ import { useFormatter } from "@/i18n";
 import { workItemPath } from "@/lib/task-routes";
 import { GATE_LABEL, REMEDIATION_GATE } from "./case-gates";
 import { CASE_FACT_ICON, CaseCardTitleText } from "./case-icons";
-import { CaseGateDecision, useGateDecisionItem } from "./CaseGateDecision";
+import { CaseGateDecision, useGateAnswerState, useGateDecisionItem } from "./CaseGateDecision";
+import { CollapseFrame, useCollapseOut } from "./GateApplyingNotice";
 import { MOBILIZATION_GATES } from "./CaseMobilization";
 import { REVIEW_GATE } from "./case-review";
 import { VALIDATION_GATE } from "./case-validation";
@@ -50,10 +52,16 @@ function WaitingGateLine({ record, recipient }: { record: CtemCaseGateRecord; re
   const { t_i18n } = useFormatter();
   // The same read as the card's own (CaseGateDecision, the sections): found, the card is on the page.
   const { item, isLoading } = useGateDecisionItem(record, true);
-  const linkAway = !!record.work_item_id && !item && !isLoading;
+  // Answered and being applied (#2746): no link to a decision that is no longer open.
+  const answer = useGateAnswerState(record, record.status === "waiting");
+  const linkAway = !!record.work_item_id && !item && !isLoading && !answer;
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ctem-case-waiting-gate" data-gate={record.key}>
-      <span>{t_i18n("Waits for {name}: {gate}", { name: recipient, gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })}</span>
+      <span>
+        {answer
+          ? t_i18n("Decision recorded: {gate}", { gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })
+          : t_i18n("Waits for {name}: {gate}", { name: recipient, gate: t_i18n(GATE_LABEL[record.key] ?? "Gate") })}
+      </span>
       {linkAway && (
         <Button variant="outline" size="sm" className="gap-1.5" asChild>
           <RouterLink to={workItemPath(record.work_item_id!)} data-testid="ctem-case-waiting-gate-open">
@@ -78,7 +86,13 @@ export function CaseWaitingGates({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n } = useFormatter();
-  const waiting = waitingGateRecords(state, gates);
+  const live = waitingGateRecords(state, gates);
+  // The last waiting records stay for the collapse once the loop applied them (#2746): the card folds away, never jumps.
+  const kept = useRef<CtemCaseGateRecord[]>(live);
+  if (live.length > 0) kept.current = live;
+  const frame = useCollapseOut(live.length > 0);
+  if (!frame.render) return null;
+  const waiting = live.length > 0 ? live : kept.current;
   if (waiting.length === 0) return null;
   // Set apart from the lines above, so a decision card never reads as one more line (#2477 UX round 1).
   const inline = waiting.filter((record) => !SECTION_GATES.has(record.key));
@@ -87,6 +101,7 @@ export function CaseWaitingGates({
     t_i18n(RECIPIENT_FALLBACK[(record.asked_of?.type ?? "user") as keyof typeof RECIPIENT_FALLBACK] ?? RECIPIENT_FALLBACK.user);
 
   return (
+    <CollapseFrame closing={frame.closing} testId="ctem-case-waiting-gates-frame">
     <Card data-testid="ctem-case-waiting-gates">
       <CardHeader>
         <CardTitle>
@@ -115,5 +130,6 @@ export function CaseWaitingGates({
         )}
       </CardContent>
     </Card>
+    </CollapseFrame>
   );
 }
