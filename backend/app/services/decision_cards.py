@@ -156,7 +156,10 @@ def _label(option: dict[str, Any], kind: str, language: str, limit: int = _MAX_L
     key = str(option.get("key") or "")
     if kind == "tool_approval" and key in _APPROVAL_LABEL_NOTICE:
         return notice(_APPROVAL_LABEL_NOTICE[key], language)
-    return _clip(option.get("label") or key, limit)
+    from app.services.decision_ask import without_recommended_mark
+
+    # An ask stored before the guard of #2799 may carry its own 'recommended' mark: the card adds the one mark.
+    return _clip(without_recommended_mark(option.get("label")) or key, limit)
 
 
 def _option_label(ask: dict[str, Any], key: str | None, kind: str, language: str) -> str | None:
@@ -208,6 +211,8 @@ def _decides_unshown_calls(view: DecisionView) -> bool:
 
 
 def _ask_body(ask: dict[str, Any], kind: str, language: str, *, show_effects: bool) -> list[dict[str, Any]]:
+    from app.services.decision_ask import without_recommended_mark
+
     body: list[dict[str, Any]] = [_text(_clip(ask.get("question"), _MAX_QUESTION), weight="bolder", size="medium")]
     context = str(ask.get("context") or "").strip()
     for line in context.splitlines()[:20]:
@@ -223,7 +228,8 @@ def _ask_body(ask: dict[str, Any], kind: str, language: str, *, show_effects: bo
         if recommendation and str(option.get("key")) == recommendation:
             inlines.append({"type": "TextRun", "text": f" {_recommended(language)}", "isSubtle": True})
         if show_effects and option.get("effect"):
-            inlines.append({"type": "TextRun", "text": f": {_clip(option['effect'], _MAX_EFFECT)}"})
+            effect = without_recommended_mark(option["effect"])
+            inlines.append({"type": "TextRun", "text": f": {_clip(effect, _MAX_EFFECT)}"})
         body.append({"type": "RichTextBlock", "inlines": inlines})
     deadline = _utc(ask.get("deadline"))
     if deadline:

@@ -598,8 +598,13 @@ is the button's description). The recommended tile is accented and carries a
 small "Recommended" pill; there is no separate column. An effect is clamped
 to 3 lines; "Show more" shows under the tile, outside the button, only when
 the clamp actually cuts the text (measured on the rendered span and followed
-on resize, never a character count). A leading "Recommended:" an agent wrote
-into an effect is dropped at render; the ask guard refuses it (S1). With options, free text folds behind
+on resize, never a character count). The card is the only place that marks
+the recommendation, from `ask.recommendation`: the ask guard refuses a
+'recommended' marker in an option label or effect (`(recommended)`,
+`[Recommended]`, a leading `Recommended:`, a trailing `- recommended`; the word
+in a sentence stays), and the backend renderers (tool text, Teams, Slack,
+Google Chat, WhatsApp, answer links) drop such a marker from an ask stored
+before the guard, so a card never shows two recommendations (#2799). With options, free text folds behind
 "Answer differently"; without options it stays open. The header holds the
 question, who asks (the owner agent, named when the reader may see it), the
 sources (`ask.links`) and the deadline. After the answer, every surface and

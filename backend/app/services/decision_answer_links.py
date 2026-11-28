@@ -187,6 +187,7 @@ def _source_url(decision: Decision) -> str | None:
 def _option_row(option: dict[str, Any], recommended: bool, language: str | None) -> dict[str, Any]:
     """One option of the link card as the web card shows it: label, effect, the recommended one highlighted."""
     from app.services.channel_notices import notice
+    from app.services.decision_ask import without_recommended_mark
 
     items: list[dict[str, Any]] = []
     if recommended:
@@ -203,7 +204,7 @@ def _option_row(option: dict[str, Any], recommended: bool, language: str | None)
     items.append(
         {
             "type": "TextBlock",
-            "text": f"**{option.get('key')}.** {option.get('label') or option.get('key')}"[:300],
+            "text": f"**{option.get('key')}.** {without_recommended_mark(option.get('label')) or option.get('key')}"[:300],
             "wrap": True,
             "spacing": "None",
         }
@@ -212,7 +213,7 @@ def _option_row(option: dict[str, Any], recommended: bool, language: str | None)
         items.append(
             {
                 "type": "TextBlock",
-                "text": str(option["effect"])[:600],
+                "text": without_recommended_mark(option["effect"])[:600],
                 "wrap": True,
                 "isSubtle": True,
                 "spacing": "None",

@@ -93,9 +93,9 @@ def test_an_effect_opening_with_recommended_is_refused() -> None:
     options = [{"key": "A", "label": "Go", "effect": "Recommended: posts the comment"}, {"key": "B", "label": "No"}]
     with pytest.raises(ValueError) as refused:
         normalize_ask({"question": "Post the comment?", "options": options})
-    assert str(refused.value) == RECOMMENDED_EFFECT_MESSAGE
+    assert str(refused.value).endswith(RECOMMENDED_EFFECT_MESSAGE)
     options[0]["effect"] = "(recommended) posts the comment"
-    with pytest.raises(ValueError, match="drop the leading 'Recommended'"):
+    with pytest.raises(ValueError, match="drop 'recommended'"):
         normalize_run_ask("Post the comment?", options=options)
     options[0]["effect"] = "Posts the comment the review recommended"
     assert normalize_run_ask("Post the comment?", options=options)["options"][0]["effect"] == options[0]["effect"]
