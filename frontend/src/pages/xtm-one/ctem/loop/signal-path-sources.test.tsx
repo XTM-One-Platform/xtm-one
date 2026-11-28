@@ -412,9 +412,10 @@ describe("the sources side panel (#1445)", () => {
     const path = codePath(GH({ integrations: [...GH().integrations, { id: "i-gh-3", name: "GitHub archive", status: "disconnected", webhook_secret_set: false, last_delivery_at: null, used: true }] }));
     open(path);
     const list = within(configOf("github")).getByTestId("ctem-path-source-integration-rows");
-    expect(list.className).toContain("grid-cols-[");
-    for (const row of within(list).getAllByTestId("ctem-path-source-integration-row")) {
-      expect(row.className).toContain("grid-cols-subgrid");
+    // Every row, the disconnected one without a switch included, fills the same four cells of the shared grid.
+    const rows = within(list).getAllByTestId("ctem-path-source-integration-row");
+    expect(rows).toHaveLength(GH().integrations.length + 1);
+    for (const row of rows) {
       expect(row.children).toHaveLength(4);
     }
   });
