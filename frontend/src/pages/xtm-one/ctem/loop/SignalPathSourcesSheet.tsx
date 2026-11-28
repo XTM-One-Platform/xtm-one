@@ -76,7 +76,8 @@ import {
   pathStatusLabel,
   profilePassField,
   type SourceState,
-  sourceDisplayName,
+  sourceShortName,
+  sourceIntegrationList,
   sourceDisplayState,
   sourceIntegrationNames,
   sourceKey,
@@ -254,6 +255,8 @@ interface SourceTableRow {
   name: string;
   /** The integrations it runs on, by name (a source XTM One provisions), joined. */
   integration: string;
+  /** The same integrations, one name each: the cell shows the first and +N (UX round 1 on #2741, B4). */
+  integrations: string[];
   /** The run-as user ids of its enabled platform lines, joined (a source XTM One provisions). */
   runAs: string;
 }
@@ -412,8 +415,10 @@ export function SignalPathSourcesSheet({
     key: sourceKey(source),
     source,
     state: sourceDisplayState(source, connected, platformSources),
-    name: sourceDisplayName(source, providerName),
+    // The name the list chip shows, so both say the same (UX advisory A1 on #2741); the kind word is its own column.
+    name: sourceShortName(source, path?.id ?? "", providerName, t_i18n),
     integration: sourceIntegrationNames(source, platformSources, integrations),
+    integrations: sourceIntegrationList(source, platformSources, integrations),
     runAs: runAsUsers(source, platformSources),
   }));
   const columns: DataTableColumn<SourceTableRow>[] = [
@@ -440,9 +445,14 @@ export function SignalPathSourcesSheet({
       hideable: true,
       // Fixed widths on every column but Source, which takes the free width (UX round 1 on #2509, B2).
       width: 128,
-      sortValue: (row) => sourceKindText(t_i18n, row.source),
+      // The kind word alone, whole (UX round 1 on #2741, B4): what tells two rows apart is in the Source name.
+      sortValue: (row) => t_i18n(SOURCE_KIND_LABEL[row.source.kind]),
       csv: (row) => sourceKindText(t_i18n, row.source),
-      cell: (row) => <span className="truncate text-default-secondary">{sourceKindText(t_i18n, row.source)}</span>,
+      cell: (row) => (
+        <span className="break-words text-default-secondary" data-testid="ctem-path-source-kind">
+          {t_i18n(SOURCE_KIND_LABEL[row.source.kind])}
+        </span>
+      ),
     },
     {
       key: "integration",
@@ -453,11 +463,18 @@ export function SignalPathSourcesSheet({
       sortValue: (row) => row.integration,
       csv: (row) => row.integration,
       // "No integration" in words, never "None" beside a status (#2736).
+      // A list in a narrow cell: the first name and +N, the whole list in the DS tooltip, never a comma run cut
+      // (UX round 1 on #2741, B4).
       cell: (row) =>
-        row.integration ? (
+        row.integrations.length > 0 ? (
           <Tip content={row.integration}>
-            <span className="min-w-0 truncate" data-testid="ctem-path-source-integration">
-              {row.integration}
+            <span className="flex min-w-0 items-center gap-1" data-testid="ctem-path-source-integration">
+              <span className="min-w-0 truncate" data-testid="ctem-path-source-integration-first">{row.integrations[0]}</span>
+              {row.integrations.length > 1 && (
+                <span className="shrink-0 tabular-nums text-default-secondary" data-testid="ctem-path-source-integration-more">
+                  {t_i18n("+{count}", { count: row.integrations.length - 1 })}
+                </span>
+              )}
             </span>
           </Tip>
         ) : (

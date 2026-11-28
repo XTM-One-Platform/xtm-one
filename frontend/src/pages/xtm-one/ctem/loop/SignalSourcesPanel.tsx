@@ -68,12 +68,10 @@ import {
   sourceShortName,
   silentReasonText,
   sourceStateIcon,
+  SOURCE_STATE_LEGEND,
 } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
-
-/** The legend words of the source chips. @i18n-keys */
-const LEGEND_LABELS = ["On", "Off or not set up", "Error", "Not connected"] as const;
 
 /** The lens headings and what each sees. @i18n-keys */
 const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as const;
@@ -118,9 +116,6 @@ const CHIP_TONE: Record<SourceState, string> = {
   not_configured: "border-elevation-subtle-soft text-default-secondary",
 };
 
-/** The icon of a source that is not connected here (its chip is dashed and muted). */
-const NOT_CONNECTED_ICON = { icon: "circle-plus", className: "text-default-secondary", label: "Not connected" } as const;
-
 /**
  * One source of a path as a compact chip (#2736): its state icon, provider logo and short name ("GitHub Dependabot",
  * "OpenCTI PIR playbook"); its kind, event, state and integrations in the tooltip. Every source of the path is drawn,
@@ -144,7 +139,7 @@ function SourceChip({
   const tabIndex = useTriggerTabIndex();
   const state = sourceDisplayState(source, connected, platform);
   const name = sourceShortName(source, pathId, providerName, t_i18n);
-  const icon = sourceStateIcon(state) ?? NOT_CONNECTED_ICON;
+  const icon = sourceStateIcon(state);
   const event = source.event ? t_i18n(source.event) : null;
   const via = sourceIntegrationNames(source, platform, integrations);
   const tip = [
@@ -159,7 +154,7 @@ function SourceChip({
       <span
         tabIndex={tabIndex}
         aria-label={`${name}: ${t_i18n(icon.label)}`}
-        className={cn("inline-flex h-5 min-w-0 max-w-56 shrink-0 items-center gap-1 rounded-sm border px-1.5 content-caption", CHIP_TONE[state])}
+        className={cn("inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 content-caption", CHIP_TONE[state])}
         data-testid="ctem-signal-source"
         data-provider={source.provider}
         data-kind={source.kind}
@@ -169,7 +164,8 @@ function SourceChip({
       >
         <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />
         <ProviderLogo provider={source.provider} className={cn("size-3.5 shrink-0", state === "not_connected" && "opacity-60")} decorative />
-        <span className="min-w-0 truncate" data-testid="ctem-signal-source-name">
+        {/* Never cut (UX round 1 on #2741, B2): the short name fits whole, the kind is in the tooltip. */}
+        <span data-testid="ctem-signal-source-name">
           {name}
         </span>
       </span>
@@ -177,21 +173,19 @@ function SourceChip({
   );
 }
 
-/** The legend of the source chips, once above the table (#2736). */
+/**
+ * The legend of the source chips, once above the table (#2736): one entry per icon, naming every state a chip can
+ * show (UX round 1 on #2741, B3).
+ */
 function ChipLegend() {
   const { t_i18n } = useFormatter();
-  const items: { state: SourceState; label: (typeof LEGEND_LABELS)[number] }[] = [
-    { state: "bound", label: LEGEND_LABELS[0] },
-    { state: "off", label: LEGEND_LABELS[1] },
-    { state: "error", label: LEGEND_LABELS[2] },
-    { state: "not_connected", label: LEGEND_LABELS[3] },
-  ];
   return (
     <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 content-caption text-default-secondary" aria-label={t_i18n("Source states")} data-testid="ctem-signal-sources-legend">
-      {items.map(({ state, label }) => {
-        const icon = sourceStateIcon(state) ?? NOT_CONNECTED_ICON;
+      {SOURCE_STATE_LEGEND.map(({ states, label }) => {
+        const state: SourceState = states[0];
+        const icon = sourceStateIcon(state);
         return (
-          <li key={state} className="inline-flex items-center gap-1.5">
+          <li key={state} className="inline-flex items-center gap-1.5" data-testid="ctem-signal-sources-legend-item" data-icon={icon.icon}>
             <span className={cn("inline-flex size-4 items-center justify-center rounded-sm border", CHIP_TONE[state])} aria-hidden>
               <Icon name={icon.icon} size={16} className={icon.className} />
             </span>
@@ -307,7 +301,7 @@ function SourceList({
   if (compact) {
     if (!shown.some((s) => stateOf(s) === "bound")) return <NoSourceOn className={className} />;
     const label = (s: CtemSignalPathSource) => {
-      const icon = sourceStateIcon(stateOf(s)) ?? NOT_CONNECTED_ICON;
+      const icon = sourceStateIcon(stateOf(s));
       return `${sourceShortName(s, path.id, providerName, t_i18n)} (${t_i18n(icon.label)})`;
     };
     const names = shown.map(label).join(", ");
@@ -437,8 +431,8 @@ export function SignalSourcesPanel() {
       key: "count_30d",
       header: "Signals (30 days)",
       align: "right",
-      // Wide enough for the header and its sort mark at 1728 in every language (UX advisory A3 of #2436).
-      width: 176,
+      // Wide enough for the header and its sort mark at 1728; the rest goes to the Sources chips (UX round 1 on #2741, B1).
+      width: 152,
       // Not interactive (#2736): the count opens the path's sources like the rest of the row; its tooltip stays.
       hideable: true,
       sortValue: (path) => path.count_30d ?? 0,

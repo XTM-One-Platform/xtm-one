@@ -231,7 +231,12 @@ describe("the sources side panel (#1445)", () => {
     const rows = screen.getAllByTestId("ctem-path-source-row");
     const github = rows.find((r) => r.getAttribute("data-provider") === "github") as HTMLElement;
     const aikido = rows.find((r) => r.getAttribute("data-provider") === "aikido") as HTMLElement;
-    expect(within(github).getByTestId("ctem-path-source-integration").textContent).toBe("GitHub Filigran, GitHub Labs");
+    // A list in a narrow cell: the first name and +N, never a comma run (UX round 1 on #2741, B4).
+    expect(within(github).getByTestId("ctem-path-source-integration-first").textContent).toBe("GitHub Filigran");
+    expect(within(github).getByTestId("ctem-path-source-integration-more").textContent).toBe("+1");
+    // The drawer names the source as the list chip does (UX advisory A1 on #2741); the Kind cell holds the kind word alone.
+    expect(within(github).getByTestId("ctem-path-source-name").textContent).toBe("GitHub Dependabot");
+    expect(within(github).getByTestId("ctem-path-source-kind").textContent).toBe("Live listener");
     expect(within(aikido).getByTestId("ctem-path-source-integration").textContent).toBe("No integration");
     // A click on the name cell opens the row's configuration in place; the toggle is a chevron with aria-expanded.
     expect(screen.queryAllByTestId("ctem-path-source")).toHaveLength(0);

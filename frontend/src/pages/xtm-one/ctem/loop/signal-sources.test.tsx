@@ -19,6 +19,9 @@ import {
   silentReasonText,
   sourceIntegrationNames,
   sourceState,
+  sourceStateIcon,
+  SOURCE_STATE_LEGEND,
+  type SourceState,
 } from "./signal-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -68,6 +71,19 @@ const PATHS: CtemSignalPath[] = [
 beforeEach(() => {
   vi.clearAllMocks();
   get.mockResolvedValue({ paths: PATHS });
+});
+
+describe("source state legend (UX round 1 on #2741, B3)", () => {
+  it("names every state a chip can show exactly once, each entry with one icon that is its states' own", () => {
+    const ALL: SourceState[] = ["error", "bound", "excluded", "off", "not_configured", "not_set_up", "not_connected"];
+    const named = SOURCE_STATE_LEGEND.flatMap((entry) => [...entry.states]);
+    expect([...named].sort()).toEqual([...ALL].sort());
+    for (const entry of SOURCE_STATE_LEGEND) {
+      expect(new Set(entry.states.map((s) => sourceStateIcon(s).icon)).size).toBe(1);
+    }
+    const icons = SOURCE_STATE_LEGEND.map((entry) => sourceStateIcon(entry.states[0]).icon);
+    expect(new Set(icons).size).toBe(icons.length);
+  });
 });
 
 describe("signal source rules", () => {
@@ -264,11 +280,15 @@ describe("SignalSourcesPanel", () => {
     // Every source, the sources that are on first, a provider with no integration here last (dashed, muted).
     expect(chips("code_flaw")).toEqual(["GitHub Dependabot:bound", "GitHub Code scanning:bound", "Aikido Security:not_connected"]);
     expect(chips("credential_leak")).toEqual(["OpenCTI:bound", "GitHub Secret scanning:bound", "Aikido Security:not_connected"]);
-    expect(chips("new_exposure")).toEqual(["Shodan Scheduled pass:bound", "Google Threat Intelligence Scheduled pass:not_connected"]);
+    // The kind is in the tooltip, never on the chip, so a name fits whole (UX round 1 on #2741, B1, B2).
+    expect(chips("new_exposure")).toEqual(["Shodan:bound", "Google Threat Intelligence:not_connected"]);
     expect(chips("new_vulnerability")).toEqual(["OpenCTI:bound", "OpenCTI PIR playbook:not_set_up"]);
-    expect(chips("control_decay")).toEqual(["OpenCRQ Scheduled pass:off"]);
+    expect(chips("control_decay")).toEqual(["OpenCRQ:off"]);
     // The legend, once above the table.
     expect(screen.getAllByTestId("ctem-signal-sources-legend")).toHaveLength(1);
+    // A chip's icon is one a legend entry shows (UX round 1 on #2741, B3).
+    const legendIcons = screen.getAllByTestId("ctem-signal-sources-legend-item").map((li) => li.getAttribute("data-icon"));
+    expect(new Set(legendIcons).size).toBe(legendIcons.length);
 
     // "Sources on" counts every source of the path, the one not connected named in its tooltip.
     const leakCount = within(row("credential_leak")).getByTestId("ctem-signal-sources-on-count");
