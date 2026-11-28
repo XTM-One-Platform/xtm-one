@@ -20819,6 +20819,7 @@
   "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}": "{connected} sur {total, plural, one {# capacité connectée} other {# capacités connectées}}",
   "XTM One inventory (built in)": "Inventaire XTM One (intégré)",
   "In XTM One only": "Dans XTM One uniquement",
+  "Search engine": "Moteur de recherche",
   "Vulnerability intelligence": "Renseignement sur les vulnérabilités",
   "Asset inventory": "Inventaire des actifs",
   "External attack surface": "Surface d'attaque externe",
