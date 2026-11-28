@@ -40,6 +40,7 @@ import {
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { TagInput } from "@/components/ui/tag-input";
 import { useToast } from "@/components/ui/toast";
+import { useCtemSignalPaths } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { useAttackSurfaceProviders, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,6 +59,8 @@ import {
   toForm,
   withIntegrationIds,
 } from "@/lib/organization-profile";
+import { useConfirmPathsOff } from "@/pages/xtm-one/ctem/loop/ConfirmPathsOffDialog";
+import { profilePassPaths } from "@/pages/xtm-one/ctem/loop/signal-sources";
 
 function CardIcon({ className }: { className?: string }) {
   return (
@@ -92,6 +95,8 @@ export function OrganizationOutsideLensCard({ id: anchorId, fold }: Organization
   const { data: supported } = useAttackSurfaceProviders();
   const { data: integrations = [] } = useIntegrations();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const { data: signalPaths } = useCtemSignalPaths();
+  const [confirmOff, guardOff] = useConfirmPathsOff();
 
   const profile = data?.profile;
   const domains = profile?.owned_domains ?? [];
@@ -150,8 +155,19 @@ export function OrganizationOutsideLensCard({ id: anchorId, fold }: Organization
         JSON.stringify({ owned_domains: domains, address_ranges: ranges, attack_surface: withIntegrationIds(pass, passIds) }));
   const blocked = next === null || badRanges.length > 0 || providerMissing;
 
+  // Saving the outside lens off stops every path its pass feeds: asked first when they are several (#2784).
   const onSave = () => {
     if (!profile || !next || blocked) return;
+    if (pass.enabled && !next.attack_surface.enabled)
+      return guardOff(
+        profilePassPaths(signalPaths?.paths ?? [], "attack_surface").map((p) => t_i18n(p.label)),
+        t_i18n("Turn off the outside lens?"),
+        write,
+      );
+    write();
+  };
+  const write = () => {
+    if (!profile || !next) return;
     const parsed = fromForm({ ...toForm(profile), ...next });
     if ("invalid" in parsed) return;
     // #1738: these three fields alone travel, never the asset rows a sync keeps.
@@ -352,6 +368,7 @@ export function OrganizationOutsideLensCard({ id: anchorId, fold }: Organization
           <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={!dirty || blocked} onSave={onSave} onCancel={() => setDraft(null)} />
         </div>
       )}
+      {confirmOff}
     </SettingsCard>
   );
 }

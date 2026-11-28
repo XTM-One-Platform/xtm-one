@@ -6,8 +6,9 @@
  * automatically at the fleet's level, or the waiting decision on the unified
  * work-item decision card (dev-docs/human-gates.md), never a CTEM card. The
  * platform never classifies an inject (#1810). Read from the case's own
- * validation references and `gate` events. Never blank: a case not validated
- * yet says so.
+ * validation references and `gate` events. Left out of the page while the case
+ * has no validation, no gate A event and no scenario (#2786), unless OpenAEV is
+ * not connected: then it says so, with Connect.
  */
 import { Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import { useFormatter } from "@/i18n";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { PROVIDER_NAMES } from "./case-loop";
 import { VALIDATION_GATE, autoPassReason, chosenOptionLabel, latestValidations, validationDecisionKey } from "./case-validation";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseSectionReason, useHideEmptySection } from "./CaseSectionReason";
 import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
@@ -113,6 +114,7 @@ export function CaseValidation({
   // The scenario link, as the threat package's (#2468): only for an OpenAEV reader, only a safe URL.
   const scenarioHref = scenario && !scenario.restricted ? safeExternalUrl(scenario.url ?? undefined) : undefined;
   const missing = scenario?.playable === false && typeof scenario.techniques_missing === "number" ? scenario.techniques_missing : null;
+  if (useHideEmptySection(rows.length === 0 && !gate && !record && !scenario, "openaev")) return null;
 
   return (
     <Card data-testid="ctem-case-validation">

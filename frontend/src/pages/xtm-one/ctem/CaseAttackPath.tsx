@@ -6,7 +6,9 @@
  * nearest first, each one proven by an execution or inferred, and the primary
  * (business) assets behind the assets reached. Written by the triage step from
  * OpenCRQ; a viewer who does not read OpenCRQ sees the shape with "Restricted
- * asset". Never blank: a case with no reading says why.
+ * asset". Left out of the page while no reading is written (#2786), unless
+ * OpenCRQ is not connected: then it says so, with Connect. A reading with no hop
+ * is a result the loop wrote, and shows.
  */
 import { Chip, Icon } from "@filigran/design-system";
 import { Link } from "react-router-dom";
@@ -16,7 +18,7 @@ import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseSectionReason, useHideEmptySection } from "./CaseSectionReason";
 import { CaseFoldToggle, useCaseFold } from "./case-fold";
 import { primaryAssetPath } from "./inventory";
 
@@ -84,6 +86,7 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
   const name = (asset: string) => (asset === RESTRICTED ? t_i18n("Restricted asset") : asset);
   // Up to 40 hops per reading (ATTACK_PATH_MAX in ctem_case_loop): folded past five, nearest kept (#1679, point 5).
   const hops = useCaseFold(reading?.hops ?? []);
+  if (useHideEmptySection(!reading, "opencrq")) return null;
 
   return (
     <Card data-testid="ctem-case-attack-path">

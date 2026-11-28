@@ -20,6 +20,7 @@ from typing import Any
 from app.services import ctem_primary_assets as pa
 from app.services.ctem_funnel import funnel_scope
 from app.services.ctem_scope_gate import _product_matches as gate_product_matches
+from app.services.ctem_scope_gate import one_word_names_reference
 
 
 def _former_rule(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
@@ -95,7 +96,12 @@ def _gate_former(product: str, ref: str) -> bool:
     p, r = product.strip().lower(), ref.strip().lower()
     if r.startswith("cpe:"):
         parts = r.split(":")
-        r = parts[4] if len(parts) > 4 else r
+        # #2777: a CPE's product part is read with its ``_`` as spaces, on both sides.
+        r = (parts[4] if len(parts) > 4 else r).replace("_", " ")
+        p = p.replace("_", " ")
+    elif not one_word_names_reference(p, ref):
+        # #2777 point 5: one word never names a longer reference by being one of its words.
+        return False
     if (p in pa.FAMILY_WORDS or p in pa.GENERIC_PRODUCT_WORDS) and p != r.replace("_", " "):
         return False
     if p != r and (pa.is_url_like(p) or pa.is_url_like(r)):

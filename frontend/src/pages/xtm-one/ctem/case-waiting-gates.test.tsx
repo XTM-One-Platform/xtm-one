@@ -93,8 +93,8 @@ describe("Mobilization gates (#2464)", () => {
     expect(state.ids).toContain("wi-mob");
     // No correlation-key read for a record that names its item.
     expect(state.lists.every((l) => !l.enabled)).toBe(true);
-    // A gate met is not an empty section.
-    expect(screen.queryByTestId("ctem-case-mobilization-empty")).toBeNull();
+    // A gate met is not an empty section: the card shows (#2786).
+    expect(screen.getByTestId("ctem-case-mobilization")).toBeInTheDocument();
   });
 
   it("keeps a company-managed decision read-only for a viewer without View and decide", () => {

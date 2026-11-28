@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -1633,9 +1634,13 @@ async def sweep(
     vertical: str = "cyber",
     events: PendingEvents | None = None,
     now: datetime | None = None,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """The scheduled pass: open the cases of waiting confirmed signals, close the cases of retired assets,
     escalate SLA breaches. The caller commits.
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is read before every waiting signal the
+    opening pass takes: past it the opening stops and the rest waits for the next sweep.
 
     While an administrator paused case opening (#1951, services/ctem_case_opening.py) the
     waiting signals stay confirmed with no case; the SLA, announce and stall passes still run.
@@ -1664,7 +1669,7 @@ async def sweep(
             "CTEM sweep of %s: the writer lock is busy, opening and duplicate merge wait for the next tick", vertical
         )
     if writer and await case_opening.may_open_waiting(db, vertical):
-        await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
+        await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts, deadline=deadline)
     # #2452, #2560: an open case never waits with no owner, and the system-set owners are re-routed
     # to the asset group owner once (capped batch, no platform event).
     from app.services.ctem_case_owner import backfill_owners
@@ -1715,6 +1720,7 @@ async def open_waiting(
     events: PendingEvents | None,
     now: datetime,
     counts: dict[str, int],
+    deadline: float | None = None,
 ) -> bool:
     """Open the cases of up to ``SWEEP_BATCH`` waiting confirmed signals, oldest sighting first; adds to *counts*.
 
@@ -1740,6 +1746,9 @@ async def open_waiting(
         .all()
     )
     for signal in waiting:
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.info("CTEM case opening of %s: the pass reached its deadline; the rest of the batch waits", vertical)
+            break
         if not await case_opening.is_on(db, vertical):
             logger.info("CTEM case opening paused for %s mid-pass; the rest of the batch waits", vertical)
             break

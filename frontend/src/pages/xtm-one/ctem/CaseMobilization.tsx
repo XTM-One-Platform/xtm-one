@@ -8,8 +8,8 @@
  * how to revert it. The ticket itself keeps its chip in the page header.
  * The two gates of this step, `ctem.mobilize` and `ctem.production_change`,
  * show their decision here (#2464): the record, and while one waits its open
- * decision on the unified card. Never blank: a case with nothing mobilized and
- * no gate met says what will appear.
+ * decision on the unified card. Left out of the page while nothing is
+ * mobilized and no gate of the step is met (#2786).
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseTicket } from "@/hooks/api/useCtemCasesApi";
@@ -17,7 +17,7 @@ import { useFormatter } from "@/i18n";
 import { CASE_SECTION_ICON, CaseCardTitleText, CaseFactChip } from "./case-icons";
 import { APPLIED_CHANGE_KIND_LABEL, MOBILIZATION_MODE_LABEL, appliedChanges, mobilizationMode, type AppliedChange } from "./case-mobilization";
 import { CaseGateDecision } from "./CaseGateDecision";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { useHideEmptySection } from "./CaseSectionReason";
 import { gateRecordOf } from "./GateDecisionRecord";
 
 /** The gates of the Mobilize step, in the order they are met. */
@@ -97,6 +97,7 @@ export function CaseMobilization({
   const changes = appliedChanges(history);
   const mode = mobilizationMode(changes, tickets);
   const records = MOBILIZATION_GATES.map((key) => gateRecordOf(gates, key)).filter((r): r is CtemCaseGateRecord => r !== null);
+  if (useHideEmptySection(!mode && records.length === 0)) return null;
 
   return (
     <Card data-testid="ctem-case-mobilization">
@@ -116,15 +117,7 @@ export function CaseMobilization({
             testId={`ctem-case-mobilization-gate-${record.key === "ctem.mobilize" ? "mobilize" : "production-change"}`}
           />
         ))}
-        {!mode && records.length === 0 ? (
-          <CaseSectionReason
-            own={t_i18n(
-              "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.",
-            )}
-            icon={CASE_SECTION_ICON.mobilization}
-            testId="ctem-case-mobilization-empty"
-          />
-        ) : !mode ? null : (
+        {mode && (
           <>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-default-secondary">{t_i18n("Mode")}</span>

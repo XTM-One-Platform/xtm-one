@@ -77,10 +77,14 @@ describe("case Mobilization (#2061)", () => {
     expect(screen.getByTestId("ctem-case-applied-change-more")).toHaveTextContent("+3 more");
   });
 
-  it("says what will appear when nothing was mobilized yet", () => {
+  it("is left out of the page while nothing was mobilized and no gate of the step is met (#2786)", () => {
     renderWithProviders(<CaseMobilization history={[]} tickets={[]} />);
-    expect(screen.getByTestId("ctem-case-mobilization-empty")).toBeInTheDocument();
-    expect(screen.queryByTestId("ctem-case-mobilization-mode")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-mobilization")).toBeNull();
+  });
+
+  it("shows as soon as a ticket is filed (#2786)", () => {
+    renderWithProviders(<CaseMobilization history={[]} tickets={[TICKET]} />);
+    expect(screen.getByTestId("ctem-case-mobilization-mode")).toHaveTextContent("Ticket");
   });
 
   it("draws the card in French", () => {
