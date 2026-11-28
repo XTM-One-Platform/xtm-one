@@ -69,7 +69,7 @@ export function focusGateDecision(gate: string): boolean {
 /** The wrapper of a decision card rendered in place: the target of "Answer on this page". */
 export function GateDecisionAnchor({ gate, children }: { gate: string; children: ReactNode }) {
   return (
-    <div id={gateDecisionAnchorId(gate)} tabIndex={-1} className="scroll-mt-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="ctem-gate-decision-anchor" data-gate={gate}>
+    <div id={gateDecisionAnchorId(gate)} tabIndex={-1} className="scroll-mt-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-focus" data-testid="ctem-gate-decision-anchor" data-gate={gate}>
       {children}
     </div>
   );
