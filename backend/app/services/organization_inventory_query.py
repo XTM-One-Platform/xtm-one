@@ -205,9 +205,10 @@ async def get_asset(
     """One asset by id, 8+ hex prefix or exact identifier, with its software page, groups and primary assets."""
     from app.services.ctem_primary_assets import asset_primary_assets
 
-    asset_id = await _resolve_asset(db, organization_id, asset)
-    if asset_id is None:
+    resolved = await _resolve_asset(db, organization_id, asset)
+    if resolved is None:
         return None
+    asset_id, match_kind, matches = resolved
     detail = await store.get_asset(
         db,
         organization_id,
@@ -219,10 +220,17 @@ async def get_asset(
         return None
     detail["groups"] = await _asset_groups(db, organization_id, asset_id)
     detail["primary_assets"] = await asset_primary_assets(db, organization_id, asset_id)
+    # How the asked value named it (#2803): an id, or the identifier tier that answered, and how many
+    # assets that tier holds, so a weak or shared reading is never read as an exact hit.
+    detail["match_kind"] = match_kind
+    if matches > 1:
+        detail["ambiguous"] = True
+        detail["matches"] = matches
     return detail
 
 
-async def _resolve_asset(db: AsyncSession, organization_id: uuid.UUID, ref: str) -> uuid.UUID | None:
+async def _resolve_asset(db: AsyncSession, organization_id: uuid.UUID, ref: str) -> tuple[uuid.UUID, str, int] | None:
+    """``(asset id, match_kind, matches)`` for *ref*: an id, an 8+ hex prefix or an identifier (#2803)."""
     text = str(ref or "").strip()
     if not text:
         return None
@@ -236,8 +244,9 @@ async def _resolve_asset(db: AsyncSession, organization_id: uuid.UUID, ref: str)
             )
         ).first()
         if is_asset is not None:
-            return exact
-        return (await store.assets_of_records(db, organization_id, [exact])).get(exact)
+            return exact, "id", 1
+        record_asset = (await store.assets_of_records(db, organization_id, [exact])).get(exact)
+        return (record_asset, "reference", 1) if record_asset is not None else None
     prefix = store.id_prefix(text)
     if prefix is not None:
         rows = (
@@ -251,10 +260,10 @@ async def _resolve_asset(db: AsyncSession, organization_id: uuid.UUID, ref: str)
             )
         ).all()
         if len(rows) == 1:
-            return uuid.UUID(str(rows[0][0]))
+            return uuid.UUID(str(rows[0][0])), "id", 1
     found = await store.find_assets_by_identifier(db, organization_id, [text])
     hit = found.get(text)
-    return uuid.UUID(hit["id"]) if hit else None
+    return (uuid.UUID(hit["id"]), str(hit["match_kind"]), int(hit["matches"])) if hit else None
 
 
 async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID) -> list[dict[str, str]]:
@@ -305,10 +314,18 @@ async def group_source_id(
 
 
 async def lookup_assets(db: AsyncSession, organization_id: uuid.UUID, values: Sequence[str]) -> dict[str, Any]:
-    """The asset each value names (hostname, FQDN, IP, MAC, ``source:external_id``, a record id or exact name)."""
+    """The asset each value names (hostname, FQDN, IP, MAC, ``source:external_id``, a record id or exact name).
+
+    Each found entry says its ``match_kind`` and ``ambiguous`` (#2803). An FQDN no asset holds is
+    ``not_found`` even when its first label is a hostname; those assets are listed under
+    ``possible_matches`` only, never answered.
+    """
     asked = [str(v).strip() for v in values if str(v or "").strip()][: store.MAX_LOOKUP_KEYS]
-    found = await store.find_assets_by_identifier(db, organization_id, asked)
-    return {"found": found, "not_found": [v for v in asked if v not in found]}
+    looked = await store.match_assets_by_identifier(db, organization_id, asked)
+    answer: dict[str, Any] = {"found": looked.found, "not_found": [v for v in asked if v not in looked.found]}
+    if looked.possible:
+        answer["possible_matches"] = looked.possible
+    return answer
 
 
 # ── Software ──────────────────────────────────────────────────────────────
