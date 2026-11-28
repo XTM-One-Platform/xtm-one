@@ -14,11 +14,13 @@ import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Chip, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
-import { Tip } from "@/components/ui/tooltip";
-import type { CtemPlatformSource, CtemSignalPath, CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
+import type { CtemPlatformSource, CtemSignalPath, CtemSignalPathSource, CtemSourceIntegration } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import type { OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
+import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
+import { formatShortDateTimeIntl } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_ATTACK_SURFACE,
   DEFAULT_EVIDENCE_HEALTH,
@@ -33,7 +35,94 @@ import { LabelledSwitch } from "./LabelledSwitch";
 import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
 import { PLATFORM_NAME, isProvisioned, platformSourceFixRoute, sourceReasonLine } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
-import { canExclude, connectHref, connectNeedsAdmin, profilePassField, sourceKey, sourceState, withExclusion } from "./signal-sources";
+import {
+  canExclude,
+  connectHref,
+  connectNeedsAdmin,
+  isWebhookListener,
+  profilePassField,
+  sourceKey,
+  sourceState,
+  withExclusion,
+  withIntegrationUse,
+} from "./signal-sources";
+
+/**
+ * The state of one integration feeding a webhook listener (#2736): Connected when a delivery from it is trusted (a
+ * webhook secret is set), Waiting for webhook without the secret, Disconnected when the integration is not connected.
+ * @i18n-keys
+ */
+const INTEGRATION_STATE_LABEL = { connected: "Connected", waiting: "Waiting for webhook", disconnected: "Disconnected" } as const;
+
+function integrationState(i: CtemSourceIntegration): keyof typeof INTEGRATION_STATE_LABEL {
+  if (i.status !== "connected") return "disconnected";
+  return i.webhook_secret_set ? "connected" : "waiting";
+}
+
+/**
+ * The integrations feeding a webhook listener, one aligned row each (#2736, Sam 28 Nov 2026): name, state, last
+ * verified delivery and "Use on this source" (default on for every connected integration; off writes
+ * `signal_sources.excluded_integrations`). The provider's OAuth default app reads under its own name.
+ */
+function SourceIntegrationRows({
+  source,
+  isAdmin,
+  saving,
+  onToggle,
+}: {
+  source: CtemSignalPathSource;
+  isAdmin: boolean;
+  saving: boolean;
+  onToggle: (integration: CtemSourceIntegration, use: boolean) => void;
+}) {
+  const { t_i18n, intl } = useFormatter();
+  const rows = source.integrations ?? [];
+  return (
+    // One grid for the whole list (UX round 1 on #2796, B2): every row shares the columns, a row without a switch included;
+    // the delivery column holds its dated line on one line (B3). The name keeps an 8rem floor and the other columns size to
+    // their content, so the name stays readable at 1080 in every locale (UX round 2 on #2796, B1).
+    <ul
+      className="grid min-w-0 grid-cols-[minmax(8rem,1fr)_auto_auto_auto] gap-x-3 gap-y-1"
+      data-testid="ctem-path-source-integration-rows"
+    >
+      {rows.map((i) => {
+        const state = integrationState(i);
+        const name = i.id === "oauth_default" ? t_i18n("OAuth default app") : i.name;
+        return (
+          <li
+            key={i.id}
+            className="col-span-4 grid grid-cols-subgrid items-center"
+            data-testid="ctem-path-source-integration-row"
+            data-integration={i.id}
+            data-state={state}
+          >
+            <Tip content={name}>
+              <span className="min-w-0 truncate font-medium" data-testid="ctem-path-source-integration-name">{name}</span>
+            </Tip>
+            <span className={cn("min-w-0 break-words", state !== "connected" && "text-default-secondary")} data-testid="ctem-path-source-integration-state">
+              {t_i18n(INTEGRATION_STATE_LABEL[state])}
+            </span>
+            <span className="min-w-0 truncate whitespace-nowrap text-default-secondary" data-testid="ctem-path-source-integration-delivery">
+              {t_i18n("Last delivery: {date}", { date: i.last_delivery_at ? formatShortDateTimeIntl(intl, i.last_delivery_at) : t_i18n("Never") })}
+            </span>
+            {state === "disconnected" ? (
+              <span aria-hidden />
+            ) : (
+              <LabelledSwitch
+                label={t_i18n("Use on this source")}
+                ariaLabel={`${t_i18n("Use on this source")}: ${name}`}
+                checked={i.used}
+                disabled={!isAdmin || saving}
+                onCheckedChange={(use) => onToggle(i, use)}
+                testId="ctem-path-source-integration-use"
+              />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /** One titled section of the panel: a label column on the left, its content on the right, on one grid. */
 function ConfigSection({ title, testId, children }: { title: string; testId: string; children: ReactNode }) {
@@ -208,7 +297,13 @@ export function SourceConfig({
   const showPaths = feeds.length > 1 || canExclude(source);
   // A section renders only with content (UX round 1 B2): a source XTM One runs itself (the inventory pass) has no
   // integration row, so it gets no empty Integrations title.
-  const showIntegrations = provisioned || Boolean(passField) || state === "not_connected";
+  const webhookListener = isWebhookListener(source) && (source.integrations ?? []).length > 0;
+  const showIntegrations = provisioned || Boolean(passField) || state === "not_connected" || webhookListener;
+  const toggleIntegration = (integration: CtemSourceIntegration, use: boolean) =>
+    onSave(
+      { signal_sources: withIntegrationUse(profile?.signal_sources, key, integration.id, use) },
+      use ? t_i18n("Integration used on this source") : t_i18n("Integration taken off this source"),
+    );
 
   // An off of the organization-wide pass stops every path it feeds: asked first when they are several (#2784).
   const togglePass = (enabled: boolean) => {
@@ -249,6 +344,9 @@ export function SourceConfig({
       {showIntegrations && (
       <ConfigSection title={t_i18n("Integrations")} testId="ctem-path-source-integrations">
         {provisioned && state === "error" && <SourceFixLinks source={source} platformSources={platformSources} />}
+        {webhookListener && state !== "not_connected" && (
+          <SourceIntegrationRows source={source} isAdmin={isAdmin} saving={saving} onToggle={toggleIntegration} />
+        )}
         {provisioned && state !== "not_connected" && (
           <PlatformSourceControls source={source} platformSources={platformSources} isAdmin={isAdmin} onEnable={onEnable} />
         )}

@@ -4,6 +4,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
 from app.models.ctem_signal import TRIGGER_PATHS
 from app.services import ctem_signal_listeners as listeners
 from app.services import ctem_signal_sources as sources
@@ -14,6 +19,18 @@ def test_every_path_has_a_description_and_a_sources_row() -> None:
     assert set(sources.PATH_DESCRIPTIONS) == set(TRIGGER_PATHS)
     assert set(sources.PATH_SOURCES) == set(TRIGGER_PATHS)
     assert all(s.kind in sources.SOURCE_KINDS for row in sources.PATH_SOURCES.values() for s in row)
+
+
+_LANG = Path(__file__).resolve().parents[2] / "frontend/src/i18n/lang"
+
+
+@pytest.mark.parametrize("lang", ["en", "fr", "es", "ja"])
+def test_every_source_event_has_a_catalog_entry(lang: str) -> None:
+    # The UI translates these English lines with t_i18n (UX round 2 on #2796, B2): a missing key shows English.
+    catalog = json.loads((_LANG / f"{lang}.json").read_text(encoding="utf-8"))
+    lines = {s.event for row in sources.PATH_SOURCES.values() for s in row}
+    missing = sorted(line for line in lines if line not in catalog)
+    assert missing == [], (lang, missing)
 
 
 def test_every_listener_row_is_named_as_a_listener_source_of_its_path() -> None:

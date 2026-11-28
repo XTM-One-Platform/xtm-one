@@ -223,6 +223,22 @@ export interface CtemSignalPathSource {
   /** A generic signed webhook source (#2506): its id, and why its last delivery recorded nothing. */
   webhook_id?: string;
   last_error?: string | null;
+  /** Each integration this source reads, by name, with its own state and "Use on this source" (#2736). */
+  integrations?: CtemSourceIntegration[];
+}
+
+/**
+ * One integration a source reads (#2736): its state, whether a webhook delivery from it is trusted (a webhook secret
+ * is set), its last verified delivery and whether it is used on the source (`signal_sources.excluded_integrations`).
+ * The provider's OAuth default app reads as id `oauth_default`.
+ */
+export interface CtemSourceIntegration {
+  id: string;
+  name: string;
+  status: string;
+  webhook_secret_set: boolean;
+  last_delivery_at: string | null;
+  used: boolean;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */

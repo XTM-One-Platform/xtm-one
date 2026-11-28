@@ -80,6 +80,8 @@ export interface SignalSourcesSettings {
   excluded?: Record<string, string[]>;
   included?: Record<string, string[]>;
   pirs?: Record<string, string[]>;
+  /** Per source key, the integration ids taken off that source (#2736); `oauth_default` is the provider's OAuth default app. */
+  excluded_integrations?: Record<string, string[]>;
 }
 
 /** The saved asset identity settings; empty lists and maps keep the engine's defaults. */

@@ -12,6 +12,7 @@ import type {
   CtemSignalPathSource,
   CtemSignalPathStatus,
   CtemSilentReasonCode,
+  CtemSourceIntegration,
 } from "@/hooks/api/useCtemSignalsApi";
 import type { SignalSourcesSettings } from "@/lib/organization-profile";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
@@ -83,11 +84,29 @@ export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">
  * A path's status: the API's when present, else derived from its sources the same way (no source:
  * agents and the API only; one in error: error; every used source on: enabled; some on: partly
  * enabled; one not set up: not set up; one off: off). One status per path, the one its sources say
- * (UX round 1 on #2442, B1), never the integration connection alone (#2436, Sam 26 Nov 2026).
+ * (UX round 1 on #2442, B1), never the integration connection alone (#2436, Sam 26 Nov 2026). An enabled or partly
+ * enabled path follows the honest state of its webhook listeners (UX round 1 on #2796, B1): a bound listener with no used
+ * integration able to deliver never makes it Enabled.
  */
 export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): CtemSignalPathStatus {
-  if (path.status) return path.status;
   const sources = path.sources ?? [];
+  const status = path.status ?? derivedPathStatus(sources);
+  if (status !== "enabled" && status !== "partly_enabled") return status;
+  const demoted = sources.map(demotedListenerState).filter((s): s is SourceState => s !== null);
+  if (demoted.length === 0) return status;
+  if (sources.some((s) => s.bound && demotedListenerState(s) === null)) return "partly_enabled";
+  return demoted.includes("waiting") ? "not_set_up" : "off";
+}
+
+/** The state a bound webhook listener reads when it cannot deliver (Waiting for webhook, Off), else null (#2796 UX r1 B1). */
+function demotedListenerState(source: CtemSignalPathSource): SourceState | null {
+  if (!source.bound || (source.error_count ?? 0) > 0 || !isWebhookListener(source)) return null;
+  const state = webhookListenerState(source);
+  return state === "bound" ? null : state;
+}
+
+/** A path's status from its sources alone, when the API answers none. */
+function derivedPathStatus(sources: readonly CtemSignalPathSource[]): CtemSignalPathStatus {
   if (sources.length === 0) return "agents_api";
   if (sources.some((s) => (s.error_count ?? 0) > 0)) return "error";
   if (sources.some((s) => s.bound)) {
@@ -117,12 +136,41 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-export type SourceState = "error" | "bound" | "excluded" | "off" | "not_configured" | "not_set_up" | "not_connected";
+export type SourceState = "error" | "bound" | "waiting" | "excluded" | "off" | "not_configured" | "not_set_up" | "not_connected";
+
+/** Whether a source is a live listener a verified webhook delivery records (GitHub, Aikido): XTM One provisions nothing for it (#2736). */
+export function isWebhookListener(source: Pick<CtemSignalPathSource, "provider" | "kind">): boolean {
+  return source.kind === "listener" && !PROVISIONED_LISTENERS.has(source.provider);
+}
+
+/** The connected integrations a source reads, in the API's order (#2736): an integration not connected feeds nothing. */
+function connectedIntegrations(source: Pick<CtemSignalPathSource, "integrations">): CtemSourceIntegration[] {
+  return (source.integrations ?? []).filter((i) => i.status === "connected");
+}
+
+/**
+ * The honest state of a bound webhook listener (#2736, Sam 28 Nov 2026): On only when a connected integration used on
+ * it has a webhook secret set (a delivery is trusted with a signal only when signed with it), Waiting for webhook when
+ * every used one lacks the secret, Off when every connected integration is taken off it. An answer without the
+ * integrations list (an older API) keeps the bound state.
+ */
+function webhookListenerState(source: CtemSignalPathSource): SourceState {
+  if (!source.integrations) return "bound";
+  const used = connectedIntegrations(source).filter((i) => i.used);
+  if (used.length === 0) return "off";
+  return used.some((i) => i.webhook_secret_set) ? "bound" : "waiting";
+}
+
+/** Whether a webhook listener that reads On has had no verified delivery yet from any integration used on it (#2736). */
+export function noDeliveryYet(source: CtemSignalPathSource): boolean {
+  if (!isWebhookListener(source) || !source.integrations) return false;
+  return !connectedIntegrations(source).some((i) => i.used && i.last_delivery_at);
+}
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
   // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
   if ((source.error_count ?? 0) > 0) return "error";
-  if (source.bound) return "bound";
+  if (source.bound) return isWebhookListener(source) ? webhookListenerState(source) : "bound";
   if (source.excluded) return "excluded";
   if (source.off) return "off";
   // A webhook source is never "not connected": it has its own receiver, off until switched on (#2506).
@@ -157,7 +205,7 @@ export function sourceDisplayState(
  * its provider records it, #2736) is named by those connected integrations, never "None" beside "On".
  */
 export function sourceIntegrationNames(
-  source: Pick<CtemSignalPathSource, "provider" | "kind">,
+  source: Pick<CtemSignalPathSource, "provider" | "kind" | "integrations">,
   platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
   integrations: readonly { provider: string; name: string; status: string }[] = [],
 ): string {
@@ -166,11 +214,15 @@ export function sourceIntegrationNames(
 
 /** The integrations a source runs on, one name each, in the order of {@link sourceIntegrationNames} (UX round 1 on #2741, B4). */
 export function sourceIntegrationList(
-  source: Pick<CtemSignalPathSource, "provider" | "kind">,
+  source: Pick<CtemSignalPathSource, "provider" | "kind" | "integrations">,
   platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
   integrations: readonly { provider: string; name: string; status: string }[] = [],
 ): string[] {
   if (source.kind === "webhook") return [];
+  // A webhook listener names the connected integrations used on it, from the path answer (#2736).
+  if (isWebhookListener(source) && source.integrations) {
+    return [...new Set(connectedIntegrations(source).filter((i) => i.used).map((i) => i.name))];
+  }
   const lines = platform.filter((s) => s.provider === source.provider && (source.kind === "cases_reader" || s.kind === source.kind));
   const names = lines.map((s) => s.integration_name).filter(Boolean) as string[];
   if (names.length === 0 && source.kind === "listener" && !PROVISIONED_LISTENERS.has(source.provider)) {
@@ -246,6 +298,8 @@ export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignal
  */
 const SOURCE_STATE_ICON = {
   bound: { icon: "circle-check", className: "text-feedback-success-primary", label: "On" },
+  // Connected with no webhook secret: no delivery is trusted yet (#2736), never On.
+  waiting: { icon: "clock", className: "text-default-secondary", label: "Waiting for webhook" },
   off: { icon: "circle-x", className: "text-default-secondary", label: "Off" },
   excluded: { icon: "circle-x", className: "text-default-secondary", label: "Not used here" },
   // Not set up and Not configured read the same muted circle-x as Off (UX round 1 on #2741, B3): circle-alert is the
@@ -262,7 +316,7 @@ export function sourceStateIcon(state: SourceState): (typeof SOURCE_STATE_ICON)[
 }
 
 /** The legend words of the source chips. @i18n-keys */
-const LEGEND_LABEL = { on: "On", quiet: "Off, not set up or not used here", error: "Error", missing: "Not connected" } as const;
+const LEGEND_LABEL = { on: "On", waiting: "Waiting for webhook", quiet: "Off, not set up or not used here", error: "Error", missing: "Not connected" } as const;
 
 /**
  * The legend of the source chips (UX round 1 on #2741, B3): one icon per entry, and every state a chip can show is
@@ -270,6 +324,7 @@ const LEGEND_LABEL = { on: "On", quiet: "Off, not set up or not used here", erro
  */
 export const SOURCE_STATE_LEGEND = [
   { states: ["bound"], label: LEGEND_LABEL.on },
+  { states: ["waiting"], label: LEGEND_LABEL.waiting },
   { states: ["off", "not_set_up", "not_configured", "excluded"], label: LEGEND_LABEL.quiet },
   { states: ["error"], label: LEGEND_LABEL.error },
   { states: ["not_connected"], label: LEGEND_LABEL.missing },
@@ -290,13 +345,32 @@ function withPathKey(lists: Record<string, string[]> | undefined, path: string, 
   return all;
 }
 
-/** The settings as the backend stores them: every list kept, an empty map dropped. */
-function settings(excluded: Record<string, string[]>, included: Record<string, string[]>, pirs: Record<string, string[]> | undefined): SignalSourcesSettings {
+/** The settings as the backend stores them: every list kept, an empty map dropped, the integration exclusions carried whole (#2736). */
+function settings(
+  excluded: Record<string, string[]>,
+  included: Record<string, string[]>,
+  pirs: Record<string, string[]> | undefined,
+  byIntegration: Record<string, string[]> | undefined,
+): SignalSourcesSettings {
   return {
     excluded,
     ...(Object.keys(included).length > 0 ? { included } : {}),
     ...(pirs && Object.keys(pirs).length > 0 ? { pirs } : {}),
+    ...(byIntegration && Object.keys(byIntegration).length > 0 ? { excluded_integrations: byIntegration } : {}),
   };
+}
+
+/**
+ * The `signal_sources` of the profile with one integration taken off one source, or put back on it (#2736,
+ * `excluded_integrations`, keyed by source key): every other list travels whole, an empty source list is dropped.
+ */
+export function withIntegrationUse(current: SignalSourcesSettings | undefined, key: string, integrationId: string, use: boolean): SignalSourcesSettings {
+  return settings(
+    { ...(current?.excluded ?? {}) },
+    { ...(current?.included ?? {}) },
+    current?.pirs,
+    withPathKey(current?.excluded_integrations, key, integrationId, !use),
+  );
 }
 
 /**
@@ -314,7 +388,7 @@ export function withExclusion(
 ): SignalSourcesSettings {
   const included = defaultOn ? { ...(current?.included ?? {}) } : withPathKey(current?.included, path, key, !excluded);
   const excl = defaultOn ? withPathKey(current?.excluded, path, key, excluded) : withPathKey(current?.excluded, path, key, false);
-  return settings(excl, included, current?.pirs);
+  return settings(excl, included, current?.pirs, current?.excluded_integrations);
 }
 
 /** The OpenCTI `pir_type` values a path takes by default, as the backend's `PIR_PATH_TYPES` (#2436). */
@@ -351,7 +425,7 @@ export function withPirSelection(current: SignalSourcesSettings | undefined, pat
   const pirs: Record<string, string[]> = { ...(current?.pirs ?? {}) };
   if (pirIds === null) delete pirs[path];
   else pirs[path] = [...new Set(pirIds)].sort();
-  return settings({ ...(current?.excluded ?? {}) }, { ...(current?.included ?? {}) }, pirs);
+  return settings({ ...(current?.excluded ?? {}) }, { ...(current?.included ?? {}) }, pirs, current?.excluded_integrations);
 }
 
 /**

@@ -20743,6 +20743,7 @@
   "The PIR playbook flags a threat in one of your PIRs": "The PIR playbook flags a threat in one of your PIRs",
   "A new issue, an SLA breach, a failed CI gate or an image scan with issues": "A new issue, an SLA breach, a failed CI gate or an image scan with issues",
   "A Dependabot alert is opened or reopened on one of your repositories": "A Dependabot alert is opened or reopened on one of your repositories",
+  "A code scanning alert is opened or reopened on one of your repositories": "A code scanning alert is opened or reopened on one of your repositories",
   "A finished simulation reached a high or very high criticality asset": "A finished simulation reached a high or very high criticality asset",
   "A reachability assertion failed: a target that should not answer answers": "A reachability assertion failed: a target that should not answer answers",
   "The attack-surface pass sees a declared asset answer on a new port": "The attack-surface pass sees a declared asset answer on a new port",
@@ -22302,5 +22303,18 @@
   "Turn off the outside lens?": "Turn off the outside lens?",
   "Turn off the evidence health pass?": "Turn off the evidence health pass?",
   "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}",
-  "{count, plural, one {# warning} other {# warnings}}": "{count, plural, one {# warning} other {# warnings}}"
+  "{count, plural, one {# warning} other {# warnings}}": "{count, plural, one {# warning} other {# warnings}}",
+  "Waiting for webhook": "Waiting for webhook",
+  "On, no delivery yet": "On, no delivery yet",
+  "Last delivery: {date}": "Last delivery: {date}",
+  "Use on this source": "Use on this source",
+  "OAuth default app": "OAuth default app",
+  "Integration used on this source": "Integration used on this source",
+  "Integration taken off this source": "Integration taken off this source",
+  "A finding is created on one of your assets": "A finding is created on one of your assets",
+  "A secret scanning alert is opened or reopened on one of your repositories": "A secret scanning alert is opened or reopened on one of your repositories",
+  "A security advisory is published on one of your repositories": "A security advisory is published on one of your repositories",
+  "An OpenAEV scan finds a new asset": "An OpenAEV scan finds a new asset",
+  "An indicator is sighted in your data": "An indicator is sighted in your data",
+  "The inventory evaluation finds an asset unseen past the threshold or no longer synced": "The inventory evaluation finds an asset unseen past the threshold or no longer synced"
 }
