@@ -655,7 +655,15 @@ export interface OrganizationSync {
   run_as_name?: string | null;
   next_run_at: string | null;
   last_run_at: string | null;
-  last_result: { added?: number; updated?: number; removed?: number; version?: number | null; error?: string | null } | null;
+  last_result: {
+    added?: number;
+    updated?: number;
+    removed?: number;
+    version?: number | null;
+    error?: string | null;
+    /** #2781: the sync landed but a post-step (the held-signal recheck) failed. */
+    warning?: string | null;
+  } | null;
 }
 
 export type OrganizationSyncBody = Pick<

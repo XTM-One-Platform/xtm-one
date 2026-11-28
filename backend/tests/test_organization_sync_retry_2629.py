@@ -152,7 +152,11 @@ async def test_the_recheck_halves_its_batch_on_a_statement_timeout(monkeypatch) 
 
     batches: list[int] = []
 
-    async def recheck_held(_db: Any, *, organization_id: Any, since: Any, batch: int) -> dict[str, int]:
+    async def recheck_held(
+        _db: Any, *, organization_id: Any, since: Any, batch: int, prefetched: bool
+    ) -> dict[str, int]:
+        # #2781: the sync took the batch's OpenCTI reads before the savepoint.
+        assert prefetched
         batches.append(batch)
         if batch > 25:
             raise QueryCanceledError("canceling statement due to statement timeout")
@@ -175,7 +179,11 @@ async def test_the_recheck_halves_its_batch_on_a_statement_timeout(monkeypatch) 
         def begin_nested(self) -> _Nested:
             return _Nested()
 
+    async def prefetch_held(_db: Any, **_kw: Any) -> None:
+        return None
+
     monkeypatch.setattr(ctem_scope_gate_store, "recheck_held", recheck_held)
+    monkeypatch.setattr(ctem_scope_gate_store, "prefetch_held", prefetch_held)
     monkeypatch.setattr(organizations, "get_primary", get_primary)
     counts = await osync._recheck_held_signals(_Db())
     assert batches == [100, 50, 25] and counts == {"watchlist": 3}
