@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 import type { CtemCaseAffectedAssets, CtemCaseDetail } from "@/hooks/api/useCtemCasesApi";
-import { CaseVersionsAssetsRow, pairVersionsAndAssets } from "./CaseVersionsAssetsRow";
+import { CaseVersionsAssetsRow, PAIRED_MAX_CHARS, pairVersionsAndAssets } from "./CaseVersionsAssetsRow";
 
 type Kase = Pick<CtemCaseDetail, "remediation_kind" | "fixed_version" | "running_versions" | "affected_assets">;
 
@@ -45,6 +45,24 @@ describe("pairVersionsAndAssets (#2750)", () => {
     expect(
       pairVersionsAndAssets({ ...UPGRADE, affected_assets: { ...ASSETS, assets: [{ ...ASSETS.assets[0], status: "below_fixed" }] } }),
     ).toBe(false);
+  });
+
+  it("stacks a case whose longest asset name, version or platform would not fit at half width, read from every row (UX r1 B1 on #2758)", () => {
+    const longName = "srv-build-runner-eu-west-3-prod-0042.corp.filigran.io";
+    const assetsPast = (patch: Partial<CtemCaseAffectedAssets["assets"][number]>) => ({
+      ...UPGRADE,
+      affected_assets: { ...ASSETS, asset_count: 12, assets: [...Array.from({ length: 11 }, (_, i) => ({ ...ASSETS.assets[0], name: `lapt-${i}` })), { ...ASSETS.assets[0], ...patch }] },
+    });
+    expect(pairVersionsAndAssets(assetsPast({ name: longName }))).toBe(false);
+    expect(pairVersionsAndAssets(assetsPast({ versions: ["18.20.4-lts.windows-x64-msi"] }))).toBe(false);
+    expect(pairVersionsAndAssets(assetsPast({ name: "x".repeat(PAIRED_MAX_CHARS.asset) }))).toBe(true);
+    const withVersion = (version: string, platform = "Windows") => ({
+      ...UPGRADE,
+      running_versions: { ...UPGRADE.running_versions, versions: [{ version, platform, asset_count: 1, sources: ["intune"] }] } as unknown as Kase["running_versions"],
+    });
+    expect(pairVersionsAndAssets(withVersion("18.20.4-lts.windows-x64-msi"))).toBe(false);
+    expect(pairVersionsAndAssets(withVersion("26.12.1", "p".repeat(PAIRED_MAX_CHARS.platform + 1)))).toBe(false);
+    expect(pairVersionsAndAssets(withVersion("26.12.1"))).toBe(true);
   });
 });
 

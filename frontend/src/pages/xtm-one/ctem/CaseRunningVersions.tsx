@@ -112,7 +112,8 @@ export function CaseRunningVersions({
     {
       key: "version",
       header: "Version",
-      cell: (r) => (r.version === UNKNOWN ? t_i18n("Unknown") : r.version),
+      // One line, so the trailing Sources column (w-full) never squeezes it to two (UX r1 B3 on #2758).
+      cell: (r) => <span className="whitespace-nowrap">{r.version === UNKNOWN ? t_i18n("Unknown") : r.version}</span>,
       sortValue: (r) => r.version,
       csv: (r) => r.version,
     },
@@ -121,7 +122,7 @@ export function CaseRunningVersions({
           {
             key: "platform",
             header: "Platform",
-            cell: (r: CtemCaseRunningVersion) => r.platform ?? t_i18n("Not known"),
+            cell: (r: CtemCaseRunningVersion) => <span className="whitespace-nowrap">{r.platform ?? t_i18n("Not known")}</span>,
             sortValue: (r: CtemCaseRunningVersion) => r.platform ?? "",
             csv: (r: CtemCaseRunningVersion) => r.platform ?? "",
           } satisfies DataTableColumn<CtemCaseRunningVersion>,

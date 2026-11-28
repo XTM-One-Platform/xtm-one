@@ -19,6 +19,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseAffectedAsset, CtemCaseAffectedAssets } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
+import { cn } from "@/lib/utils";
 import { SourceMark, versionSourceName } from "./CaseRunningVersions";
 import { INVENTORY_PATH } from "./inventory";
 
@@ -36,8 +37,8 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string>
 /**
  * Status steps aside below a 896 px card (the case page at 1080), back from the Columns pill:
  * every row keeps one height and the table never scrolls sideways (design standards s.3, UX r1
- * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). The
- * text cells are cut on one line with a tooltip.
+ * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). Asset
+ * and Running version are drawn whole on one line; Status is cut on one line with a tooltip.
  */
 const SECONDARY_HIDE_BELOW = "4xl" as const;
 
@@ -59,8 +60,8 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
     {
       key: "name",
       header: "Asset",
-      // A free-text cell of an auto-layout table carries a width cap (13.ak).
-      cell: (a) => <TruncatedText text={a.name} className="max-w-[14rem]" />,
+      // Drawn whole on one line: the trailing Sources column takes only the width left over (UX r1 B2 on #2758).
+      cell: (a) => <span className="whitespace-nowrap">{a.name}</span>,
       sortValue: (a) => a.name.toLowerCase(),
       csv: (a) => a.name,
     },
@@ -98,9 +99,7 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             key: "version",
             header: "Running version",
             cell: (a: CtemCaseAffectedAsset) => (
-              <span className={a.in_inventory ? undefined : "text-default-secondary"}>
-                <TruncatedText text={assetVersionText(a, t_i18n)} className="max-w-[10rem]" />
-              </span>
+              <span className={cn("whitespace-nowrap", !a.in_inventory && "text-default-secondary")}>{assetVersionText(a, t_i18n)}</span>
             ),
             sortValue: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join(",") : "~"),
             csv: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join("; ") : ""),
