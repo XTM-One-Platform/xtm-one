@@ -22278,6 +22278,7 @@
   "Its own receiver": "専用の受信エンドポイント",
   "Being applied": "適用中",
   "Decision being applied": "判断を適用中",
+  "Decision not applied": "判断は未適用",
   "Not applied": "未適用",
   "Decision recorded: {option}. The loop is applying it.": "判断を記録しました: {option}。ループが適用しています。",
   "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
