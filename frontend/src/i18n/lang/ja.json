@@ -22269,5 +22269,13 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。",
   "The integration the pass reads.": "パスが読み取る連携。",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "パスが OpenCRQ を読み取る際のユーザー。既定: 連携の所有者。",
-  "{name} (integration owner)": "{name}（連携の所有者）"
+  "{name} (integration owner)": "{name}（連携の所有者）",
+  "Being applied": "適用中",
+  "Decision being applied": "判断を適用中",
+  "Not applied": "未適用",
+  "Decision recorded: {option}. The loop is applying it.": "判断を記録しました: {option}。ループが適用しています。",
+  "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
+  "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
+  "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
+  "Decision recorded: {gate}": "判断を記録しました: {gate}"
 }
