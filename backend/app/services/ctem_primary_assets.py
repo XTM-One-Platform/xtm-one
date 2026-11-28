@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -423,6 +423,26 @@ def label_names(ref: str, label: str) -> bool | None:
     return ref_words == words
 
 
+#: #2777: a parenthesised aside of an inventory label (``Krita (git bd6e8d0)``): a build note, not the product.
+_ASIDE = re.compile(r"\([^()]*\)")
+
+
+def label_names_word(word: str, label: str) -> bool:
+    """Whether inventory *label* names product *word* outside an aside or a package path (#2777).
+
+    ``Krita (git bd6e8d0)`` runs Krita, built from git: ``Git`` is only in its parenthesised aside.
+    ``@npmcli/git`` is an npm package of that path: ``Git`` names it only by the whole label.
+    A CPE label answers True (its product part is read by the whole-word rule).
+    """
+    text = str(label or "").strip().lower()
+    if text.startswith("cpe:"):
+        return True
+    bare = " ".join(_ASIDE.sub(" ", text).split())
+    if "/" in bare or bare.startswith("@"):
+        return _needle(word) == bare
+    return bool(bare) and contains_word(_needle(word), bare.replace("_", " "))
+
+
 def tail_word_only(product: str, ref: str) -> bool:
     """Whether *product* is one generic word that only closes a vendor-qualified name *ref* (#2679 reopened).
 
@@ -490,6 +510,8 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_ex
         named = label_names(str(product or ""), str(ref or ""))
         if named is not None:
             return named
+        if p != r and not label_names_word(p, str(ref or "")):
+            return False
     if p in GENERIC_PRODUCT_WORDS:
         return p == r
     if family_exact and p in FAMILY_WORDS and p != r:
@@ -779,7 +801,7 @@ class PrimaryAssetIndex:
         keys: list[str] | None = None,
         *,
         keys_only: bool = False,
-        fixed_version: str | None = None,
+        fixed_version: str | Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
@@ -934,7 +956,7 @@ def generic_refs(software: list[str]) -> frozenset[str]:
     )
 
 
-def runs_versioned(reacher: Reacher, ref: str, *, fixed_version: str | None = None) -> bool:
+def runs_versioned(reacher: Reacher, ref: str, *, fixed_version: str | Sequence[str] | None = None) -> bool:
     """Whether *reacher* runs software *ref* from an installed row that reports its version (#2628).
 
     A bare family reference (``Windows``) is never verified: it names no product to version,
@@ -1007,7 +1029,7 @@ def _satisfies(installed: str, op: str, version: str) -> bool:
 
 
 def version_in_reference(
-    label: str, installed: Iterable[str] | None, ref: str, *, fixed_version: str | None = None
+    label: str, installed: Iterable[str] | None, ref: str, *, fixed_version: str | Sequence[str] | None = None
 ) -> bool:
     """Whether one *installed* version of *label* is the version or in the range *ref* names (#2711 reopened).
 
@@ -1019,15 +1041,52 @@ def version_in_reference(
     """
     bounds = reference_versions(ref)
     if bounds is None:
-        fixed = str(fixed_version or "").strip()
-        if not fixed:
+        fixes = _fix_list(fixed_version)
+        if not fixes:
             return False
-        bounds = (("<", fixed),)
+        if len(fixes) > 1:
+            # #2777: one fix per release branch (``2.43.7 ... 2.50.1``): each installed version is
+            # compared with the fix of its own branch, never with the smallest fix of all.
+            return installed is None or any(below_branch_fix(str(v), fixes) for v in installed)
+        bounds = (("<", fixes[0]),)
     if installed is None:
         return True
     if len(bounds) == 1 and bounds[0][0] == "=" and contains_word(bounds[0][1].lower(), str(label or "").lower()):
         return True
     return any(all(_satisfies(str(v), op, version) for op, version in bounds) for v in installed)
+
+
+def _fix_list(fixed_version: Any) -> list[str]:
+    """The fixed versions *fixed_version* holds: one string, or a list of one fix per branch (#2777)."""
+    values = fixed_version if isinstance(fixed_version, (list, tuple)) else [fixed_version]
+    return list(dict.fromkeys(str(v).strip() for v in values if str(v or "").strip()))
+
+
+def below_branch_fix(installed: str, fixes: Iterable[str]) -> bool:
+    """Whether *installed* is below the fix of its release branch (#2777).
+
+    The branch is the longest leading run of release numbers *installed* shares with a fix
+    (``2.45.1`` is on the ``2.45`` branch of ``2.45.4``). With no fix of its branch, it is
+    affected only when it is below every fix (an older branch nobody fixed); above them, fixed.
+    """
+    from app.services.ctem_fixed_version import compare_versions
+
+    have = _release_tokens(installed)
+    known = [f for f in fixes if compare_versions(installed, f) is not None]
+    if not have or not known:
+        return False
+
+    def shared(fix: str) -> int:
+        want, n = _release_tokens(fix), 0
+        while n < min(len(want), len(have)) - 1 and want[n] == have[n]:
+            n += 1
+        return n
+
+    best = max(shared(f) for f in known)
+    if best >= 2:
+        branch = [f for f in known if shared(f) == best]
+        return any((compare_versions(installed, f) or 0) < 0 for f in branch)
+    return all((compare_versions(installed, f) or 0) < 0 for f in known)
 
 
 #: Versions an installed software row stores when the source reported none.

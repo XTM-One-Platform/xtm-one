@@ -34,8 +34,14 @@ def _index(
     *, source: str = "rule", products: tuple[str, ...] = ("Microsoft Windows 11 Enterprise",), via_group: bool = True
 ) -> pa.PrimaryAssetIndex:
     link = pa.Link(_key(WORKSTATIONS), source, ("used_by",))
+    # #2777: an installed row reporting its version, so the hop is version_verified (a typed row alone is not).
     reacher = pa.Reacher(
-        name="LAPTOP-042", keys={"laptop-042"}, products={_key(p): p for p in products}, os_family="Windows"
+        name="LAPTOP-042",
+        keys={"laptop-042"},
+        products={_key(p): p for p in products},
+        os_family="Windows",
+        versioned=set(products),
+        versions={p: {"10.0.22631"} for p in products},
     )
     reacher.links.append(
         (link, "asset_group" if via_group else "asset", "All Windows x86_64" if via_group else "LAPTOP-042")
@@ -131,7 +137,12 @@ def _fleet(count: int) -> pa.PrimaryAssetIndex:
     reachers = []
     for n in range(count):
         reacher = pa.Reacher(
-            name=f"LAPTOP-{n:05d}", keys={f"laptop-{n:05d}"}, products={"windows": "Windows 11"}, os_family="Windows"
+            name=f"LAPTOP-{n:05d}",
+            keys={f"laptop-{n:05d}"},
+            products={"windows": "Windows 11"},
+            os_family="Windows",
+            versioned={"Windows 11"},
+            versions={"Windows 11": {"10.0.22631"}},
         )
         reacher.links.append((link, "asset_group", "All Windows x86_64"))
         reachers.append(reacher)

@@ -358,6 +358,9 @@ class Resolution:
     #: #2701: ``evidence_assets`` when the evidence names the assets: the reach is those assets alone,
     #: the software only labels and version-checks them; ``""`` when the software sets the reach.
     scope: str = ""
+    #: #2777: the profile assets joined only because their product list names a typed software row:
+    #: they say the product is present, never that an affected version runs.
+    product_assets: list[str] = field(default_factory=list)
 
     @property
     def resolved(self) -> bool:
@@ -402,11 +405,13 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
     return _under_owned(profile, host)
 
 
-def _product_matches(product: str, ref: str) -> bool:
+def _product_matches(product: str, ref: str, *, profile_row: bool = True) -> bool:
     """A software product named in a software reference (a name, or a CPE's product part).
 
     #2628: a bare OS or vendor family (``Windows``, ``Linux``) names only itself, never
     ``Windows Server`` or ``Linux Kernel``; #2685: nor does a bare generic word (``Client``).
+    #2777: the one-word rule (``one_word_names_reference``) applies to profile software rows
+    only; a shipped product and its vendor (``shipped_match``) pass ``profile_row=False``.
     """
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
@@ -418,13 +423,48 @@ def _product_matches(product: str, ref: str) -> bool:
         return named
     if r.startswith("cpe:"):
         parts = r.split(":")
-        r = parts[4] if len(parts) > 4 else r
+        # #2777: a CPE's product part joins its words with ``_``: ``unified_communications_manager``
+        # is named by the profile row ``Unified Communications Manager``.
+        r = (parts[4] if len(parts) > 4 else r).replace("_", " ")
+        p = p.replace("_", " ")
     if (is_family_word(p) or is_generic_word(p)) and p != r.replace("_", " "):
         return False
     # #2679: a URL or host name label (a web-app shortcut row) names only itself.
     if p != r and (is_url_like(p) or is_url_like(r)):
         return False
+    if profile_row and not ref.strip().lower().startswith("cpe:") and not one_word_names_reference(p, ref):
+        return False
     return contains_word(p, r)
+
+
+def one_word_names_reference(product: str, ref: str) -> bool:
+    """Whether a one-word profile *product* may name the multi-word reference *ref* (#2777 point 5).
+
+    One word never names a product of two words or more by being one of them: ``unified`` (an npm
+    package) is not ``Unified Communications Manager``. It names *ref* only as its whole name, or as
+    the product word after the vendor of a two-word name (``Firefox`` in ``Mozilla Firefox``). A
+    product of several words, or a reference of one name word (versions left out), keeps the
+    whole-word rule.
+    """
+    words = [w for w in _TOKEN_WORDS.findall(product.strip().lower()) if w]
+    if len(words) != 1:
+        return True
+    # Name words split on spaces: a joined token (``nginx_plus``) stays one word and the whole-word rule.
+    named = ["".join(_TOKEN_WORDS.findall(w)) for w in _name_words_of(ref)]
+    named = [w for w in named if w and not w.isdigit()]
+    if len(named) < 2:
+        return True
+    return len(named) == 2 and named[-1] == words[0]
+
+
+#: #2777: the word tokens of a profile product name.
+_TOKEN_WORDS = re.compile(r"[a-z0-9]+")
+
+
+def _name_words_of(ref: str) -> tuple[str, ...]:
+    from app.services.ctem_primary_assets import _name_tokens
+
+    return _name_tokens(str(ref or ""))
 
 
 #: #2628: the paths whose subject is a vulnerability on software the organization may run.
@@ -463,28 +503,35 @@ def version_not_verified(facts: SignalFacts, resolution: Resolution) -> int:
     ``to_validate``. A versioned installed row, a typed software row, an asset or
     repository the signal names, or a proving verdict keeps today's path to a case.
     """
-    if facts.trigger_path not in VERSION_PATHS or not name_only_reach(resolution):
+    if not version_unverified_reach(facts, resolution):
         return 0
     if _verdict(facts.evidence) in PROVING_VERDICTS:
         return 0
     return max(1, sum(int(row.get("assets") or 0) for row in resolution.primary_asset_totals.values()))
 
 
-def name_only_reach(resolution: Resolution) -> bool:
+def name_only_reach(resolution: Resolution, *, typed_products: bool = True) -> bool:
     """Whether *resolution* reached the organization by a software name alone (#2628, #2685).
 
     Only inventory software chains, each naming the software it matched, none from an
     installed row that reports a version, and no asset key, typed software row (a bare
     family excepted), repository or domain: nobody verified the organization runs it.
+    *typed_products* False (#2777) reads a typed software row, and the profile assets it
+    joined, as presence only: the hops' ``version_verified`` flags decide.
     """
     if not resolution.primary_assets:
         return False
+    named_assets = (
+        resolution.assets
+        if typed_products
+        else [a for a in resolution.assets if a.name not in resolution.product_assets]
+    )
     # A typed software row that is a bare family (``Windows``) proves no product either.
     if (
-        resolution.assets
+        named_assets
         or resolution.groups
         or resolution.named_primary_assets
-        or any(not is_family_word(p) for p in resolution.products)
+        or (typed_products and any(not is_family_word(p) for p in resolution.products))
         or resolution.repositories
         or resolution.domains
         or resolution.hosted_domains
@@ -494,6 +541,19 @@ def name_only_reach(resolution: Resolution) -> bool:
     if not all(str(hit.get("software") or "") for hit in hits):
         return False
     return not any(hit.get("version_verified") for hit in hits)
+
+
+def version_unverified_reach(facts: SignalFacts, resolution: Resolution) -> bool:
+    """Whether a CVE reached the organization with no running version proven (#2628, #2777).
+
+    A name-only reach, or on a ``new_vulnerability`` signal a reach through typed software
+    rows whose hops are none ``version_verified``: a typed row proves the product is present,
+    not that an affected version runs. An asset, group, primary asset, repository or domain
+    the subject or its evidence names keeps today's path.
+    """
+    if facts.trigger_path not in VERSION_PATHS:
+        return False
+    return name_only_reach(resolution) or name_only_reach(resolution, typed_products=False)
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
@@ -533,9 +593,9 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
         return "product" if product_ok and (not entry.vendor or named[0] == _cpe_token(entry.vendor)) else ""
     if text.lower() == entry.product.lower():
         return "product"
-    if not _product_matches(entry.product, text):
+    if not _product_matches(entry.product, text, profile_row=False):
         return ""
-    return "product" if entry.vendor and _product_matches(entry.vendor, text) else ""
+    return "product" if entry.vendor and _product_matches(entry.vendor, text, profile_row=False) else ""
 
 
 #: #1720: the relationships of a threat that name the software it reaches (OpenCTI ``targets``,
@@ -599,6 +659,24 @@ def evidence_fixed_version(evidence: dict[str, Any]) -> str | None:
         if text:
             return text[:100]
     return None
+
+
+def evidence_branch_fixes(evidence: dict[str, Any]) -> list[str]:
+    """Every fixed version the evidence names, one per release branch when OpenCTI knows several (#2777).
+
+    Read from ``fixed_versions`` (a list, or a mapping by platform or branch) of the evidence and
+    of its case fix, after the single ``fixed_version``; ``[]`` when none is known.
+    """
+    found: list[str] = []
+    fix = evidence.get("case_fix")
+    for holder in (evidence, fix if isinstance(fix, dict) else {}):
+        many = holder.get("fixed_versions")
+        values = many.values() if isinstance(many, dict) else many if isinstance(many, (list, tuple)) else ()
+        for value in (holder.get("fixed_version"), *values):
+            text = str(value or "").strip()[:100]
+            if text and text not in found:
+                found.append(text)
+    return found
 
 
 def resolve(
@@ -672,7 +750,7 @@ def resolve(
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
         out.primary_assets = primary_assets.reach(
-            refs, keys, keys_only=narrow, fixed_version=evidence_fixed_version(facts.evidence)
+            refs, keys, keys_only=narrow, fixed_version=evidence_branch_fixes(facts.evidence) or None
         )
         out.primary_asset_totals = primary_assets.totals(refs, keys, keys_only=narrow)
     if out.products and not narrow:
@@ -680,6 +758,7 @@ def resolve(
         for asset in profile.assets_exposure:
             if asset not in out.assets and names & {t.lower() for t in asset.products}:
                 out.assets.append(asset)
+                out.product_assets.append(asset.name)
     return out
 
 
@@ -920,7 +999,10 @@ def decide(
     )
     incomplete = not resolution.resolved and any(value not in LOOKUP_SETTLED for value in (cve_lookup, threat_lookup))
     # #2685: KEV proves the organization runs nothing; an unresolved or name-only subject is not proven by it.
-    unproven_reach = not resolution.resolved or name_only_reach(resolution)
+    # #2777: nor is a CVE reached through typed software rows when no hop is version_verified.
+    unproven_reach = (
+        not resolution.resolved or name_only_reach(resolution) or version_unverified_reach(facts, resolution)
+    )
     confidence, lenses, proven = _confidence(facts, related, name_only=unproven_reach)
     contradicted = [r.id for r in related if r.verdict in CONTRADICTING_VERDICTS]
     if _verdict(facts.evidence) in CONTRADICTING_VERDICTS:
@@ -1029,7 +1111,7 @@ def decide(
     unverified = version_not_verified(facts, resolution)
     if unverified:
         # #2628: a CVE reached only through inventory software whose running version nobody
-        # verified (no typed software row, no asset key) is a candidate, never a case.
+        # verified (no asset key; #2777: a typed software row proves presence only) is a candidate, never a case.
         return done(
             "to_validate",
             "version not verified: the CVE matched inventory software only, no running version proven",
