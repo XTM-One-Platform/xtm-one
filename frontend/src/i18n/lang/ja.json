@@ -22264,7 +22264,7 @@
   "{count, plural, one {# notifier} other {# notifiers}}": "{count, plural, other {通知 # 件}}",
   "{count, plural, one {# trigger} other {# triggers}}": "{count, plural, other {トリガー # 件}}",
   "{count, plural, one {# playbook} other {# playbooks}}": "{count, plural, other {プレイブック # 件}}",
-  "{label} (this path)": "{label}（このパス）",
+  "This path": "このパス",
   "Runs on": "実行先",
   "Every {count, plural, one {# hour} other {# hours}}": "{count, plural, other {# 時間ごと}}",
   "No integration of this provider is connected.": "このプロバイダーの統合は接続されていません。",
