@@ -118,15 +118,9 @@ def test_one_rule_in_the_seed_the_personas_and_the_prompts():
     assert "or when a PIR flags the threat." not in analyst
 
 
-# Fixed factor set and weights of the analyst (#2431): the score is reproducible.
-_FACTORS = {
-    "sector": 0.15,
-    "region": 0.10,
-    "software": 0.30,
-    "primary_assets": 0.20,
-    "pir": 0.15,
-    "activity": 0.10,
-}
+# Fixed factor set and weights of the analyst (#2431), one constant for the persona and the
+# finalize step that computes the score (#2763).
+_FACTORS = {name: weight / 100 for name, weight in ba.CTEM_RELEVANCE_WEIGHTS.items()}
 
 
 def _analyst() -> str:
@@ -140,6 +134,107 @@ def test_the_analyst_names_every_factor_with_a_fixed_weight_summing_to_one():
     assert round(sum(found.values()), 6) == 1.0
     assert "the weighted sum of the factor scores you wrote" in analyst
     assert "Never another factor, never another weight." in analyst
+    assert sum(ba.CTEM_RELEVANCE_WEIGHTS.values()) == 100
+
+
+def test_the_analyst_never_adds_up_the_score_itself() -> None:
+    analyst = _analyst()
+    assert "write the sum so it can be checked" not in analyst
+    assert "the platform computes it from your factors" in analyst
+    assert "never add them up in `reason`" in analyst
+
+
+def test_the_analyst_finalizes_on_the_computed_score() -> None:
+    analyst = next(a for a in ba.CTEM_FLEET_AGENTS if a["slug"] == "ctem-threat-relevance-analyst")
+    assert analyst["finalize_tool_ref"] == {"source": "builtin", "tool_name": "ctem_relevance_score"}
+
+
+def _answer(score: int, relevant: bool, factors: dict[str, int]) -> str:
+    threat = {
+        "stix_id": "intrusion-set--1",
+        "name": "T",
+        "relevant": relevant,
+        "score": score,
+        "factors": [{"name": n, "score": s, "evidence": "e"} for n, s in factors.items()],
+        "reason": "r",
+    }
+    return json.dumps({"threats": [threat]})
+
+
+_OBSERVED = {"sector": 40, "region": 50, "software": 60, "primary_assets": 70, "pir": 45, "activity": 80}
+
+
+def test_the_weighted_score_of_the_observed_factors_is_58() -> None:
+    from app.services.builtin_tools.ctem_relevance import weighted_score
+
+    factors = [{"name": n, "score": s} for n, s in _OBSERVED.items()]
+    assert weighted_score(factors) == 58
+    # Half up: 22.5 rounds to 23, where Python's round() would give the even 22.
+    assert (
+        weighted_score(
+            [{"name": "pir", "score": 50}, {"name": "sector", "score": 50}, {"name": "software", "score": 25}]
+        )
+        == 23
+    )
+    assert weighted_score([{"name": "pir", "score": 1}]) == 0
+    for bad in (
+        None,
+        [{"name": "other", "score": 1}],
+        [{"name": "pir", "score": 101}],
+        [{"name": "pir", "score": True}],
+        [{"name": "pir", "score": 1}, {"name": "pir", "score": 2}],
+    ):
+        assert weighted_score(bad) is None, bad
+
+
+def test_a_wrong_submitted_score_is_corrected(caplog: pytest.LogCaptureFixture) -> None:
+    from app.services.builtin_tools.ctem_relevance import correct_relevance_answer
+
+    out = json.loads(correct_relevance_answer(_answer(56, True, _OBSERVED)))
+    assert out["threats"][0]["score"] == 58 and out["threats"][0]["relevant"] is True
+    assert "56 -> 58" in caplog.text
+
+
+def test_a_right_answer_is_returned_untouched() -> None:
+    from app.services.builtin_tools.ctem_relevance import correct_relevance_answer
+
+    content = _answer(58, True, _OBSERVED)
+    assert correct_relevance_answer(content) is content
+    for other in ("not json", json.dumps({"verdict": "x"}), json.dumps({"threats": [{"name": "no factors"}]})):
+        assert correct_relevance_answer(other) is other
+
+
+def test_a_score_over_the_bar_by_a_slip_ends_not_relevant() -> None:
+    from app.services.builtin_tools.ctem_relevance import correct_relevance_answer
+
+    # 0.15*40 + 0.10*40 + 0.30*50 + 0.20*60 + 0.15*40 + 0.10*60 = 49
+    factors = {"sector": 40, "region": 40, "software": 50, "primary_assets": 60, "pir": 40, "activity": 60}
+    out = json.loads(correct_relevance_answer(_answer(51, True, factors)))
+    assert out["threats"][0]["score"] == 49 and out["threats"][0]["relevant"] is False
+
+
+def test_a_threat_relevant_by_the_pir_floor_stays_relevant() -> None:
+    from app.services.builtin_tools.ctem_relevance import correct_relevance_answer
+
+    # The analyst called it relevant under the bar: the PIR floor rule did, and it holds.
+    factors = {"sector": 0, "region": 0, "software": 0, "primary_assets": 0, "pir": 90, "activity": 50}
+    out = json.loads(correct_relevance_answer(_answer(20, True, factors)))
+    assert out["threats"][0]["score"] == 19 and out["threats"][0]["relevant"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_finalize_tool_answers_the_corrected_json() -> None:
+    from app.services.builtin_tools.ctem_relevance import TOOL_NAME, build_ctem_relevance_score_tool
+    from app.tools.base import ToolCall
+
+    defs, executor = build_ctem_relevance_score_tool()
+    assert [d.name for d in defs] == [TOOL_NAME]
+    assert next(iter(defs[0].input_schema["properties"])) == "response"
+    result = await executor.execute_tool(
+        ToolCall(id="c", name=TOOL_NAME, arguments={"response": _answer(56, True, _OBSERVED)})
+    )
+    assert not result.is_error
+    assert json.loads(result.content)["threats"][0]["score"] == 58
 
 
 def test_the_analyst_caps_an_unconfirmed_software_exposure():

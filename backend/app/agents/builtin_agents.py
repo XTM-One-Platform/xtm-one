@@ -2335,6 +2335,8 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "output_schema": "ctem-threat-relevance-analyst",
         # The loop and the use-case orchestrators pass their own scoring schema (#1837).
         "accept_caller_output_format": True,
+        # The score is the weighted sum of the factors, computed here, never by the model (#2763).
+        "finalize_tool_ref": {"source": "builtin", "tool_name": "ctem_relevance_score"},
         "tags": ["builtin", "ctem", "fleet"],
         "handover_agent_slugs": ["opencti-threat-hunt-creator"],
         "handover_type_slugs": {"opencti-threat-hunt-creator": "consult"},
@@ -3417,6 +3419,17 @@ CTEM_F1_THREAT_SIGNAL_VERDICTS: tuple[str, ...] = ("to_validate",)
 CTEM_F1_THREAT_SIGNAL_CONCURRENCY = 5
 #: The relevance score from which a threat is relevant (#1678).
 CTEM_RELEVANCE_MIN_SCORE = 50
+#: The six factors of the Threat Relevance Analyst and their fixed weights (#2431), in hundredths
+#: so the weighted total is exact. The persona states them and the finalize step
+#: ``ctem_relevance_score`` recomputes the score from them (#2763): the model never adds up.
+CTEM_RELEVANCE_WEIGHTS: dict[str, int] = {
+    "sector": 15,
+    "region": 10,
+    "software": 30,
+    "primary_assets": 20,
+    "pir": 15,
+    "activity": 10,
+}
 #: The one relevance rule of the threat response seed (#1678): the analyst persona, the
 #: orchestrator persona and the prompts below read it word for word. Its PIR half is the floor of
 #: the threat signal run (event field pir_floor_met, services/ctem_trigger_rules.pir_floor_met).
