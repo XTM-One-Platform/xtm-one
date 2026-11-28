@@ -670,7 +670,7 @@ the pause is still there, `resume` stays `pending` and the dialog says intake is
 still paused. The progress dialog stops polling and the purge button opens the
 confirm dialog again.
 
-## 6quater. Retention of discarded and watchlist signals (#2581)
+## 6quater. Retention of discarded, watchlist and unmatched signals (#2581, #2726)
 
 Without it a signal is only deleted by the purge (section 6ter) or with its
 organization. `services/ctem_signal_retention.py` deletes the signals nobody will
@@ -682,6 +682,7 @@ retentions):
 |---|---|---|---|
 | `discarded` by the scope gate | not seen (`last_seen_at`) for the window | `coordination_retention.ctem_signal_discarded_days` | `CTEM_SIGNAL_DISCARDED_RETENTION_DAYS`, 30 |
 | `watchlist` | not seen for the window | `coordination_retention.ctem_signal_watchlist_days` | `CTEM_SIGNAL_WATCHLIST_RETENTION_DAYS`, 90 |
+| `to_validate` (unmatched, #2726) | not seen for the window | `coordination_retention.ctem_signal_unmatched_days` | `CTEM_SIGNAL_UNMATCHED_RETENTION_DAYS`, 30 |
 
 - **0 turns a rule off.** The windows are keys of
   `platform_settings.coordination_retention` (`services/coordination_retention.py`),
@@ -697,6 +698,15 @@ retentions):
 - **Watchlist re-decided on every sighting:** a new sighting of a watchlist
   signal runs the scope gate again (`ctem-scope-gate.md` section 1), so it
   rarely reaches its window while it keeps being seen.
+- **Unmatched re-decisions bounded (#2726):** the same unmatched window bounds
+  the profile-change re-decision (`ctem_scope_gate_store.recheck_parked`,
+  `seen_within_days`): only `to_validate` signals seen within it are decided
+  again after a profile change; an older one is left as it is and decided again
+  at its next sighting. A 0 window keeps both the
+  signal and the unbounded re-decision. `GET /api/v1/ctem-signals/{id}` adds
+  `unmatched_retention_days` on an unmatched signal, and the loop trace's next
+  step reads "Deleted if not seen for N days, decided again at its next
+  sighting" (the inventory sentence when the window is 0).
 - **Batches:** `SIGNAL_RETENTION_BATCH` (1,000) per transaction, oldest
   sighting first; the DELETE re-applies every rule, so a signal seen again or
   joined to a case meanwhile stays. A pass deletes at most
@@ -707,13 +717,15 @@ retentions):
   `JOB_LOCK_KEY`); a Redis error never stops retention for good.
 - **Audit:** one platform audit row per pass that deleted anything
   (`system:ctem_signal_retention`, action `retention_purge`, entity type
-  `ctem_signal`), with `details.deleted` per state and `details.retention_days`.
+  `ctem_signal`), with `details.deleted` per state (`discarded`, `watchlist`,
+  `to_validate`) and `details.retention_days`.
 
 ## 7. Tests
 
 `tests/test_ctem_signal_retention.py` and
 `tests/test_ctem_signal_retention_postgres.py` (section 6quater: each rule on
-PostgreSQL, a 0 window, the batches, the audit row, the purge guard),
+PostgreSQL, a 0 window, the batches, the audit row, the purge guard, the
+bounded unmatched re-decision, a deleted unmatched signal seen again),
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
 one signal per path through each, idempotence, filters, recorder scope,
 Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new

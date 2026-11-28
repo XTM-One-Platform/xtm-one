@@ -163,6 +163,23 @@ export function ObservabilitySection() {
         "Finished runs are deleted this many days after they ended. Runs still working or waiting for a person are kept.",
       ),
     },
+    ctem_signal_discarded_days: {
+      title: t_i18n("Discarded CTEM signals"),
+      label: t_i18n("Discarded CTEM signals (days)"),
+      helper: t_i18n("Signals the scope gate discarded are deleted this many days after they were last seen."),
+    },
+    ctem_signal_watchlist_days: {
+      title: t_i18n("Watchlist CTEM signals"),
+      label: t_i18n("Watchlist CTEM signals (days)"),
+      helper: t_i18n("Watchlist signals are deleted this many days after they were last seen."),
+    },
+    ctem_signal_unmatched_days: {
+      title: t_i18n("Unmatched CTEM signals"),
+      label: t_i18n("Unmatched CTEM signals (days)"),
+      helper: t_i18n(
+        "Signals not in your inventory are deleted this many days after they were last seen. Older ones are not decided again after an inventory change.",
+      ),
+    },
   };
   const retentionText = (days: number) =>
     days === 0 ? t_i18n("Kept forever") : t_i18n("{count, plural, one {# day} other {# days}}", { count: days });
@@ -669,7 +686,7 @@ export function ObservabilitySection() {
                 <SettingsGroupTitle>{t_i18n("Coordination retention")}</SettingsGroupTitle>
                 <SettingsGroupDescription>
                   {t_i18n(
-                    "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.",
+                    "How long work items, shared state, worksets and runs are kept once they are closed, and CTEM signals once they are no longer seen. 0 keeps them forever.",
                   )}
                 </SettingsGroupDescription>
               </div>
@@ -684,10 +701,17 @@ export function ObservabilitySection() {
                       id={id}
                       label={coordinationLabels[key].label}
                       helper={coordinationLabels[key].helper}
-                      info={t_i18n(
-                        "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.",
-                        { min: MIN_COORDINATION_RETENTION_DAYS, max: MAX_COORDINATION_RETENTION_DAYS },
-                      )}
+                      info={
+                        key.startsWith("ctem_signal_")
+                          ? t_i18n(
+                              "An hourly sweep deletes what is past this window, in batches, until nothing is left. A signal a person dismissed or in a case is never deleted. 0 keeps them forever. Allowed range: {min} to {max}.",
+                              { min: MIN_COORDINATION_RETENTION_DAYS, max: MAX_COORDINATION_RETENTION_DAYS },
+                            )
+                          : t_i18n(
+                              "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.",
+                              { min: MIN_COORDINATION_RETENTION_DAYS, max: MAX_COORDINATION_RETENTION_DAYS },
+                            )
+                      }
                       error={
                         invalid
                           ? t_i18n("Enter a number of days from {min} to {max}.", {

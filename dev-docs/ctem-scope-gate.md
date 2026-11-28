@@ -35,8 +35,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 - After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick
-  (`recheck_parked`). A signal it confirms opens its case at the next case
-  sweep, grouped by case key, never one case per host.
+  (`recheck_parked`), only those seen within the unmatched retention window
+  (#2726, `ctem_signal_unmatched_days`, 30 by default; 0 takes every one): an
+  older one is left as it is and decided again at its next sighting. A signal
+  it confirms opens its case at the next case sweep, grouped by case key,
+  never one case per host.
 - From the Signals page, by the people who read the signals:
   `POST /api/v1/ctem-signals/triage` dismisses (state `discarded`, reason
   `dismissed_by_user`, kept out of every pass until restored), restores or
@@ -60,10 +63,10 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   OpenCRQ connection; the pass at recording time does not (no user to read
   them for), and its decision says so.
 - A signal in `case_opened` is never moved back: the case step owns it.
-- Retention (#2581, `ctem-signals.md` section 6quater): a gate-discarded
-  signal not seen for 30 days and a watchlist signal not seen for 90 days are
-  deleted by the hourly retention pass; a later sighting records the signal
-  again and this gate decides it as a first sighting. A signal a person
+- Retention (#2581, #2726, `ctem-signals.md` section 6quater): a gate-discarded
+  signal not seen for 30 days, a watchlist signal not seen for 90 days and an
+  unmatched signal not seen for 30 days are deleted by the hourly retention
+  pass; a later sighting records the signal again and this gate decides it as a first sighting. A signal a person
   dismissed (`dismissed_by_user`) or in a case is never deleted.
 
 ## 2. Reconcile

@@ -757,6 +757,11 @@ The observability setup, edited with `Configure`:
     - `Archived shared state items (days)`: list items moved to an archive entry are dropped this many days after they were archived, 14 by default (`SHARED_STATE_ARCHIVE_RETENTION_DAYS`).
     - `Resolved worksets (days)`: resolved worksets are deleted with their documents, 7 days by default (`WORKSET_RESOLVED_RETENTION_DAYS`).
     - `Runs (days)`: finished runs of Operations > Executions (completed, failed, skipped or cancelled) are deleted with their files this many days after they ended, 90 by default (`ASSIGNMENT_RUN_RETENTION_DAYS`). A run still working, queued or waiting for a person is never deleted, nor one that holds a work item claim or a shared state lease, has a background task still running, or is the parent of a run that is kept. The assignments' execution counts do not change. Each pass that deletes runs writes one audit log entry with the count and the window.
+    - `Discarded CTEM signals (days)`: signals the scope gate discarded are deleted this many days after they were last seen, 30 by default (`CTEM_SIGNAL_DISCARDED_RETENTION_DAYS`).
+    - `Watchlist CTEM signals (days)`: watchlist signals are deleted this many days after they were last seen, 90 by default (`CTEM_SIGNAL_WATCHLIST_RETENTION_DAYS`).
+    - `Unmatched CTEM signals (days)`: signals not in your inventory are deleted this many days after they were last seen, 30 by default (`CTEM_SIGNAL_UNMATCHED_RETENTION_DAYS`). After an inventory change only the ones seen within this window are decided again; an older one is decided again at its next sighting.
+
+    A CTEM signal a person dismissed or linked to a case is never deleted, and a deleted signal seen again comes back as a new signal.
 
     The environment variables give the defaults; a value saved here wins. An hourly sweep deletes what is past each window in batches and keeps draining on every scheduler tick until nothing is left. Active shared state entries and work items still open are never deleted. The values are read and written with `coordination_retention` in `GET` / `PUT /api/v1/settings/observability`, and `get_platform_overview` reports `work_item_retention_days`, `shared_state_retention_days` and `run_retention_days`.
 - Langfuse configuration, the optional export to Langfuse, which the two switches above do not govern

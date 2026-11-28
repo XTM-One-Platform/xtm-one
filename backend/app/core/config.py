@@ -2621,6 +2621,10 @@ class Settings(BaseSettings):
     #   - The same for a watchlist signal (re-decided by the gate on every new
     #     sighting).
     ctem_signal_watchlist_retention_days: int = 90
+    #   - The same for an unmatched (``to_validate``) signal; within the window it
+    #     is also the bound of the profile-change re-decision (``recheck_parked``),
+    #     an older one is decided again at its next sighting.
+    ctem_signal_unmatched_retention_days: int = 30
 
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent

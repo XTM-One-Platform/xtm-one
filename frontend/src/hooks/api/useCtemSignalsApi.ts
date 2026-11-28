@@ -84,6 +84,8 @@ export interface CtemSignal {
   decision: CtemDecisionRecord | null;
   case_id: string | null;
   recorded_via: string;
+  /** #2726: on one unmatched signal read by id, the days after which an unseen one is deleted (0: kept). */
+  unmatched_retention_days?: number;
 }
 
 export interface CtemSignalList {

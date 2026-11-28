@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Retention of gate-discarded and watchlist CTEM signals (#2581).
+"""Retention of gate-discarded, watchlist and unmatched CTEM signals (#2581, #2726).
 
 A signal is otherwise only deleted by the administrator's purge (#2528) or with
 its organization; this sweep keeps the table from growing with signals nobody
-will act on. Two windows, keys of ``platform_settings.coordination_retention``
+will act on. Three windows, keys of ``platform_settings.coordination_retention``
 (``services/coordination_retention.py``) next to the other retention windows:
 
 - ``ctem_signal_discarded_days`` (default ``CTEM_SIGNAL_DISCARDED_RETENTION_DAYS``,
@@ -14,6 +14,11 @@ will act on. Two windows, keys of ``platform_settings.coordination_retention``
   90): a watchlist signal not seen since is deleted. Every new sighting of a
   watchlist signal is decided again by the gate
   (``ctem_scope_gate_store.evaluate_after_record``).
+- ``ctem_signal_unmatched_days`` (default ``CTEM_SIGNAL_UNMATCHED_RETENTION_DAYS``,
+  30, #2726): an unmatched (``to_validate``) signal not seen since is deleted.
+  The same window bounds the profile-change re-decision
+  (``ctem_scope_gate_store.recheck_parked``): an older unmatched signal is left
+  as it is until its next sighting decides it again.
 
 0 turns a rule off. A signal is never deleted when:
 
@@ -54,7 +59,10 @@ DISMISSED_CODE = "dismissed_by_user"
 STATE_WINDOWS: dict[str, str] = {
     "discarded": "ctem_signal_discarded_days",
     "watchlist": "ctem_signal_watchlist_days",
+    "to_validate": "ctem_signal_unmatched_days",
 }
+#: The states whose rule keeps a signal a person dismissed (#2726: unmatched signals too).
+_DISMISSAL_GUARDED: frozenset[str] = frozenset({"discarded", "to_validate"})
 
 
 def _not_dismissed() -> Any:
@@ -75,7 +83,7 @@ def _not_in_a_case() -> Any:
 def expired_rules(state: str, cutoff: datetime) -> list[Any]:
     """SQL: a *state* signal not seen since *cutoff*, neither dismissed by a person nor in a case."""
     rules = [CtemSignal.state == state, CtemSignal.last_seen_at < cutoff, _not_in_a_case()]
-    if state == "discarded":
+    if state in _DISMISSAL_GUARDED:
         rules.append(_not_dismissed())
     return rules
 
@@ -179,7 +187,8 @@ async def audit_signal_retention_pass(deleted: dict[str, int], windows: dict[str
             entity_type="ctem_signal",
             summary=(
                 f"Deleted {total} CTEM signal(s) past retention: "
-                f"{deleted.get('discarded', 0)} discarded, {deleted.get('watchlist', 0)} watchlist"
+                f"{deleted.get('discarded', 0)} discarded, {deleted.get('watchlist', 0)} watchlist, "
+                f"{deleted.get('to_validate', 0)} unmatched"
             ),
             details={
                 "deleted": dict(deleted),
