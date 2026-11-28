@@ -26,6 +26,7 @@ import {
   evidenceHealthSavedIntegration,
   passIntegrationIds,
 } from "@/lib/organization-profile";
+import { EvidenceHealthRunAsLine } from "./EvidenceHealthRunAsLine";
 import { LabelledSwitch } from "./LabelledSwitch";
 import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
 import { PLATFORM_NAME, isProvisioned, platformSourceFixRoute, sourceReasonLine } from "./platform-sources";
@@ -241,6 +242,16 @@ export function SourceConfig({
                 </>
               )}
             </dl>
+            {/* #2739: who the evidence health pass reads OpenCRQ as, and the administrator's Change. */}
+            {passField === "evidence_health" && (
+              <EvidenceHealthRunAsLine
+                pass={evidenceHealth}
+                integration={integrations.find((i) => i.id === evidenceRuns)}
+                isAdmin={isAdmin}
+                saving={saving}
+                onSave={onSave}
+              />
+            )}
             {(!switchable || noScope) && (
               <span className="flex items-center gap-1.5 text-default-secondary" data-testid="ctem-path-source-missing">
                 <Icon name="info" size={16} aria-hidden />
