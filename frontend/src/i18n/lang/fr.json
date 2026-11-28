@@ -22269,6 +22269,8 @@
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
   "Being applied": "En cours d'application",
+  "Decision being applied": "Décision en cours d'application",
+  "Not applied": "Non appliquée",
   "Decision recorded: {option}. The loop is applying it.": "Décision enregistrée : {option}. La boucle l'applique.",
   "Decision recorded. The loop is applying it.": "Décision enregistrée. La boucle l'applique.",
   "Recorded, still being applied. Refresh later.": "Enregistrée, encore en cours d'application. Actualisez plus tard.",
