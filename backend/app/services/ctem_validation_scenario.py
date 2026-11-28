@@ -18,10 +18,12 @@ test), and the platform states it on the ``ctem.validation.non_readonly`` card:
   scenario and the threat package in ``links``, and, when the scenario is not
   playable, opens with "Scenario not playable" and offers the three options
   below instead of a launch, whatever the agent wrote; on a patch (upgrade) case,
-  which validation evidence never closes, the agent's options whose pass closes
-  the case (remediation or installed-version evidence) are kept first and one
-  of them is recommended, each option saying whether its pass closes the case
-  (#2683, the #2461 rule).
+  which validation evidence never closes, every agent option but a plain launch
+  is kept in its order, each saying whether its pass closes the case (a version
+  read or remediation evidence closes it, a cleanup or a validation does not),
+  one that closes it is recommended, and a stock option is added only for an
+  intent the agent did not cover, within the card's option cap (#2683, #2749,
+  the #2461 rule).
 """
 
 from __future__ import annotations
@@ -45,16 +47,36 @@ NOT_PLAYABLE_LEAD = "Scenario not playable:"
 NOT_PLAYABLE_QUESTION = "The scenario cannot test this threat: how should the case be validated?"
 _MAX_CONTEXT_CHARS = 800
 _MAX_TESTS_CHARS = 200
-#: The agent options a not-playable card of a patch case keeps beside its own three (#2683).
-_MAX_KEPT_OPTIONS = 3
 #: The remediation kind of a patch case: only remediation evidence closes it, never a validation (#2683).
 PATCH_KIND = "upgrade"
 #: What the validation options of a patch case say of their pass (#2683, the #2461 rule).
 PATCH_NOT_CLOSING = "; its pass does not close the case: a patch case closes on remediation evidence only."
 #: What a kept remediation option of a patch case says of its pass when the agent did not say it.
 PATCH_CLOSING = " Its pass closes the case."
-#: Words of an option that brings remediation evidence on a patch case (installed or fixed version read).
-_REMEDIATION_MARKERS: tuple[str, ...] = ("installed version", "fixed version", "remediation evidence")
+#: What an agent option of a patch case that is no remediation evidence says when the agent did not say it.
+PATCH_AGENT_NOT_CLOSING = " Its pass does not close the case: a patch case closes on remediation evidence only."
+#: What a cleanup option of a patch case says: it runs no validation (#2749).
+PATCH_CLEANUP = " No validation runs: this does not close the case."
+#: An option that brings remediation evidence on a patch case: a version read, installed, reported or checked (#2749).
+_REMEDIATION = re.compile(
+    r"\bremediation evidence\b"
+    r"|\b(?:installed|fixed|product|running|patched|software)\s+(?:\w+\s+)?versions?\b"
+    r"|\bversions?\s+(?:check|checks|read|reading|readings|report|reports)\b"
+    r"|\b(?:read|reads|reading|report|reports|reporting|record|records|check|checks|checking)\b[^.;]{0,60}\bversions?\b",
+    re.I,
+)
+#: The intent of an option, read from its key and label (#2749): a cleanup, a manual validation, a completion.
+_CLEANUP = re.compile(r"\b(?:reject|rejects|clean|cleanup|do not run|don't run|discard|abandon)\b", re.I)
+_MANUAL = re.compile(r"\b(?:manual|manually|by hand)\b", re.I)
+_COMPLETE = re.compile(r"\b(?:complete|completes|completion|build|builds|payloads?)\b", re.I)
+#: A plain launch of the scenario: never offered on a not-playable card (#2468), whoever wrote it.
+_LAUNCH = re.compile(r"^\s*(?:launch|run|play|start)\b", re.I)
+#: The intent each stock not-playable option carries, by its key in :data:`NOT_PLAYABLE_OPTIONS`.
+_STOCK_INTENT = {"A": "complete", "B": "manual", "C": "cleanup"}
+#: A letter an agent put before its label (``(C) Do not run``, ``B. Validate``): keys are rewritten by position.
+_LETTER_PREFIX = re.compile(r"^\s*(?:\(?[A-H]\)|[A-H][.:)])\s+")
+#: A sentence a shortened text keeps first: a figure or a request to the person deciding (#2749).
+_KEEP_SENTENCE = re.compile(r"\d|\?|\b(?:please|give|tell|confirm|provide|state|explain|reply|answer|choose)\b", re.I)
 #: Characters of a raw list a person should not read in the not-playable line (#2683).
 _RAW_LIST = re.compile(r"[\[\]{}\"]")
 #: ``playable/total``, the ``from`` value of a scenario event.
@@ -252,53 +274,130 @@ def not_playable_line(found: Mapping[str, Any], threat: str | None) -> str:
     return line + "."
 
 
+def _keeps_sentence(sentence: str) -> bool:
+    return bool(_KEEP_SENTENCE.search(sentence))
+
+
+def _words(value: object) -> str:
+    return " ".join(str(value or "").replace("_", " ").replace("-", " ").split())
+
+
+def _intent(option: Mapping[str, Any]) -> str | None:
+    """``cleanup``, ``manual``, ``complete`` or ``None``: what an option does, from its key and label (pure, #2749).
+
+    A completion that closes the case (a version check built into the scenario)
+    is remediation evidence, not the stock completion, so it carries no intent here.
+    """
+    text = f"{_words(option.get('key'))} {_words(option.get('label'))}"
+    if _CLEANUP.search(text):
+        return "cleanup"
+    if _MANUAL.search(text):
+        return "manual"
+    if _COMPLETE.search(text) and not _closes_patch_case(option):
+        return "complete"
+    if _LAUNCH.match(_label(option)) and not _closes_patch_case(option):
+        return "launch"
+    return None
+
+
 def _closes_patch_case(option: Mapping[str, Any]) -> bool:
-    """Whether an agent option of a patch case brings evidence that closes it (pure, #2683)."""
+    """Whether an agent option of a patch case brings evidence that closes it (pure, #2683, #2749).
+
+    A cleanup never does, whatever its text says ("closes the case without
+    validation"); an option that says its pass does not close the case does not;
+    a version read, report or check, or remediation evidence, does, however worded.
+    """
     from app.services.ctem_control_measurement import option_outcome
 
+    head = f"{_words(option.get('key'))} {_words(option.get('label'))}"
+    if _CLEANUP.search(head):
+        return False
     outcome = option_outcome(option)
-    if outcome is not None:
-        return outcome == "closes"
-    text = f"{option.get('label') or ''} {option.get('effect') or ''}".casefold()
-    return any(marker in text for marker in _REMEDIATION_MARKERS)
+    if outcome == "not_closing":
+        return False
+    text = f"{head} {option.get('effect') or ''}"
+    return outcome == "closes" or bool(_REMEDIATION.search(text))
 
 
-def _patch_options(ask: Mapping[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
-    """The options of a not-playable card of a patch case and its recommendation (pure, #2683).
+def _label(option: Mapping[str, Any]) -> str:
+    label = str(option.get("label") or "").strip()
+    return _LETTER_PREFIX.sub("", label).strip() or label
 
-    The agent's options whose pass closes the case come first (at most
-    :data:`_MAX_KEPT_OPTIONS`), then the three not-playable options, each
-    saying its pass does not close the case; keys are rewritten A, B, C...
-    The recommendation is the agent's when it is a kept option, else the first
-    kept option, else the completion of the scenario (nothing closes the case).
+
+def _with_outcome(effect: str, suffix: str) -> str:
+    """*effect* then *suffix* within the effect cap, the effect shortened at a sentence end (pure, #2749).
+
+    Never a cut mark: a text a person reads keeps whole sentences, its figures and
+    its requests to the reader first; a fragment an earlier cap marked is dropped.
     """
-    from app.services.ctem_control_measurement import CLOSES_WORDS
-    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
+    from app.services.decision_ask import CUT_MARK, MAX_EFFECT_CHARS, fit_sentences
 
-    standard = {o["label"] for o in NOT_PLAYABLE_OPTIONS}
-    given = [o for o in (ask.get("options") or []) if isinstance(o, Mapping) and o.get("label") not in standard]
-    kept = [o for o in given if _closes_patch_case(o)][:_MAX_KEPT_OPTIONS]
-    recommended = str(ask.get("recommendation") or "")
+    effect = effect.strip()
+    if effect.endswith(CUT_MARK):
+        ends = [i for i, char in enumerate(effect) if char in ".!?"]
+        effect = effect[: ends[-1] + 1] if ends else ""
+    room = MAX_EFFECT_CHARS - len(suffix)
+    return f"{fit_sentences(effect, room, _keeps_sentence)}{suffix}".strip()
+
+
+def _agent_option(option: Mapping[str, Any], key: str) -> dict[str, Any]:
+    """An agent option of a patch card: its key by position, its label without a letter, its outcome said."""
+    from app.services.ctem_control_measurement import option_outcome
+
+    effect = str(option.get("effect") or "").strip()
+    stated = option_outcome(option)
+    if _intent(option) == "cleanup":
+        suffix = "" if stated == "not_closing" else PATCH_CLEANUP
+    elif _closes_patch_case(option):
+        suffix = "" if stated == "closes" else PATCH_CLOSING
+    else:
+        suffix = "" if stated == "not_closing" else PATCH_AGENT_NOT_CLOSING
+    return {**dict(option), "key": key, "label": _label(option), "effect": _with_outcome(effect, suffix)}
+
+
+def _patch_options(ask: Mapping[str, Any]) -> tuple[list[dict[str, Any]], str | None, list[str]]:
+    """The options of a not-playable card of a patch case, its recommendation, the stock labels left out.
+
+    Pure (#2683, #2749). Every agent option but a plain launch (#2468) is kept, in its order, its key
+    rewritten A, B, C..., a letter prefix of its label dropped, and its effect
+    saying whether its pass closes the case (remediation evidence such as a
+    version read closes it; a cleanup or a validation does not). A stock
+    not-playable option is added only when no agent option carries its intent
+    (completion, manual validation, cleanup), and only within
+    :data:`~app.services.decision_ask.MAX_OPTIONS`: the agent's set is never cut,
+    the stock options that do not fit are returned to be named on the card.
+    The recommendation is the agent's when its option closes the case, else
+    the first agent option that closes it, else the first option.
+    """
+    from app.services.decision_ask import MAX_EFFECT_CHARS, MAX_OPTIONS, fit
+
+    # A stock option the platform wrote on an earlier pass (its label and its effect) is not the agent's:
+    # an agent option with the same label and its own effect stays (#2749).
+    standard = {(o["label"], o["effect"]) for o in NOT_PLAYABLE_OPTIONS} | {
+        (o["label"], fit(o["effect"].rstrip(".") + PATCH_NOT_CLOSING, MAX_EFFECT_CHARS)) for o in NOT_PLAYABLE_OPTIONS
+    }
+    given = [
+        o
+        for o in (ask.get("options") or [])
+        if isinstance(o, Mapping) and (o.get("label"), o.get("effect")) not in standard and _intent(o) != "launch"
+    ][:MAX_OPTIONS]
+    covered = {_intent(o) for o in given}
+    wanted = [o for o in NOT_PLAYABLE_OPTIONS if _STOCK_INTENT[o["key"]] not in covered]
+    room = max(MAX_OPTIONS - len(given), 0)
+    stock, left_out = wanted[:room], [o["label"] for o in wanted[room:]]
     keys = iter("ABCDEFGH")
-    options: list[dict[str, Any]] = []
+    options = [_agent_option(option, next(keys)) for option in given]
+    recommended = str(ask.get("recommendation") or "")
     recommendation: str | None = None
-    for option in kept:
-        key = next(keys)
-        effect = str(option.get("effect") or "").strip()
-        if CLOSES_WORDS not in f"{option.get('label') or ''} {effect}".casefold():
-            effect = fit(f"{effect}{PATCH_CLOSING}".strip(), MAX_EFFECT_CHARS)
-        options.append({**dict(option), "key": key, "effect": effect})
-        if recommendation is None or str(option.get("key")) == recommended:
-            recommendation = key
-    first_standard: str | None = None
-    for option in NOT_PLAYABLE_OPTIONS:
-        key = next(keys)
-        first_standard = first_standard or key
+    for source, option in zip(given, options, strict=True):
+        if _closes_patch_case(source) and (recommendation is None or str(source.get("key")) == recommended):
+            recommendation = option["key"]
+    for option in stock:
         effect = option["effect"]
-        if option["key"] != "C":
+        if _STOCK_INTENT[option["key"]] != "cleanup":
             effect = fit(effect.rstrip(".") + PATCH_NOT_CLOSING, MAX_EFFECT_CHARS)
-        options.append({**option, "key": key, "effect": effect})
-    return options, recommendation or first_standard
+        options.append({**option, "key": next(keys), "effect": effect})
+    return options, recommendation or (options[0]["key"] if options else None), left_out
 
 
 def complete_ask(
@@ -312,8 +411,9 @@ def complete_ask(
     """*ask* with the scenario and the threat package in ``links`` and, when the scenario is not
     playable, the not-playable line first and the three options of :data:`NOT_PLAYABLE_OPTIONS` (pure).
 
-    On a patch case (*patch_case*), the agent's options that close the case are kept and recommended
-    (:func:`_patch_options`, #2683).
+    On a patch case (*patch_case*), every agent option is kept and one that closes the case recommended
+    (:func:`_patch_options`, #2683, #2749). The agent's context keeps its figures and requests first
+    when it does not fit after the platform line (#2749).
     """
     from app.services.decision_ask import lead_then_fit
 
@@ -336,12 +436,16 @@ def complete_ask(
     if found and found.get("techniques_total") is not None and not found.get("playable"):
         head = not_playable_line(found, threat)
         rest = str(out.get("context") or "").strip()
-        if not rest.startswith(NOT_PLAYABLE_LEAD):
-            out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS)
         out["question"] = NOT_PLAYABLE_QUESTION
         if patch_case:
-            out["options"], out["recommendation"] = _patch_options(ask)
+            out["options"], out["recommendation"], left_out = _patch_options(ask)
+            if left_out:
+                head += f" Not shown for room: {', '.join(left_out)}."
+            if not rest.startswith(NOT_PLAYABLE_LEAD):
+                out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS, keep=_keeps_sentence)
         else:
+            if not rest.startswith(NOT_PLAYABLE_LEAD):
+                out["context"] = lead_then_fit(head, rest, _MAX_CONTEXT_CHARS)
             out["options"] = [dict(o) for o in NOT_PLAYABLE_OPTIONS]
             out["recommendation"] = "A"
     return out
