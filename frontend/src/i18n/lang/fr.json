@@ -22163,7 +22163,7 @@
   "Open the notifier in {platform}": "Ouvrir le notificateur dans {platform}",
   "Open the triggers in {platform}": "Ouvrir les déclencheurs dans {platform}",
   "Open the playbook in {platform}": "Ouvrir le playbook dans {platform}",
-  "The resync reads every source again, with the paths and sources that are on.": "La resynchronisation relit chaque source, avec les chemins et les sources activés.",
+  "The resync reads the sources ticked below again, with the paths and sources that are on.": "La resynchronisation relit les sources cochées ci-dessous, avec les chemins et les sources activés.",
   "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sans resynchronisation, le recalcul des cas est suspendu pendant un intervalle : la liste reste vide jusqu'à une resynchronisation ou un recalcul lancé à la main.",
   "Value (ROI) restarts from now": "La valeur (ROI) repart de maintenant",
   "Measured since {date} (reset)": "Mesurée depuis le {date} (réinitialisation)",
@@ -22179,7 +22179,7 @@
   "Resync by source": "Resynchronisation par source",
   "Stopped at the read limit": "Arrêté à la limite de lecture",
   "{read} read, {recorded} recorded": "{read} lus, {recorded} enregistrés",
-  "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.": "Profondeur de lecture de la resynchronisation, en jours. Laissez un champ d'état interne vide pour lire tous les éléments ouverts.",
+  "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.": "Décochez une source pour l'exclure de la resynchronisation. Profondeur de lecture de la resynchronisation, en heures ou en jours. Laissez un champ d'état interne vide pour lire tous les éléments ouverts.",
   "Intrusion sets": "Modes opératoires",
   "Threat actor groups": "Groupes d'acteurs de menace",
   "Threat actor individuals": "Acteurs de menace individuels",
@@ -22267,5 +22267,8 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
+  "How far back {source} is read": "Profondeur de lecture : {source}",
+  "Does not run": "Ne s'exécute pas",
+  "Left out of this resync": "Exclu de cette resynchronisation"
 }
