@@ -166,7 +166,24 @@ describe("ObservabilitySection coordination retention", () => {
           shared_state_archive_days: 14,
           workset_resolved_days: 7,
           assignment_run_days: 90,
+          ctem_signal_discarded_days: 30,
+          ctem_signal_watchlist_days: 90,
+          ctem_signal_unmatched_days: 30,
         },
+      }),
+    );
+  });
+
+  it("edits the unmatched CTEM signal retention, 30 days by default, and sends it with Save (#2726)", () => {
+    updateObservability.mockClear();
+    openConfigure();
+    const field = screen.getByRole("spinbutton", { name: "Unmatched CTEM signals (days)" }) as HTMLInputElement;
+    expect(field.value).toBe("30");
+    fireEvent.change(field, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateObservability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coordination_retention: expect.objectContaining({ ctem_signal_unmatched_days: 0 }),
       }),
     );
   });

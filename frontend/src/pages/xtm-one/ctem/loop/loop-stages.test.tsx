@@ -235,6 +235,16 @@ describe("what would make it a case", () => {
     expect(nextStepSentence(null, t)).toBeNull();
   });
 
+  it("names the unmatched retention window as the next step, the inventory sentence when it is 0 (#2726)", () => {
+    const unmatched = { outcome: "to_validate" as const, reason_code: "subject_unresolved" };
+    const withCount = (id: string, values?: Record<string, unknown>) => `${id}|${String(values?.count ?? "")}`;
+    expect(nextStepSentence(unmatched, withCount, undefined, 30)).toBe(
+      "Deleted if not seen for {count, plural, one {# day} other {# days}}, decided again at its next sighting|30",
+    );
+    expect(nextStepSentence(unmatched, t, undefined, 0)).toBe("It stays here until your inventory holds it");
+    expect(nextStepSentence(below, t, undefined, 30)).toBe("Becomes a case if criticality rises to {threshold}");
+  });
+
   it("draws the next step and the criticality against the threshold in the trace", () => {
     renderWithProviders(<DecisionReason state="watchlist" decision={below} showInputs />);
     expect(screen.getByTestId("ctem-decision-next-step")).toHaveTextContent("Becomes a case if criticality rises to High");

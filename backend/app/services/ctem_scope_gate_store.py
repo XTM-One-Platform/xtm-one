@@ -1038,7 +1038,11 @@ async def recheck_lookup_failed(
 
 
 async def recheck_parked(
-    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    batch: int = RECHECK_BATCH,
+    seen_within_days: int = 0,
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
@@ -1048,8 +1052,17 @@ async def recheck_parked(
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
     confirms waits for the case sweep, which groups it by case key, so a
     profile change never opens one case per host here. The caller commits.
+
+    *seen_within_days* > 0 (#2726, the unmatched retention window) keeps only the
+    signals seen (``last_seen_at``) within that many days: an older one is left
+    as it is and decided again at its next sighting; 0 takes every one.
     """
     from app.models.organization_context import OrganizationContextVersion
+
+    at = now or datetime.now(UTC)
+    rules = [CtemSignal.state == "to_validate"]
+    if seen_within_days > 0:
+        rules.append(CtemSignal.last_seen_at >= at - timedelta(days=seen_within_days))
 
     latest = (
         select(
@@ -1064,7 +1077,7 @@ async def recheck_parked(
             await db.execute(
                 select(CtemSignal)
                 .join(latest, latest.c.organization_id == CtemSignal.organization_id)
-                .where(CtemSignal.state == "to_validate", CtemSignal.updated_at < latest.c.changed_at)
+                .where(*rules, CtemSignal.updated_at < latest.c.changed_at)
                 .order_by(CtemSignal.updated_at)
                 .limit(max(1, int(batch)))
             )

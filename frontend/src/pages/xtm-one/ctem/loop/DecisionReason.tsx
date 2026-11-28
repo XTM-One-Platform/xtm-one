@@ -227,11 +227,18 @@ export function nextStepSentence(
   decision: CtemDecisionRecord | null | undefined,
   t_i18n: Translate,
   formatDay: (iso: string) => string = (iso) => iso,
+  unmatchedRetentionDays?: number | null,
 ): string | null {
   if (!decision?.reason_code || decision.outcome === "case") return null;
   if (lookupRetry(decision) === "scheduled") return t_i18n("Decided again once OpenCTI answers");
   // The control is named by its label in the signals list (UX r1 B2 on #2548).
   if (lookupRetry(decision) === "exhausted") return t_i18n("Once OpenCTI answers, select it and choose Check again");
+  // #2726: an unmatched signal not seen for the retention window is deleted; 0 keeps the sentence above.
+  if (decision.reason_code === "subject_unresolved" && unmatchedRetentionDays && unmatchedRetentionDays > 0) {
+    return t_i18n("Deleted if not seen for {count, plural, one {# day} other {# days}}, decided again at its next sighting", {
+      count: unmatchedRetentionDays,
+    });
+  }
   const sentence = NEXT_STEPS[decision.reason_code];
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
@@ -262,13 +269,14 @@ export function gateStep(
   decision: CtemDecisionRecord | null | undefined,
   t_i18n: Translate,
   formatDay: (iso: string) => string = (iso) => iso,
+  unmatchedRetentionDays?: number | null,
 ): GateStep | null {
   if (stage !== "reconcile" && stage !== "scope") return null;
   if (status === "stopped" || status === "parked") {
     return {
       decision: t_i18n(signalStateLabel(state, decision)),
       reason: decisionSentence(decision, t_i18n, formatDay),
-      next: nextStepSentence(decision, t_i18n, formatDay),
+      next: nextStepSentence(decision, t_i18n, formatDay, unmatchedRetentionDays),
     };
   }
   if (status !== "passed") return null;

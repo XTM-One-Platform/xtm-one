@@ -11,6 +11,9 @@ export const COORDINATION_RETENTION_KEYS = [
   "shared_state_archive_days",
   "workset_resolved_days",
   "assignment_run_days",
+  "ctem_signal_discarded_days",
+  "ctem_signal_watchlist_days",
+  "ctem_signal_unmatched_days",
 ] as const;
 
 export type CoordinationRetentionKey = (typeof COORDINATION_RETENTION_KEYS)[number];
@@ -24,6 +27,10 @@ export const COORDINATION_RETENTION_DEFAULTS: CoordinationRetention = {
   shared_state_archive_days: 14,
   workset_resolved_days: 7,
   assignment_run_days: 90,
+  // CTEM signals, from their last sighting (backend services/ctem_signal_retention.py, #2581, #2726).
+  ctem_signal_discarded_days: 30,
+  ctem_signal_watchlist_days: 90,
+  ctem_signal_unmatched_days: 30,
 };
 
 /**
