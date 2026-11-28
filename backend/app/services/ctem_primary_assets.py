@@ -404,14 +404,22 @@ def label_names(ref: str, label: str) -> bool | None:
 
     ``hermes-estree`` or ``@apollo/server-gateway-interface`` is never reduced to one of its words:
     ``Hermes`` or ``Gateway`` names it only by its full name. A distribution package of the product
-    itself (``openssl-libs``, :data:`PACKAGE_SUFFIXES`) keeps the whole-word rule; a CPE answers ``None``.
+    itself (``openssl-libs``, :data:`PACKAGE_SUFFIXES`) keeps the whole-word rule only for the product
+    part it packages: ``requests`` names ``python3-requests``, ``Python`` never names ``python-dateutil``.
+    A CPE answers ``None``.
     """
     if str(label or "").strip().lower().startswith("cpe:") or str(ref or "").strip().lower().startswith("cpe:"):
         return None
     words, compound = _name_words(str(label or ""))
-    if not compound or (len(words) == 2 and (words[-1] in PACKAGE_SUFFIXES or words[0] in PACKAGE_PREFIXES)):
+    if not compound:
         return None
-    return _name_words(str(ref or ""))[0] == words
+    ref_words = _name_words(str(ref or ""))[0]
+    if len(words) == 2 and (
+        (words[-1] in PACKAGE_SUFFIXES and ref_words == words[:-1])
+        or (words[0] in PACKAGE_PREFIXES and ref_words == words[1:])
+    ):
+        return None
+    return ref_words == words
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:
@@ -883,12 +891,26 @@ def reference_versions(ref: str) -> tuple[tuple[str, str], ...] | None:
 _VERSION_SPAN = re.compile(r"(v?\d+(?:\.[0-9a-z]+)+)-(v?\d+(?:\.[0-9a-z]+)+)")
 
 
+_EPOCH_PREFIX = re.compile(r"^\d+:(.+)$")
+
+
+def _release_tokens(value: str) -> list[str]:
+    """The release tokens of a version, its epoch (``7:4.4.2-0ubuntu0``) and ``v`` prefix left out."""
+    text = value.strip().lower()
+    epoch = _EPOCH_PREFIX.match(text)
+    if epoch:
+        text = epoch.group(1)
+    if text.startswith("v") and text[1:2].isdigit():
+        text = text[1:]
+    return _TOKEN.findall(text)
+
+
 def _satisfies(installed: str, op: str, version: str) -> bool:
     from app.services.ctem_fixed_version import compare_versions
 
     if op in {"=", "=="}:
         # ``8.0`` names the 8.0 release line: 8.0 and 8.0.2, never 9.0 nor 8.01.
-        want, have = _TOKEN.findall(version.lower()), _TOKEN.findall(installed.lower())
+        want, have = _release_tokens(version), _release_tokens(installed)
         return bool(want) and have[: len(want)] == want
     cmp = compare_versions(installed, version)
     if cmp is None:

@@ -61,6 +61,16 @@ def test_a_distribution_package_of_the_product_keeps_the_whole_word_rule() -> No
     assert pa.product_matches("requests", "python3-requests", family_exact=False, ref_exact=False)
 
 
+@pytest.mark.parametrize("label", ["python-dateutil", "node-fetch", "ruby-json", "php-mbstring", "rust-openssl"])
+def test_an_ecosystem_prefix_never_names_a_package_by_itself(label: str) -> None:
+    assert not pa.product_matches(label.split("-")[0].title(), label, family_exact=False, ref_exact=False)
+    assert pa.product_matches(label.split("-", 1)[1], label, family_exact=False, ref_exact=False)
+
+
+def test_a_packaging_suffix_never_names_a_package_by_itself() -> None:
+    assert not pa.product_matches("libs", "openssl-libs", family_exact=False, ref_exact=False)
+
+
 def test_the_package_in_range_is_verified_and_one_outside_is_not() -> None:
     inside = _reach([HERMES], _reacher("MAC-02", "hermes-agent", "0.22.1", os_family="macOS"))
     assert [h["version_verified"] for h in inside] == [True]
@@ -72,6 +82,12 @@ def test_the_package_in_range_is_verified_and_one_outside_is_not() -> None:
 def test_an_exact_version_reference_verifies_only_that_release_line(installed: str, verified: bool) -> None:
     hits = _reach(["FFmpeg 8.0"], _reacher("LAPTOP", "FFmpeg", installed, os_family="macOS"))
     assert [h["version_verified"] for h in hits] == [verified]
+
+
+@pytest.mark.parametrize("installed", ["v8.0.2", "7:8.0.1-0ubuntu0.22.04.1"])
+def test_an_exact_version_reads_the_epoch_and_v_prefix(installed: str) -> None:
+    assert pa.version_in_reference("FFmpeg", {installed}, "FFmpeg 8.0")
+    assert not pa.version_in_reference("FFmpeg", {installed}, "FFmpeg 9.0")
 
 
 def test_a_version_span_reference_verifies_only_inside_the_span() -> None:
