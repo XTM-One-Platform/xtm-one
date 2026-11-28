@@ -22277,5 +22277,6 @@
   "The switch is organization-wide.": "このスイッチは組織全体に適用されます。",
   "The integration the pass reads.": "パスが読み取る連携。",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "パスが OpenCRQ を読み取る際のユーザー。既定: 連携の所有者。",
-  "{name} (integration owner)": "{name}（連携の所有者）"
+  "{name} (integration owner)": "{name}（連携の所有者）",
+  "Runs as: {user}": "実行ユーザー: {user}"
 }
