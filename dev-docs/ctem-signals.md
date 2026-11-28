@@ -32,6 +32,15 @@ lenses disagree. Before this change none of that had a place to land.
 | 11 | `third_party_event` | world | an OpenCTI report or incident naming a tracked organization by identity, one signal per organization (the tracked-organizations trigger of the third-party fleet) |
 | 12 | `blind_spot` | inside | tool and API |
 
+Path and subject kind (#2797): `normalize()` refuses a subject kind the path does not take
+(`PATH_SUBJECT_KINDS`: `relevant_threat` takes `threat` only), and the refusal names the
+path the kind belongs to (`vulnerability` goes to `new_vulnerability`, where the case reads
+the fixed version and verifies the running one). A refusal, not a re-route: a re-routed row
+would take a dedupe key the caller never chose and could join or split the world signals
+already on the CVE behind its back; the caller re-sends on path 1 with the threat in
+evidence. `record_ctem_signals` refuses the row alone, by index; a webhook source is refused
+at creation for the same pairing.
+
 Path 9 (`control_decay`, evidence state `never_measured`, `attested_only` or
 `expired`) means OpenCRQ holds no current evidence for a control, not that no
 control exists (#2354): the Loop Orchestrator reconciles the case first
