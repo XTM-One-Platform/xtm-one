@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The sources of one trigger path, managed in place (#1445, dev-docs/ctem-signals.md section 2bis).
+ * The sources of one trigger path, managed in place (#1445, dev-docs/ctem-signals.md section 2bis). A row's
+ * opened configuration is `SourceConfig` (SourceConfigPanel.tsx, #2740): one sectioned skeleton per source kind.
  *
  * Opened from a row of the signal sources page, as a wide panel holding one paginated table (#2506): every
  * source of the path, connected or not, with its kind, integration, run-as, status (the path list's word, A4 of
@@ -26,7 +27,6 @@
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
@@ -44,217 +44,34 @@ import {
   useCtemWebhookSources,
   useUpdateCtemWebhookSource,
 } from "@/hooks/api/useCtemSignalsApi";
-import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { type OrganizationProfile, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
-import {
-  DEFAULT_ATTACK_SURFACE,
-  DEFAULT_EVIDENCE_HEALTH,
-  type EvidenceHealthPass,
-  evidenceHealthRuns,
-  evidenceHealthSavedIntegration,
-  passIntegrationIds,
-} from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
-import { EvidenceHealthRunAsLine } from "./EvidenceHealthRunAsLine";
-import { PlatformSourceControls, PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
-import { isProvisioned, platformSourceFixRoute, sourceErrorLines, sourceReasonLine } from "./platform-sources";
-import { PirSelection } from "./PirSelection";
+import { PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
+import { sourceErrorLines, sourceReasonLine } from "./platform-sources";
+import { SourceConfig } from "./SourceConfigPanel";
 import { WebhookSourceDialog } from "./WebhookSourceDialog";
 import {
   PATH_ICON,
   PATH_STATUS_TONE,
   SOURCE_KIND_LABEL,
   sourceKindText,
-  canExclude,
-  connectHref,
-  connectNeedsAdmin,
   pathStatus,
   pathStatusLabel,
-  profilePassField,
   type SourceState,
   sourceDisplayName,
   sourceDisplayState,
   sourceIntegrationNames,
   sourceKey,
-  sourceState,
   sourceStateIcon,
-  withExclusion,
 } from "./signal-sources";
 
 function providerName(provider: string): string {
   return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
-}
-
-/** The configuration of one source, drawn in its opened row of the path table. */
-function SourceConfig({
-  path,
-  source,
-  connected,
-  labels,
-  profile,
-  isAdmin,
-  saving,
-  onSave,
-  platformSources,
-  onEnable,
-}: {
-  path: CtemSignalPath;
-  source: CtemSignalPathSource;
-  connected: ReadonlySet<string>;
-  labels: Record<string, string>;
-  profile: OrganizationProfile | undefined;
-  isAdmin: boolean;
-  saving: boolean;
-  onSave: (next: Partial<OrganizationProfile>, done: string) => void;
-  platformSources: readonly CtemPlatformSource[];
-  onEnable: (source: CtemPlatformSource) => void;
-}) {
-  const { t_i18n } = useFormatter();
-  const navigate = useNavigate();
-  const { data: integrations = [] } = useIntegrations();
-  const state = sourceState(source, connected);
-  const passField = profilePassField(source);
-  const key = sourceKey(source);
-  const shared = (source.also_feeds ?? []).map((id) => labels[id] ?? id);
-  const provisioned = isProvisioned(source);
-  // "Set up" opens the enable dialog of the first integration of the provider still off (#2434).
-  const firstOff = platformSources.find((s) => s.provider === source.provider && s.kind === source.kind && !s.enabled && s.integration_connected);
-
-  const attackSurface = { ...DEFAULT_ATTACK_SURFACE, ...(profile?.attack_surface ?? {}) };
-  const evidenceHealth: EvidenceHealthPass = { ...DEFAULT_EVIDENCE_HEALTH, ...((profile?.evidence_health ?? {}) as Partial<EvidenceHealthPass>) };
-  const opencrqIds = integrations.filter((i) => i.provider === source.provider && i.status === "connected").map((i) => i.id);
-  // The integration the evidence health pass reads, as `resolve_pass` picks it: the declared one, else the single connected one (#1937).
-  const evidenceRuns = evidenceHealthRuns(evidenceHealth, opencrqIds).integration || evidenceHealth.integration.trim();
-  const evidenceIds = evidenceRuns ? [evidenceRuns] : [];
-  // The attack surface switch is the stored flag; the evidence health pass may run unset (#1344): the API's truth.
-  const passOn = passField === "attack_surface" ? attackSurface.enabled : Boolean(source.available);
-  const passIds = passField === "attack_surface" ? passIntegrationIds(attackSurface) : passField === "evidence_health" ? evidenceIds : [];
-  const runsOn = passIds
-    .map((id) => integrations.find((i) => i.id === id))
-    .filter((i): i is NonNullable<typeof i> => Boolean(i) && i?.provider === source.provider)
-    .map((i) => i.name);
-  const noScope = passField === "attack_surface" && !(profile?.owned_domains?.length || profile?.address_ranges?.length);
-  // A pass switch needs the integration it runs on: chosen on its card, or the single connected one; without one it points there.
-  const switchable = (passField === "evidence_health" || passField === "attack_surface") && passIds.length > 0;
-
-  const togglePass = (enabled: boolean) => {
-    if (passField === "attack_surface") onSave({ attack_surface: { ...attackSurface, enabled } }, t_i18n("Scheduled pass saved"));
-    // An off names the integration it ran on, as the Settings card does: `enabled: false` with none declared is the
-    // legacy stored default, which `resolve_pass` reads as on, so the off would not hold (#1937).
-    else if (passField === "evidence_health")
-      onSave(
-        { evidence_health: { ...evidenceHealth, enabled, integration: evidenceHealthSavedIntegration(evidenceHealth.integration.trim(), enabled, opencrqIds) } },
-        t_i18n("Scheduled pass saved"),
-      );
-  };
-  const toggleUse = (use: boolean) =>
-    onSave(
-      { signal_sources: withExclusion(profile?.signal_sources, path.id, key, !use, source.default_on !== false) },
-      use ? t_i18n("Source used on this path") : t_i18n("Source taken off this path"),
-    );
-
-  // The row's header (name, kind, state, counts) is the table's: this is the source's configuration, its opened row.
-  return (
-    <div
-      className="flex flex-col gap-2"
-      data-testid="ctem-path-source"
-      data-provider={source.provider}
-      data-kind={source.kind}
-      data-state={state}
-    >
-      {source.event && <p className="content-compact text-default-secondary">{t_i18n(source.event)}</p>}
-      {source.kind === "pir_playbook" && state !== "not_connected" && (
-        <PirSelection path={path} profile={profile} isAdmin={isAdmin} saving={saving} onSave={onSave} />
-      )}
-
-      {passField && state !== "not_connected" && (
-        <div className="flex flex-col gap-1.5 content-compact">
-          <label className="flex items-center justify-between gap-3">
-            <span>{t_i18n("Scheduled pass on")}</span>
-            <Switch
-              checked={passOn}
-              disabled={!isAdmin || !switchable || saving}
-              onCheckedChange={togglePass}
-              aria-label={t_i18n("Scheduled pass on")}
-              data-testid="ctem-path-source-pass"
-            />
-          </label>
-          <span className="text-default-secondary" data-testid="ctem-path-source-runs-on">
-            {t_i18n("Runs on: {names}", { names: runsOn.length ? runsOn.join(", ") : t_i18n("None") })}
-          </span>
-          {passField === "evidence_health" && (
-            <EvidenceHealthRunAsLine
-              pass={evidenceHealth}
-              integration={integrations.find((i) => i.id === evidenceRuns)}
-              isAdmin={isAdmin}
-              saving={saving}
-              onSave={onSave}
-            />
-          )}
-          {(!switchable || noScope) && (
-            <span className="flex items-center gap-1.5 text-default-secondary" data-testid="ctem-path-source-missing">
-              <Icon name="info" size={16} aria-hidden />
-              {!switchable ? t_i18n("Choose the integration it runs on in its settings card.") : t_i18n("No owned domain or address range is set: the pass has nothing to look up.")}
-            </span>
-          )}
-          {shared.length > 0 && (
-            <span className="text-default-secondary" data-testid="ctem-path-source-shared">
-              {t_i18n("The switch is organization-wide. Also feeds: {paths}", { paths: shared.join(", ") })}
-            </span>
-          )}
-          {isAdmin && (
-            <span>
-              <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(source))} data-testid="ctem-path-source-settings">
-                {t_i18n("Open its settings")}
-              </Button>
-            </span>
-          )}
-        </div>
-      )}
-
-      {source.kind === "listener" && !provisioned && state !== "not_connected" && (
-        <p className="content-compact text-default-secondary">{t_i18n("A live listener runs while its integration is connected.")}</p>
-      )}
-      {provisioned && state === "error" && <SourceFixLinks source={source} platformSources={platformSources} />}
-      {provisioned && state !== "not_connected" && (
-        <PlatformSourceControls source={source} platformSources={platformSources} isAdmin={isAdmin} onEnable={onEnable} />
-      )}
-      {provisioned && (state === "not_set_up" || state === "error") && isAdmin && firstOff && (
-        <span>
-          <Button variant="secondary" size="sm" onClick={() => onEnable(firstOff)} data-testid="ctem-path-source-set-up">
-            {t_i18n("Set up")}
-          </Button>
-        </span>
-      )}
-
-      {canExclude(source) && (
-        <label className="flex items-center justify-between gap-3 content-compact">
-          <span>{t_i18n("Use on this path")}</span>
-          <Switch
-            checked={!source.excluded}
-            disabled={!isAdmin || saving}
-            onCheckedChange={toggleUse}
-            aria-label={t_i18n("Use on this path")}
-            data-testid="ctem-path-source-use"
-          />
-        </label>
-      )}
-
-      {/* A profile pass or the PIR playbook is connected from the organization profile: no Connect for a reader (UX r1 #1461 B1). */}
-      {state === "not_connected" && (isAdmin || !connectNeedsAdmin(source)) && (
-        <span>
-          <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(source))} data-testid="ctem-path-source-connect">
-            {t_i18n("Connect")}
-          </Button>
-        </span>
-      )}
-    </div>
-  );
 }
 
 interface SourceTableRow {
@@ -327,33 +144,6 @@ function SourceStatus({ row, platformSources }: { row: SourceTableRow; platformS
     </span>
   );
   return <Tip content={content}>{word}</Tip>;
-}
-
-/**
- * The fix of each integration in error, in the opened row (UX round 1 on #2653, B2): a real action, the page
- * where it is done; a fix done on this page (its switch, Set up) is the row's own control and gets no link.
- */
-function SourceFixLinks({ source, platformSources }: { source: CtemSignalPathSource; platformSources: readonly CtemPlatformSource[] }) {
-  const { t_i18n } = useFormatter();
-  const names = new Map(ownLines(source, platformSources).map((s) => [s.integration_id, s.integration_name]));
-  const fixes = (source.errors ?? [])
-    .map((e) => ({ e, route: platformSourceFixRoute(e) }))
-    .filter((f): f is { e: NonNullable<CtemSignalPathSource["errors"]>[number]; route: string } => Boolean(f.route));
-  if (fixes.length === 0) return null;
-  return (
-    <ul className="flex flex-col gap-1 content-compact" data-testid="ctem-path-source-fixes">
-      {fixes.map(({ e, route }) => (
-        <li key={e.integration_id} className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 text-default-secondary">
-            {sourceReasonLine(e, names.get(e.integration_id), t_i18n)}
-          </span>
-          <Link to={route} className="shrink-0 text-accent underline-offset-2 hover:underline" data-testid="ctem-path-source-fix">
-            {t_i18n("Fix it")}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 /** The side panel of one trigger path's sources; `path` null closes it. */
