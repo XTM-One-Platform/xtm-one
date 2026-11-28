@@ -688,12 +688,19 @@ async def _with_remote_software(
     return await _with_cve_scores(db, row, facts, profile, **kw)
 
 
+def _in_savepoint(db: AsyncSession) -> bool:
+    """Whether a savepoint is open on *db* (#2781): a commit there would close its outer transaction."""
+    in_nested = getattr(db, "in_nested_transaction", None)
+    return bool(callable(in_nested) and in_nested())
+
+
 async def prepare_cve_reads(
     db: AsyncSession,
     rows: list[CtemSignal],
     *,
     profiles: dict[uuid.UUID, Any] | None = None,
     links: dict[uuid.UUID, Any] | None = None,
+    release: bool = True,
 ) -> None:
     """Take the OpenCTI software reads of *rows* now (CVEs #2171, threats #2523), before any row is written.
 
@@ -709,8 +716,12 @@ async def prepare_cve_reads(
     threat id or CVE list reuse the failure instead of paying one OpenCTI timeout
     each; the failures of an earlier pass are forgotten first, so the next pass
     reads them again (#2548 review).
+
+    *release* lets the connection go during the OpenCTI I/O (a commit); it is never taken
+    under an open savepoint, whose outer transaction the commit would close (#2781).
     """
     _forget_failures(db)
+    release = release and not _in_savepoint(db)
     for row in rows:
         if row.state not in GATED_STATES:
             continue
@@ -727,8 +738,9 @@ async def prepare_cve_reads(
                 primary_assets = links[org]
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
-            # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
-            await _with_remote_software(db, row, facts, profile, primary_assets, release=True, reuse_failure=True)
+            # Release the connection during the OpenCTI I/O (#2518 review), never under an open savepoint:
+            # the release commits the session and would close the transaction a caller's savepoint runs in (#2781).
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=release, reuse_failure=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -1093,9 +1105,13 @@ async def _decide_again(
     *,
     now: datetime | None = None,
     isolate: bool = False,
+    prefetched: bool = False,
     deadline: float | None = None,
 ) -> dict[str, int]:
     """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader.
+
+    *prefetched*: the caller already took the OpenCTI reads of *rows* outside its savepoint
+    (:func:`prefetch_held`), so they are not prepared again here (#2781).
 
     *isolate* decides each row in its own savepoint: a row the gate cannot decide
     is logged, its ``updated_at`` moved so it waits one grace before the next try
@@ -1115,7 +1131,8 @@ async def _decide_again(
         if row.organization_id not in profiles:
             profiles[row.organization_id] = await _profile(db, row.organization_id)
             links[row.organization_id] = await _primary_assets(db, row.organization_id)
-    await prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    if not prefetched:
+        await prepare_cve_reads(db, rows, profiles=profiles, links=links)
     for index, row in enumerate(rows):
         if deadline is not None and time.monotonic() >= deadline:
             counts["deferred"] = len(rows) - index
@@ -1262,6 +1279,7 @@ async def recheck_held(
     since: datetime,
     now: datetime | None = None,
     batch: int = RECHECK_BATCH,
+    prefetched: bool = False,
 ) -> dict[str, int]:
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
@@ -1271,10 +1289,19 @@ async def recheck_held(
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
     gate confirms waits for the case sweep (one case per fix key). The caller commits.
+    *prefetched*: a caller deciding inside a savepoint ran :func:`prefetch_held` before it (#2781).
     """
+    rows = await _held_for_recheck(db, organization_id=organization_id, since=since, batch=batch)
+    return await _decide_again(db, rows, now=now, prefetched=prefetched)
+
+
+async def _held_for_recheck(
+    db: AsyncSession, *, organization_id: uuid.UUID, since: datetime, batch: int
+) -> list[CtemSignal]:
+    """The next batch :func:`recheck_held` decides, oldest first."""
     # The held reasons are filtered in SQL before the limit: watchlist rows held for
     # another reason never take the batch from the scope-held ones (#1591 S3 review).
-    rows = list(
+    return list(
         (
             await db.execute(
                 select(CtemSignal)
@@ -1289,7 +1316,26 @@ async def recheck_held(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=now)
+
+
+async def prefetch_held(
+    db: AsyncSession, *, organization_id: uuid.UUID, since: datetime, batch: int = RECHECK_BATCH
+) -> None:
+    """#2781: the OpenCTI reads of the next :func:`recheck_held` batch, taken with no savepoint open.
+
+    The caller (an organization sync) holds writes it commits itself at the end of its run,
+    so the reads never release the connection: no commit happens here. The caller then
+    decides the batch inside its savepoint with ``prefetched=True``. The rows are selected
+    in a savepoint of their own, so a statement timeout leaves the caller's transaction
+    usable. Never raises: a batch not prefetched is decided without its CVE software.
+    """
+    try:
+        async with db.begin_nested():
+            rows = await _held_for_recheck(db, organization_id=organization_id, since=since, batch=batch)
+    except Exception:
+        logger.warning("CTEM scope gate: held signals not prefetched", exc_info=True)
+        return
+    await prepare_cve_reads(db, rows, release=False)
 
 
 #: Where a profile row added from the Signals page says it came from (#1505).
