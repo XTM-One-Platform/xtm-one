@@ -984,6 +984,17 @@ def _visible_issue(
             # #2635: the inventory assets its gate decision matched, so the case lists and counts them.
             if issue.assets:
                 out["assets"] = list(issue.assets)
+            # #2755: the CVE facts its enrichment read, so the case's CVE rollups agree with its aggregates.
+            if issue.cve:
+                out.update(
+                    {
+                        "cve": issue.cve,
+                        "kev": issue.kev,
+                        "kev_cves": list(issue.kev_cves),
+                        "cvss": issue.cvss,
+                        "epss": issue.epss,
+                    }
+                )
         return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}

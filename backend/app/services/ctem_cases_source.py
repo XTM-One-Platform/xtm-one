@@ -1671,10 +1671,20 @@ async def _signal_members(
             inferred_primary_assets=tuple(j["name"] for j in reached[s.id] if j["basis"] == "inferred"),
             scope_kinds=tuple(decision_scope_kinds(s.decision or {})),
             first_seen_at=s.first_seen_at,
+            # #2755: the running version the signal itself reports judges its CVE, never "not reported".
+            installed_version=signal_running_version(s.evidence),
         )
         for s in rows
     ]
     return await _enrich_signals(db, user_id, issues, cves) if cves else issues
+
+
+def signal_running_version(evidence: Any) -> str | None:
+    """The running version(s) a signal's evidence reports, joined, else ``None`` (#2755, pure)."""
+    raw = evidence.get("running_version") if isinstance(evidence, dict) else None
+    values = raw if isinstance(raw, list) else [raw]
+    found = list(dict.fromkeys(str(v).strip() for v in values if isinstance(v, (str, int, float)) and str(v).strip()))
+    return ", ".join(found)[:200] or None
 
 
 def enrich_signal_issues(

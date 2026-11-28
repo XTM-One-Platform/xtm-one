@@ -596,6 +596,10 @@ class SignalPurge(BaseModel):
     #: The resync read window per route in days (#2578); a route left out takes its default,
     #: ``null`` on an inside-state route is no age limit. Validated by the server.
     resync_windows: dict[str, int | None] | None = None
+    #: Per resync route or pass (#2745): ``{enabled, window, unit}``, each optional. ``enabled``
+    #: false leaves it out of the resync (not queried at all); ``unit`` is ``days`` (default) or
+    #: ``hours``. Overlaid on ``resync_windows``; validated by the server.
+    resync_sources: dict[str, dict[str, Any]] | None = None
 
 
 @router.get("/purge")
@@ -614,6 +618,7 @@ async def get_ctem_signal_purge(
         "confirm_word": purge.CONFIRM_WORD,
         "resync_routes": resync.describe_windows(),
         "resync_max_days": resync.MAX_WINDOW_DAYS,
+        "resync_units": list(resync.UNITS),
         "job": await purge.read_status(),
     }
 
@@ -637,12 +642,20 @@ async def purge_ctem_signals(
         raise HTTPException(status_code=422, detail=f"Type {purge.CONFIRM_WORD} to confirm the purge")
     from app.services import ctem_signal_resync
 
+    windows: dict[str, int | None] | None = None
+    planned: dict[str, Any] = {}
     try:
-        windows = ctem_signal_resync.validate_windows(body.resync_windows) if body.resync else None
+        if body.resync and body.resync_sources is not None:
+            planned = ctem_signal_resync.plan(body.resync_windows, body.resync_sources)
+            windows = planned["windows"]
+        elif body.resync:
+            windows = ctem_signal_resync.validate_windows(body.resync_windows)
     except ctem_signal_resync.WindowError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     try:
-        job = await purge.start(admin, resync=body.resync, windows=windows)
+        job = await purge.start(
+            admin, resync=body.resync, windows=windows, spans=planned.get("spans"), skip=planned.get("skip")
+        )
     except purge.PurgeBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     return {"job": job}
