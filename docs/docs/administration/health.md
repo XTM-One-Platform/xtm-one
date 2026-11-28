@@ -159,7 +159,7 @@ Every 15 minutes, in every mode, the health pass checks the agents enrolled in P
 | Check | Severity | Fails when |
 |---|---|---|
 | Assignment failing | Warning | The last 3 judged runs of an enabled assignment failed |
-| Schedule silent | Info | An enabled schedule has not run for 14 days |
+| Schedule silent | Info | A slot of an enabled schedule came due more than an hour ago and nothing was recorded for it. A monthly or yearly schedule between two slots, or a schedule enabled again after its slots, is not reported |
 | Cost spike | Warning | A day's tokens are over 3 times the agent's daily average |
 | Owner disabled | Warning | The agent's owner account is deactivated |
 | Failure spike | Warning | Over 5 % of an assignment's last 20 settled runs failed |

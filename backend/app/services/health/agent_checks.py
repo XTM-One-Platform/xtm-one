@@ -26,7 +26,7 @@ resolves the finding too.
 Check                          Severity    Category     Rule (shared with the fleet findings)
 =============================  ==========  ===========  ===============================================
 ``agents.assignment_failing``  warning     availability last 3 judged runs of an enabled assignment failed
-``agents.schedule_silent``     info        configuration enabled schedule silent for 14 days
+``agents.schedule_silent``     info        configuration enabled schedule missed a due cron slot
 ``agents.cost_spike``          warning     cost         a day's tokens over 3x the agent's daily average
 ``agents.owner_disabled``      warning     configuration the agent's owner account is deactivated
 ``agents.failure_spike``       warning     availability over 5 % of an assignment's last 20 settled runs failed
@@ -61,13 +61,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.docs_links import docs_url
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
-    SILENT_AFTER,
+    FINDING_ADVICE,
     SPIKE_FACTOR,
     SPIKE_MIN_TOKENS,
     assignment_is_failing,
     blocked_without_blocker,
     is_cost_spike,
-    schedule_is_silent,
+    missed_schedule_slots,
 )
 from app.services.health.engine import Check, CheckResult, close_out, enrolled_agent_ids, register_check
 from app.services.health.settings import HealthSignalSettings
@@ -179,33 +179,48 @@ async def assignment_failing(db: AsyncSession, now: datetime, agents: list[uuid.
 
 
 async def schedule_silent(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
-    """An enabled schedule of an enrolled agent that has not fired for :data:`SILENT_AFTER`."""
+    """An enabled schedule of an enrolled agent that missed a due cron slot (#2723)."""
     from app.models.assignment import Assignment
 
     rows = (
         await db.execute(
-            select(Assignment.id, Assignment.agent_id, Assignment.created_at, Assignment.last_triggered_at).where(
+            select(
+                Assignment.id,
+                Assignment.agent_id,
+                Assignment.trigger_config,
+                Assignment.created_at,
+                Assignment.last_triggered_at,
+                Assignment.schedule_resumed_at,
+            ).where(
                 Assignment.agent_id.in_(agents),
                 Assignment.enabled.is_(True),
                 Assignment.trigger_type == "schedule",
             )
         )
     ).all()
-    return [
-        _result(
-            "agents.schedule_silent",
-            "info",
-            "configuration",
-            schedule_is_silent(created_at=created, last_triggered_at=last, now=now),
-            {"agent_id": str(agent_id), "assignment_id": str(aid)},
-            evidence={
-                "values": {"last_triggered_at": last.isoformat() if last else None},
-                "threshold": f"{SILENT_AFTER.days} days",
-            },
-            recommendation="Check the schedule and its gate; delete the assignment if its work is over.",
+    out: list[CheckResult] = []
+    for aid, agent_id, config, created, last, resumed in rows:
+        missed = missed_schedule_slots(
+            trigger_config=config, created_at=created, last_triggered_at=last, resumed_at=resumed, now=now
         )
-        for aid, agent_id, created, last in rows
-    ]
+        out.append(
+            _result(
+                "agents.schedule_silent",
+                "info",
+                "configuration",
+                missed > 0,
+                {"agent_id": str(agent_id), "assignment_id": str(aid)},
+                evidence={
+                    "values": {
+                        "last_triggered_at": last.isoformat() if last else None,
+                        "schedule_resumed_at": resumed.isoformat() if resumed else None,
+                        "missed_slots": missed,
+                    },
+                },
+                recommendation=FINDING_ADVICE["assignment_silent"],
+            )
+        )
+    return out
 
 
 async def cost_spike(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:

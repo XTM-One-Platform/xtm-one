@@ -21,6 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * read from the engine's store: no model call, nothing metered.
  */
 import { useMemo, useState, type ComponentProps } from "react";
+import type { IntlShape } from "react-intl";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,7 @@ import {
   checkRecommendation,
   checkTitle,
   evidenceLabel,
+  evidenceTime,
   moduleCardSubtitle,
   periodLabel,
 } from "@/lib/health-modules";
@@ -116,11 +118,15 @@ function evidenceValue(value: unknown, t: Translate): string {
 }
 
 /** The evidence as translated label and value pairs. */
-function evidenceLines(finding: HealthFinding, t: Translate): [string, string][] {
+function evidenceLines(finding: HealthFinding, intl: Pick<IntlShape, "formatDate">, t: Translate): [string, string][] {
   const values = (finding.evidence?.values ?? {}) as Record<string, unknown>;
   // A quota period is a word to translate (UX round 2 B2 on #634: never "month" raw).
   const lines = Object.entries(values).map(
-    ([key, value]) => [evidenceLabel(key, t), key === "period" && typeof value === "string" ? periodLabel(value, t) : evidenceValue(value, t)] as [string, string],
+    ([key, value]) =>
+      [
+        evidenceLabel(key, t),
+        key === "period" && typeof value === "string" ? periodLabel(value, t) : key.endsWith("_at") ? evidenceTime(value, intl, t) : evidenceValue(value, t),
+      ] as [string, string],
   );
   const threshold = finding.evidence?.threshold;
   if (threshold !== undefined && threshold !== null) lines.push([evidenceLabel("threshold", t), evidenceValue(threshold, t)]);
@@ -247,8 +253,8 @@ function FindingDetail({
   onRestore: (finding: HealthFinding) => void;
   restoring: boolean;
 }) {
-  const { t_i18n } = useFormatter();
-  const lines = evidenceLines(finding, t_i18n);
+  const { t_i18n, intl } = useFormatter();
+  const lines = evidenceLines(finding, intl, t_i18n);
   return (
     <div className="space-y-3 px-1 py-2" data-testid="health-finding-detail">
       {finding.recommendation ? (

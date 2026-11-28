@@ -22,8 +22,11 @@ was read from, so one read tells a fleet orchestrator everything the seeded
 * ``assignment_failing``: an enabled assignment of a home member whose last
   :data:`FAILING_RUNS` judged runs all failed (a platform interruption is not
   judged, as in :func:`app.services.run_outcome.member_verdict`).
-* ``assignment_silent``: an enabled schedule assignment older than
-  :data:`SILENT_AFTER` that has not fired for that long.
+* ``assignment_silent``: an enabled schedule assignment one of whose cron slots
+  came due (past :data:`SILENT_GRACE`) since the later of its creation, its last
+  enable and its last recorded fire, with nothing recorded for it (#2723): a
+  monthly or yearly cron between two slots, or a schedule enabled again after
+  its slots, is not silent (:func:`missed_schedule_slots`).
 * ``orphaned_claim``: an open item claimed or in progress by a run that ended.
   The one SAFE fix: :func:`apply_safe_fixes` releases it with the platform's own
   sweep (``work_item.release_ended_run_claims``), scoped to those runs.
@@ -82,14 +85,18 @@ from typing import Any
 from sqlalchemy import String, and_, cast, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils import next_cron_run, schedule_timezone
 from app.models.fleet import Fleet
 from app.services.fleet_health_dismissals import finding_id, split_findings
 from app.services.run_outcome import OUTCOME_FAILED, OUTCOME_OK, run_outcome
 
 #: Judged runs in a row that make an assignment failing.
 FAILING_RUNS = 3
-#: How long an enabled schedule may stay silent before it is reported.
-SILENT_AFTER = timedelta(days=14)
+#: How late a cron slot may be before its missing fire is reported: the
+#: scheduler's tick, a spread delay and a busy pool fit in it.
+SILENT_GRACE = timedelta(hours=1)
+#: Missed slots in a row from which the finding mentions deleting the assignment.
+SILENT_DELETE_HINT_SLOTS = 3
 #: A day's tokens over this many times the member's own daily average is a spike.
 SPIKE_FACTOR = 3.0
 #: Below this many tokens in the day no spike is reported, whatever the ratio.
@@ -127,7 +134,7 @@ FINDING_ADVICE: dict[str, str] = {
     "member_failing": "Open the member's last failed run and fix its cause before the next trigger.",
     "member_disabled": "Enable the member or remove it from the fleet.",
     "assignment_failing": "Read the last failed run of the assignment; fix it or pause the assignment.",
-    "assignment_silent": "Check the schedule and its gate; delete the assignment if its work is over.",
+    "assignment_silent": "A due slot did not fire: check the scheduler and the activation gate.",
     "orphaned_claim": "Released by the platform's claim sweep: the item goes back to its owner's inbox.",
     "past_due": "Move the due date or hand the item to someone who can finish it.",
     "not_picked_up": (
@@ -217,11 +224,74 @@ def assignment_is_failing(runs: Sequence[tuple[str | None, str | None]]) -> bool
     return len(judged) >= FAILING_RUNS and all(o == OUTCOME_FAILED for o in judged[:FAILING_RUNS])
 
 
-def schedule_is_silent(*, created_at: datetime | None, last_triggered_at: datetime | None, now: datetime) -> bool:
-    """Whether an enabled schedule has not fired for :data:`SILENT_AFTER` (and is that old)."""
-    if created_at is None or created_at > now - SILENT_AFTER:
-        return False
-    return last_triggered_at is None or last_triggered_at < now - SILENT_AFTER
+def missed_schedule_slots(
+    *,
+    trigger_config: object,
+    created_at: datetime | None,
+    last_triggered_at: datetime | None,
+    resumed_at: datetime | None,
+    now: datetime,
+    cap: int = SILENT_DELETE_HINT_SLOTS,
+) -> int:
+    """The cron slots of an enabled schedule that came due with nothing recorded (#2723), at most *cap*.
+
+    The slots are those of ``trigger_config.cron`` (read in its ``timezone``,
+    :func:`app.core.utils.schedule_timezone`) after the later of *created_at*,
+    *resumed_at* (``schedule_resumed_at``, stamped each time the schedule is
+    enabled again) and *last_triggered_at* (stamped by every fire the scheduler
+    records: a run, a gate skip, a recorded missed window), and at or before
+    *now* minus :data:`SILENT_GRACE`. A slot while the schedule was disabled is
+    before its resume, so it never counts; a monthly or yearly cron between two
+    slots has none. No cron, or an unreadable one: 0 (the scheduler disables an
+    invalid cron itself).
+    """
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    cron = config.get("cron")
+    anchors = [v for v in (created_at, last_triggered_at, resumed_at) if isinstance(v, datetime)]
+    if not isinstance(cron, str) or not cron.strip() or not anchors:
+        return 0
+    zone, _ = schedule_timezone(config)
+    horizon = now - SILENT_GRACE
+    count = 0
+    slot = next_cron_run(cron, max(anchors), tz=zone)
+    while slot is not None and slot <= horizon and count < cap:
+        count += 1
+        slot = next_cron_run(cron, slot, tz=zone)
+    return count
+
+
+def schedule_is_silent(
+    *,
+    trigger_config: object,
+    created_at: datetime | None,
+    last_triggered_at: datetime | None,
+    resumed_at: datetime | None = None,
+    now: datetime,
+) -> bool:
+    """Whether an enabled schedule missed at least one due slot (:func:`missed_schedule_slots`)."""
+    return (
+        missed_schedule_slots(
+            trigger_config=trigger_config,
+            created_at=created_at,
+            last_triggered_at=last_triggered_at,
+            resumed_at=resumed_at,
+            now=now,
+            cap=1,
+        )
+        > 0
+    )
+
+
+def silent_summary(missed: Sequence[int]) -> str:
+    """The ``assignment_silent`` summary for schedules that missed *missed* slots each (capped)."""
+    summary = f"{len(missed)} schedule(s) missed a due slot with nothing recorded"
+    stuck = sum(1 for m in missed if m >= SILENT_DELETE_HINT_SLOTS)
+    if stuck:
+        summary += (
+            f"; {stuck} missed {SILENT_DELETE_HINT_SLOTS} or more slots in a row: once the scheduler and the gate "
+            "are ruled out, delete the assignment if its work is over"
+        )
+    return summary
 
 
 def is_cost_spike(*, today_tokens: int, week_tokens: int, week_days: int = 7) -> bool:
@@ -370,18 +440,28 @@ async def _assignment_findings(
         return []
     rows = (
         await db.execute(
-            select(Assignment.id, Assignment.trigger_type, Assignment.created_at, Assignment.last_triggered_at).where(
-                Assignment.agent_id.in_(list(agent_ids)), Assignment.enabled.is_(True)
-            )
+            select(
+                Assignment.id,
+                Assignment.trigger_type,
+                Assignment.trigger_config,
+                Assignment.created_at,
+                Assignment.last_triggered_at,
+                Assignment.schedule_resumed_at,
+            ).where(Assignment.agent_id.in_(list(agent_ids)), Assignment.enabled.is_(True))
         )
     ).all()
     if not rows:
         return []
-    silent = [
-        aid
-        for aid, trigger, created, last in rows
-        if trigger == "schedule" and schedule_is_silent(created_at=created, last_triggered_at=last, now=now)
-    ]
+    missed_by: dict[uuid.UUID, int] = {}
+    for aid, trigger, config, created, last, resumed in rows:
+        if trigger != "schedule":
+            continue
+        missed = missed_schedule_slots(
+            trigger_config=config, created_at=created, last_triggered_at=last, resumed_at=resumed, now=now
+        )
+        if missed:
+            missed_by[aid] = missed
+    silent = list(missed_by)
     rank = (
         func.row_number()
         .over(
@@ -420,7 +500,7 @@ async def _assignment_findings(
         out.append(
             _finding(
                 "assignment_silent",
-                f"{len(silent)} schedule(s) silent for {SILENT_AFTER.days} days or more",
+                silent_summary(list(missed_by.values())),
                 silent,
             )
         )
