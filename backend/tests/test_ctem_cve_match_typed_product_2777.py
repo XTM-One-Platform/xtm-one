@@ -195,3 +195,13 @@ def test_a_product_word_in_an_aside_or_a_package_path_is_no_match() -> None:
     assert not pa.label_names_word("git", "@npmcli/git")
     assert pa.label_names_word("git", "Git for Windows")
     assert pa.label_names_word("krita", "Krita (git bd6e8d0)")
+
+
+def test_a_one_word_vendor_still_confirms_a_shipped_product_by_name() -> None:
+    # Review of #2790: the one-word rule is for profile software rows, never the vendor check of
+    # ``shipped_match`` (``Acme`` in ``Acme Agent 6.0``, ``Mozilla`` in ``Mozilla Firefox ESR``).
+    agent = oc.ShippedProduct(product="Acme Agent", vendor="Acme")
+    assert gate.shipped_match(agent, "Acme Agent 6.0") == "product"
+    firefox = oc.ShippedProduct(product="Firefox", vendor="Mozilla")
+    assert gate.shipped_match(firefox, "Mozilla Firefox ESR") == "product"
+    assert gate.shipped_match(oc.ShippedProduct(product="Agent", vendor="Acme"), "Agent for Windows") == ""

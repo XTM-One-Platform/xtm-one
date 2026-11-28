@@ -403,11 +403,13 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
     return _under_owned(profile, host)
 
 
-def _product_matches(product: str, ref: str) -> bool:
+def _product_matches(product: str, ref: str, *, profile_row: bool = True) -> bool:
     """A software product named in a software reference (a name, or a CPE's product part).
 
     #2628: a bare OS or vendor family (``Windows``, ``Linux``) names only itself, never
     ``Windows Server`` or ``Linux Kernel``; #2685: nor does a bare generic word (``Client``).
+    #2777: the one-word rule (``one_word_names_reference``) applies to profile software rows
+    only; a shipped product and its vendor (``shipped_match``) pass ``profile_row=False``.
     """
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
@@ -428,7 +430,7 @@ def _product_matches(product: str, ref: str) -> bool:
     # #2679: a URL or host name label (a web-app shortcut row) names only itself.
     if p != r and (is_url_like(p) or is_url_like(r)):
         return False
-    if not ref.strip().lower().startswith("cpe:") and not one_word_names_reference(p, ref):
+    if profile_row and not ref.strip().lower().startswith("cpe:") and not one_word_names_reference(p, ref):
         return False
     return contains_word(p, r)
 
@@ -567,9 +569,9 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
         return "product" if product_ok and (not entry.vendor or named[0] == _cpe_token(entry.vendor)) else ""
     if text.lower() == entry.product.lower():
         return "product"
-    if not _product_matches(entry.product, text):
+    if not _product_matches(entry.product, text, profile_row=False):
         return ""
-    return "product" if entry.vendor and _product_matches(entry.vendor, text) else ""
+    return "product" if entry.vendor and _product_matches(entry.vendor, text, profile_row=False) else ""
 
 
 #: #1720: the relationships of a threat that name the software it reaches (OpenCTI ``targets``,
