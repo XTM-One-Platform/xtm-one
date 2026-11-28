@@ -10867,6 +10867,7 @@
   "Open the integration": "Abrir la integración",
   "Edit the rules": "Editar las reglas",
   "Technical details": "Detalles técnicos",
+  "Full context": "Contexto completo",
   "Every channel of a team": "Todos los canales de un equipo",
   "The rule names this channel without its team: pick it again in the rule.": "La regla nombra este canal sin su equipo: vuelve a elegirlo en la regla.",
   "A rule answering in every channel follows the first {limit} channels of the account: name this channel in a rule to hear it.": "Una regla que responde en todos los canales sigue los primeros {limit} canales de la cuenta: nombra este canal en una regla para escucharlo.",
