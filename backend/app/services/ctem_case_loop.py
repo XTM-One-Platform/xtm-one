@@ -1337,6 +1337,41 @@ def record_gate(
     return case
 
 
+#: The states of an evidence request on a case (#2798): asked, or answered (the fact read or confirmed).
+EVIDENCE_REQUEST_STATES: tuple[str, ...] = ("open", "answered")
+
+
+def record_evidence_request(
+    db: AsyncSession,
+    case: CtemCase,
+    request: dict[str, Any],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write an evidence request on the case (#2798): a fact scoping could not read, asked instead of a close.
+
+    *request* is ``{what, assets, status}``: what to confirm, on which assets, and ``open`` (asked,
+    the default) or ``answered`` (the fact was read or confirmed; *what* names the request it answers).
+    One ``evidence_request`` event: ``to`` the status, ``reason`` what, ``evidence`` the assets. While a
+    request is open, the case goes to no close gate at scoping (``ctem_gate_order.close_at_scoping_refusal``).
+    The caller commits.
+    """
+    if not isinstance(request, dict):
+        raise rules.CaseRuleError("evidence_request must be an object with what, assets and status")
+    what = str(request.get("what") or "").strip()[:2000]
+    assets = str(request.get("assets") or "").strip()[:2000]
+    status = str(request.get("status") or "open").strip()
+    if status not in EVIDENCE_REQUEST_STATES:
+        raise rules.CaseRuleError(f"evidence_request.status must be one of {', '.join(EVIDENCE_REQUEST_STATES)}")
+    if not what:
+        raise rules.CaseRuleError("evidence_request needs what to confirm")
+    if status == "open" and not assets:
+        raise rules.CaseRuleError("an open evidence_request names the assets the fact is confirmed on")
+    db.add(_event(case.id, actor, "evidence_request", now or datetime.now(UTC), to_value=status, reason=what, evidence=assets or None))
+    return case
+
+
 #: How an applied change was carried out (#2061): the ``kind`` of an ``applied_change`` event.
 APPLIED_CHANGE_KINDS: tuple[str, ...] = ("ioc_prevention", "detection_rule", "configuration", "control_restored")
 

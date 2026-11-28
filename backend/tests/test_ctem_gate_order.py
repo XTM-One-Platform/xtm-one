@@ -176,6 +176,51 @@ def test_only_close_without_retest_is_checked_for_scoping() -> None:
         assert order.close_at_scoping_refusal(gate, "new", set()) is None
 
 
+def _ev(kind: str, to: str, what: str) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(kind=kind, to_value=to, reason=what)
+
+
+def test_an_open_evidence_request_holds_every_close_at_scoping() -> None:
+    """#2798: a fact scoping could not read is asked, and no close gate runs until it is answered."""
+    events = [_ev("note", "", "x"), _ev("evidence_request", "open", "Confirm polkit version on the 39 Linux servers")]
+    pending = order.open_evidence_requests(events)
+    assert pending == ["Confirm polkit version on the 39 Linux servers"]
+    for gate in ("ctem.scoping.not_relevant", "ctem.close_without_retest"):
+        refusal = order.evidence_pending_refusal(gate, "analyzing", pending)
+        assert refusal and "polkit" in refusal and "Nothing was changed" in refusal
+    assert order.evidence_pending_refusal("ctem.analyst_review", "analyzing", pending) is None
+    assert order.evidence_pending_refusal("ctem.scoping.not_relevant", "validating", pending) is None
+
+
+def test_record_evidence_request_writes_one_event_and_checks_its_fields() -> None:
+    from types import SimpleNamespace
+
+    from app.services import ctem_case_loop as loop
+    from app.services import ctem_cases as rules
+
+    added: list[Any] = []
+    db: Any = SimpleNamespace(add=added.append)
+    case: Any = SimpleNamespace(id=uuid.uuid4())
+    loop.record_evidence_request(db, case, {"what": "Confirm polkit version", "assets": "39 Linux servers"}, actor="a")
+    assert [(e.kind, e.to_value, e.reason, e.evidence) for e in added] == [
+        ("evidence_request", "open", "Confirm polkit version", "39 Linux servers")
+    ]
+    for bad in ({"assets": "x"}, {"what": "x"}, {"what": "x", "assets": "y", "status": "closed"}):
+        with pytest.raises(rules.CaseRuleError):
+            loop.record_evidence_request(db, case, bad, actor="a")
+
+
+def test_an_answered_evidence_request_releases_the_close() -> None:
+    events = [
+        _ev("evidence_request", "open", "Confirm polkit version on the 39 Linux servers"),
+        _ev("evidence_request", "answered", "confirm  polkit version on the 39 linux servers"),
+    ]
+    assert order.open_evidence_requests(events) == []
+    assert order.evidence_pending_refusal("ctem.scoping.not_relevant", "new", []) is None
+
+
 def test_a_gate_outside_the_catalog_rests_on_any_decision_of_the_case() -> None:
     assert order.waited_item_keys("ctem.other", _CASE) == []
     assert order.waited_refusal("ctem.other", _CASE, set())
