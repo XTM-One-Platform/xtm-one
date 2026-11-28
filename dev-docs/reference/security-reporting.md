@@ -6,7 +6,7 @@ The repository is public. Anything posted in it (issue, comment, pull request, c
 
 | What you found | Where it goes |
 |---|---|
-| A vulnerability: access-control or visibility bypass, data or owner-field exposure, identity or auth flaw, injection, SSRF, sandbox escape, leaked secret, anything an outsider could abuse | A private advisory: `https://github.com/XTM-One-Platform/xtm-one/security/advisories/new`. The fix is developed in the advisory's temporary private fork, never in a public branch or pull request, and is merged from there (see "Fixing in the private fork") |
+| A vulnerability: access-control or visibility bypass, data or owner-field exposure, identity or auth flaw, injection, SSRF, sandbox escape, leaked secret, anything an outsider could abuse | A private advisory: `https://github.com/XTM-One-Platform/xtm-one/security/advisories/new`. The maintainers triage it and decide how it is fixed (see "Fixing"); nothing public describes the flaw before the advisory is published |
 | A plain hardening task with nothing exploitable in it (a stricter default, a missing guard on an unreachable path, a dependency bump) | A normal issue and pull request, worded neutrally (what to harden, not how to abuse it), with an area label |
 | Not sure | Treat it as a vulnerability |
 
@@ -23,14 +23,15 @@ A vulnerability found in the code of the product the user is working on, by an a
 - **Private vulnerability reporting** is enabled on the repository (Settings > Code security): it is what makes the advisory form available to every reporter.
 - **Pull request template**: a checkbox that the change discloses no unpatched vulnerability.
 
-## Fixing in the private fork
+## Fixing
 
-An advisory's temporary private fork is invisible to integrations: **CI does not run there, and the branch rules and merge queue of `main` are not enforced when the advisory is merged**. So:
+The maintainers who triage the advisory decide where the fix is developed, following the XTM-wide internal process: a pull request on this repository, or the advisory's temporary private fork. Either way, no public item names the flaw: neutral title, body, branch, commit messages and test names. The advisory is published once the fix is released and the embargo has run.
+
+When the private fork is used, it is invisible to integrations: **CI does not run there, and the branch rules and merge queue of `main` are not enforced when the advisory is merged**. So:
 
 1. Develop the fix on a branch of the fork, through a pull request inside the advisory, reviewed there.
 2. Before merging, run the full suite on that branch locally: `./scripts/ci-local.sh` (it stands in for the CI that cannot see the fork).
-3. A repository admin merges it from the advisory ("Merge pull request(s)"; every open pull request of the fork is merged at once, so none may conflict). The commit lands on the public `main` at that moment: its message is neutral (what it hardens, not how to abuse it), and a release follows right away.
-4. Publish the advisory once the release is out (the waiting period of `SECURITY.md`).
+3. An advisory admin merges it from the advisory ("Merge pull request(s)"; every open pull request of the fork is merged at once, so none may conflict). The commit lands on the public `main` at that moment, with a neutral message, and a release follows right away.
 
 ## When a report was posted publicly
 
@@ -48,10 +49,10 @@ An agent (Claude Code, Copilot, a pi worker, an automation) that spots a vulnera
 1. Stops writing it down in any public place: no `gh issue create`, no `gh pr create`, no PR review comment, no commit with the details.
 2. Tells the user in the conversation: where, what an attacker gains, how to reproduce, and a suggested fix, kept local.
 3. Lets the user file the advisory, or files a **draft** advisory only when the user asked it to (`gh api -X POST repos/XTM-One-Platform/xtm-one/security-advisories`, which stays private until published), and never publishes one.
-4. Works on the fix in the advisory's private fork, or leaves it in the working tree uncommitted when no advisory exists yet, until the user says where it goes.
+4. Leaves the fix in the working tree, uncommitted, until the user says where it goes (a pull request or the advisory's private fork, see "Fixing").
 
 A fix that is only a hardening (rule above) keeps the usual flow, with a neutral title, body and test names.
 
 ## Settings behind this page
 
-Repository-level settings are not in git, so they are checked by hand when the repository is set up: private vulnerability reporting enabled; the `security` label deleted from the repository's label list (`gh label delete security`: `gh issue create --label security` then fails); a repository ruleset on the default branch whose negated `commit_message_pattern` refuses a `security` scope in any commit message line (the squash commit carries the pull request's commit messages); the scanner's GitHub integration (Aikido) set to open no issues on this repository, or to open them without the vulnerability's details.
+Repository-level settings are not in git, so they are checked by hand when the repository is set up: private vulnerability reporting enabled; the `security` label deleted from the repository's label list (`gh label delete security`: `gh issue create --label security` then fails); a repository ruleset on the default branch whose negated `commit_message_pattern` refuses a `security` scope in any commit message line (the squash commit carries the pull request's commit messages); the scanner's GitHub integration (Aikido) set to open its issues in a private repository, never in this one.
