@@ -688,19 +688,12 @@ async def _with_remote_software(
     return await _with_cve_scores(db, row, facts, profile, **kw)
 
 
-def _in_savepoint(db: AsyncSession) -> bool:
-    """Whether a savepoint is open on *db* (#2781): a commit there would close its outer transaction."""
-    in_nested = getattr(db, "in_nested_transaction", None)
-    return bool(callable(in_nested) and in_nested())
-
-
 async def prepare_cve_reads(
     db: AsyncSession,
     rows: list[CtemSignal],
     *,
     profiles: dict[uuid.UUID, Any] | None = None,
     links: dict[uuid.UUID, Any] | None = None,
-    release: bool = True,
 ) -> None:
     """Take the OpenCTI software reads of *rows* now (CVEs #2171, threats #2523), before any row is written.
 
@@ -716,12 +709,8 @@ async def prepare_cve_reads(
     threat id or CVE list reuse the failure instead of paying one OpenCTI timeout
     each; the failures of an earlier pass are forgotten first, so the next pass
     reads them again (#2548 review).
-
-    *release* lets the connection go during the OpenCTI I/O (a commit); it is never taken
-    under an open savepoint, whose outer transaction the commit would close (#2781).
     """
     _forget_failures(db)
-    release = release and not _in_savepoint(db)
     for row in rows:
         if row.state not in GATED_STATES:
             continue
@@ -738,9 +727,8 @@ async def prepare_cve_reads(
                 primary_assets = links[org]
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
-            # Release the connection during the OpenCTI I/O (#2518 review), never under an open savepoint:
-            # the release commits the session and would close the transaction a caller's savepoint runs in (#2781).
-            await _with_remote_software(db, row, facts, profile, primary_assets, release=release, reuse_failure=True)
+            # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=True, reuse_failure=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -1001,7 +989,7 @@ def _count_lookup_attempts(record: dict[str, Any], previous: Any) -> None:
 
 
 async def recheck_lookup_failed(
-    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH
+    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH, deadline: float | None = None
 ) -> dict[str, int]:
     """#2542: the unmatched signals whose OpenCTI software read failed, decided again with the read retried.
 
@@ -1046,7 +1034,7 @@ async def recheck_lookup_failed(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=at, isolate=True)
+    return await _decide_again(db, rows, now=at, isolate=True, deadline=deadline)
 
 
 async def recheck_parked(
@@ -1055,6 +1043,7 @@ async def recheck_parked(
     now: datetime | None = None,
     batch: int = RECHECK_BATCH,
     seen_within_days: int = 0,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
@@ -1095,7 +1084,7 @@ async def recheck_parked(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=now)
+    return await _decide_again(db, rows, now=now, deadline=deadline)
 
 
 async def _decide_again(
@@ -1104,16 +1093,17 @@ async def _decide_again(
     *,
     now: datetime | None = None,
     isolate: bool = False,
-    prefetched: bool = False,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader.
-
-    *prefetched*: the caller already took the OpenCTI reads of *rows* outside its savepoint
-    (:func:`prefetch_held`), so they are not prepared again here (#2781).
 
     *isolate* decides each row in its own savepoint: a row the gate cannot decide
     is logged, its ``updated_at`` moved so it waits one grace before the next try
     (never starving the batch), and counted under ``failed``; the others still land. (#2516)
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is read before every row: past it
+    the batch stops, the rows decided stay for the caller's commit and the rest are
+    left as they are for the next pass, counted under ``deferred``.
     """
     counts: dict[str, int] = {}
     profiles: dict[uuid.UUID, Any] = {}
@@ -1125,9 +1115,11 @@ async def _decide_again(
         if row.organization_id not in profiles:
             profiles[row.organization_id] = await _profile(db, row.organization_id)
             links[row.organization_id] = await _primary_assets(db, row.organization_id)
-    if not prefetched:
-        await prepare_cve_reads(db, rows, profiles=profiles, links=links)
-    for row in rows:
+    await prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    for index, row in enumerate(rows):
+        if deadline is not None and time.monotonic() >= deadline:
+            counts["deferred"] = len(rows) - index
+            break
         reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
@@ -1174,6 +1166,7 @@ async def recheck_new(
     now: datetime | None = None,
     batch: int = RECHECK_NEW_BATCH,
     grace: timedelta = UNDECIDED_GRACE,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """The signals still ``new`` past *grace*, decided, *batch* per call, oldest first.
 
@@ -1196,7 +1189,7 @@ async def recheck_new(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=at, isolate=True)
+    return await _decide_again(db, rows, now=at, isolate=True, deadline=deadline)
 
 
 async def recheck_new_due() -> bool:
@@ -1218,6 +1211,7 @@ async def drain_new(
     grace: timedelta = UNDECIDED_GRACE,
     budget_seconds: float = RECHECK_NEW_BUDGET_SECONDS,
     clock: Callable[[], float] = time.monotonic,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """The signals still ``new`` past *grace*, decided by :func:`recheck_new` batch after batch (#2530).
 
@@ -1228,6 +1222,9 @@ async def drain_new(
     decide has its ``updated_at`` moved (``isolate``), so it leaves the selection
     for one grace and never loops. No case is opened here: the case sweep does
     that on its own cadence. Answers the counts by state, ``batches`` included.
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is also read before every row of a
+    batch: past it the batch stops, what was decided is committed, the rest waits.
     """
     import asyncio
 
@@ -1236,14 +1233,17 @@ async def drain_new(
     totals: dict[str, int] = {}
     batches = 0
     while True:
-        counts = await recheck_new(db, now=now, batch=size, grace=grace)
+        counts = await recheck_new(db, now=now, batch=size, grace=grace, deadline=deadline)
         await db.commit()
+        deferred = counts.pop("deferred", 0)
         decided = sum(counts.values())
         if decided:
             batches += 1
             for state, count in counts.items():
                 totals[state] = totals.get(state, 0) + count
-        if decided < size or clock() - started >= budget_seconds:
+        if deferred:
+            totals["deferred"] = totals.get("deferred", 0) + deferred
+        if deferred or decided < size or clock() - started >= budget_seconds:
             break
         await asyncio.sleep(0)
     if batches:
@@ -1262,7 +1262,6 @@ async def recheck_held(
     since: datetime,
     now: datetime | None = None,
     batch: int = RECHECK_BATCH,
-    prefetched: bool = False,
 ) -> dict[str, int]:
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
@@ -1272,19 +1271,10 @@ async def recheck_held(
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
     gate confirms waits for the case sweep (one case per fix key). The caller commits.
-    *prefetched*: a caller deciding inside a savepoint ran :func:`prefetch_held` before it (#2781).
     """
-    rows = await _held_for_recheck(db, organization_id=organization_id, since=since, batch=batch)
-    return await _decide_again(db, rows, now=now, prefetched=prefetched)
-
-
-async def _held_for_recheck(
-    db: AsyncSession, *, organization_id: uuid.UUID, since: datetime, batch: int
-) -> list[CtemSignal]:
-    """The next batch :func:`recheck_held` decides, oldest first."""
     # The held reasons are filtered in SQL before the limit: watchlist rows held for
     # another reason never take the batch from the scope-held ones (#1591 S3 review).
-    return list(
+    rows = list(
         (
             await db.execute(
                 select(CtemSignal)
@@ -1299,26 +1289,7 @@ async def _held_for_recheck(
             )
         ).scalars()
     )
-
-
-async def prefetch_held(
-    db: AsyncSession, *, organization_id: uuid.UUID, since: datetime, batch: int = RECHECK_BATCH
-) -> None:
-    """#2781: the OpenCTI reads of the next :func:`recheck_held` batch, taken with no savepoint open.
-
-    The caller (an organization sync) holds writes it commits itself at the end of its run,
-    so the reads never release the connection: no commit happens here. The caller then
-    decides the batch inside its savepoint with ``prefetched=True``. The rows are selected
-    in a savepoint of their own, so a statement timeout leaves the caller's transaction
-    usable. Never raises: a batch not prefetched is decided without its CVE software.
-    """
-    try:
-        async with db.begin_nested():
-            rows = await _held_for_recheck(db, organization_id=organization_id, since=since, batch=batch)
-    except Exception:
-        logger.warning("CTEM scope gate: held signals not prefetched", exc_info=True)
-        return
-    await prepare_cve_reads(db, rows, release=False)
+    return await _decide_again(db, rows, now=now)
 
 
 #: Where a profile row added from the Signals page says it came from (#1505).
