@@ -327,17 +327,22 @@ def _label(option: Mapping[str, Any]) -> str:
 def _with_outcome(effect: str, suffix: str) -> str:
     """*effect* then *suffix* within the effect cap, the effect shortened at a sentence end (pure, #2749).
 
-    Never a cut mark: a text a person reads keeps whole sentences, its figures and
-    its requests to the reader first; a fragment an earlier cap marked is dropped.
+    A text a person reads keeps whole sentences, its figures and its requests to
+    the reader first; a fragment an earlier cap marked is dropped. When not one
+    sentence fits (a single long sentence), the effect keeps a word-boundary
+    prefix, marked, rather than leaving the outcome alone on the card.
     """
-    from app.services.decision_ask import CUT_MARK, MAX_EFFECT_CHARS, fit_sentences
+    from app.services.decision_ask import CUT_MARK, MAX_EFFECT_CHARS, fit, fit_sentences
 
     effect = effect.strip()
     if effect.endswith(CUT_MARK):
         ends = [i for i, char in enumerate(effect) if char in ".!?"]
         effect = effect[: ends[-1] + 1] if ends else ""
     room = MAX_EFFECT_CHARS - len(suffix)
-    return f"{fit_sentences(effect, room, _keeps_sentence)}{suffix}".strip()
+    kept = fit_sentences(effect, room, _keeps_sentence)
+    if not kept and effect:
+        kept = fit(effect, room)
+    return f"{kept}{suffix}".strip()
 
 
 def _agent_option(option: Mapping[str, Any], key: str) -> dict[str, Any]:

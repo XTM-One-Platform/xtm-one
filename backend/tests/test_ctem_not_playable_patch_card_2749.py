@@ -184,6 +184,24 @@ def test_fit_sentences_keeps_the_marked_sentences_then_the_opening_ones_in_order
     assert fit_sentences("No end at all and too long", 5, lambda s: False) == ""
 
 
+def test_a_single_long_sentence_effect_keeps_a_word_boundary_prefix_before_the_outcome() -> None:
+    long_effect = "the owner " + "checks the build on every office device " * 12 + "and records it"
+    ask = {
+        **_ASK,
+        "options": [
+            _ASK["options"][0],
+            {"key": "wait_sync", "label": "Wait for the next inventory sync", "effect": long_effect},
+        ],
+    }
+    out = _complete(ask)
+    effect = _by_label(out)["Wait for the next inventory sync"]["effect"]
+    assert len(effect) <= MAX_EFFECT_CHARS
+    assert effect.startswith("the owner checks the build")
+    assert CUT_MARK in effect
+    assert measurement.option_outcome(_by_label(out)["Wait for the next inventory sync"]) == "not_closing"
+    assert _complete(out)["options"] == out["options"]
+
+
 def test_the_completed_card_is_idempotent() -> None:
     once = _complete(_ASK)
     twice = _complete(once)
