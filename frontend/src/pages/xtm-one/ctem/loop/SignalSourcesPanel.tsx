@@ -109,6 +109,8 @@ function NoSourceOn({ className }: { className?: string }) {
 const CHIP_TONE: Record<SourceState, string> = {
   bound: "border-feedback-success-primary/60",
   error: "border-feedback-error-primary/60",
+  // Connected with no webhook secret (#2736): not on yet, a neutral outline like the other quiet states.
+  waiting: "border-elevation-subtle-soft text-default-secondary",
   not_connected: "border-dashed border-elevation-subtle-soft text-default-secondary",
   off: "border-elevation-subtle-soft text-default-secondary",
   excluded: "border-elevation-subtle-soft text-default-secondary",
@@ -259,11 +261,12 @@ function providerName(provider: string): string {
 const CHIP_ORDER: Record<SourceState, number> = {
   bound: 0,
   error: 1,
-  not_set_up: 2,
-  not_configured: 3,
-  off: 4,
-  excluded: 5,
-  not_connected: 6,
+  waiting: 2,
+  not_set_up: 3,
+  not_configured: 4,
+  off: 5,
+  excluded: 6,
+  not_connected: 7,
 };
 
 /**

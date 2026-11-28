@@ -22292,5 +22292,12 @@
   "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
   "Recorded, still being applied. Refresh later.": "Recorded, still being applied. Refresh later.",
   "Decision recorded, but the run applying it failed.": "Decision recorded, but the run applying it failed.",
-  "Decision recorded: {gate}": "Decision recorded: {gate}"
+  "Decision recorded: {gate}": "Decision recorded: {gate}",
+  "Waiting for webhook": "Waiting for webhook",
+  "On, no delivery yet": "On, no delivery yet",
+  "Last delivery: {date}": "Last delivery: {date}",
+  "Use on this source": "Use on this source",
+  "OAuth default app": "OAuth default app",
+  "Integration used on this source": "Integration used on this source",
+  "Integration taken off this source": "Integration taken off this source"
 }

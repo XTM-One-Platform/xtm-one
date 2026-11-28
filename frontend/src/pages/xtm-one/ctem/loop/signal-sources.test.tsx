@@ -75,7 +75,7 @@ beforeEach(() => {
 
 describe("source state legend (UX round 1 on #2741, B3)", () => {
   it("names every state a chip can show exactly once, each entry with one icon that is its states' own", () => {
-    const ALL: SourceState[] = ["error", "bound", "excluded", "off", "not_configured", "not_set_up", "not_connected"];
+    const ALL: SourceState[] = ["error", "bound", "waiting", "excluded", "off", "not_configured", "not_set_up", "not_connected"];
     const named = SOURCE_STATE_LEGEND.flatMap((entry) => [...entry.states]);
     expect([...named].sort()).toEqual([...ALL].sort());
     for (const entry of SOURCE_STATE_LEGEND) {

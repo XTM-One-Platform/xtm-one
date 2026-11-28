@@ -70,6 +70,7 @@ import {
   sourceIntegrationNames,
   sourceKey,
   sourceStateIcon,
+  noDeliveryYet,
 } from "./signal-sources";
 
 function providerName(provider: string): string {
@@ -90,10 +91,17 @@ interface SourceTableRow {
 }
 
 /** The sort order of the states: what needs a look first. */
-const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, off: 2, not_configured: 3, not_set_up: 3, excluded: 4, not_connected: 5 };
+const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, waiting: 2, off: 3, not_configured: 4, not_set_up: 4, excluded: 5, not_connected: 6 };
 
 function stateLabel(state: SourceState): string {
   return sourceStateIcon(state)?.label ?? "Not connected";
+}
+
+/** A webhook listener that reads On with no verified delivery yet says so (#2736): "On, no delivery yet". @i18n-keys */
+const DELIVERY_LABEL = { none_yet: "On, no delivery yet" } as const;
+
+function rowStateLabel(row: { state: SourceState; source: CtemSignalPathSource }): string {
+  return row.state === "bound" && noDeliveryYet(row.source) ? DELIVERY_LABEL.none_yet : stateLabel(row.state);
 }
 
 function toggleSet(prev: ReadonlySet<string>, key: string): ReadonlySet<string> {
@@ -136,7 +144,7 @@ function SourceStatus({ row, platformSources }: { row: SourceTableRow; platformS
   const word = (
     <span className="flex min-w-0 items-center gap-1" data-testid="ctem-path-source-state">
       {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden />}
-      <span className="min-w-0 break-words">{t_i18n(stateLabel(row.state))}</span>
+      <span className="min-w-0 break-words">{t_i18n(rowStateLabel(row))}</span>
     </span>
   );
   if (lines.length === 0) return word;
@@ -228,15 +236,25 @@ export function SignalPathSourcesSheet({
       header: "Source",
       sortValue: (row) => row.name,
       csv: (row) => row.name,
+      // Line 2: the event it listens to (#2736), so the row says what the source is without opening it.
       cell: (row) => (
         <span className="flex min-w-0 items-center gap-2">
           <ProviderLogo provider={row.source.provider} className="size-4 shrink-0" decorative />
-          {/* The full name in the DS tooltip when the cell cuts it (UX round 1 on #2509, B2). */}
-          <Tip content={row.name}>
-            <span className="min-w-0 truncate font-medium" data-testid="ctem-path-source-name">
-              {row.name}
-            </span>
-          </Tip>
+          <span className="flex min-w-0 flex-col">
+            {/* The full name in the DS tooltip when the cell cuts it (UX round 1 on #2509, B2). */}
+            <Tip content={row.name}>
+              <span className="min-w-0 truncate font-medium" data-testid="ctem-path-source-name">
+                {row.name}
+              </span>
+            </Tip>
+            {row.source.event && (
+              <Tip content={t_i18n(row.source.event)}>
+                <span className="min-w-0 truncate content-caption text-default-secondary" data-testid="ctem-path-source-event">
+                  {t_i18n(row.source.event)}
+                </span>
+              </Tip>
+            )}
+          </span>
         </span>
       ),
     },
@@ -244,8 +262,9 @@ export function SignalPathSourcesSheet({
       key: "kind",
       header: "Kind",
       hideable: true,
-      // Fixed widths on every column but Source, which takes the free width (UX round 1 on #2509, B2).
-      width: 128,
+      // Fixed widths on every column but Source, which takes the free width (UX round 1 on #2509, B2). The kind word
+      // alone fits 96 px and wraps whole when longer; its spare width went to Integrations (UX advisory A5 on #2741).
+      width: 96,
       // The kind word alone, whole (UX round 1 on #2741, B4): what tells two rows apart is in the Source name.
       sortValue: (row) => t_i18n(SOURCE_KIND_LABEL[row.source.kind]),
       csv: (row) => sourceKindText(t_i18n, row.source),
@@ -257,10 +276,11 @@ export function SignalPathSourcesSheet({
     },
     {
       key: "integration",
-      header: "Integration",
+      header: "Integrations",
       hideable: true,
       hideBelow: "4xl",
-      width: 144,
+      // 40 px from Kind so the first integration name reads whole (UX advisory A5 on #2741).
+      width: 184,
       sortValue: (row) => row.integration,
       csv: (row) => row.integration,
       // "No integration" in words, never "None" beside a status (#2736).
@@ -300,7 +320,7 @@ export function SignalPathSourcesSheet({
       // Room for the longest state word in en/fr/es/ja; a longer one wraps, never cut (UX round 1 on #2653, B3).
       width: 160,
       sortValue: (row) => STATE_RANK[row.state],
-      csv: (row) => t_i18n(stateLabel(row.state)),
+      csv: (row) => t_i18n(rowStateLabel(row)),
       cell: (row) => <SourceStatus row={row} platformSources={platformSources} />,
     },
     {

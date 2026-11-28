@@ -22292,5 +22292,12 @@
   "Decision recorded. The loop is applying it.": "Decisión registrada. El bucle la está aplicando.",
   "Recorded, still being applied. Refresh later.": "Registrada, todavía aplicándose. Actualice más tarde.",
   "Decision recorded, but the run applying it failed.": "Decisión registrada, pero la ejecución que la aplica ha fallado.",
-  "Decision recorded: {gate}": "Decisión registrada: {gate}"
+  "Decision recorded: {gate}": "Decisión registrada: {gate}",
+  "Waiting for webhook": "Esperando el webhook",
+  "On, no delivery yet": "Activado, sin entregas aún",
+  "Last delivery: {date}": "Última entrega: {date}",
+  "Use on this source": "Usar en esta fuente",
+  "OAuth default app": "Aplicación OAuth predeterminada",
+  "Integration used on this source": "Integración usada en esta fuente",
+  "Integration taken off this source": "Integración retirada de esta fuente"
 }
