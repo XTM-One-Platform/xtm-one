@@ -1353,6 +1353,15 @@ A reconcile burst opens hundreds of cases at once; one card per case for one per
 - **Consolidation.** The scheduled case sweep folds the open per-case items of a groupable kind into their groups (`consolidate`, 500 per pass): their cards are closed without a notification. A re-run finds none left and changes nothing.
 - **Waits on someone.** The stall sweep and the case page's "decision filed" count a grouped item as a filed decision.
 
+### 9bis.3 The CTEM passes run off the scheduler tick (#2774)
+
+The scheduled CTEM passes never run on the assignment scheduler's tick: a signal backlog there held every schedule and made `*/15` fires miss their slots. `services/ctem_background_passes.py` runs them in their own background task, started by `main.py`:
+
+- **Passes, in order.** Case expiry, the recheck of signals left `new` with the failed software reads, the signal inbox, the paced opening, the case sweep (profile recheck, sweep, catch-up, decision groups), the cases recompute, attack surface, evidence health, inventory evaluation, ticketing sync. Each keeps its own cadence slot (`recheck_new_due`, `paced_pass_due`, `sweep_due`, `sync_due`, the profile cadences) and its intake-paused rule (#2528).
+- **One replica at a time.** A cycle runs every `LOOP_SECONDS` (60 s) under the Redis lock `ctem:background-passes:lock`; a process that does not take it skips the cycle. Without Redis the cycle runs (every pass is idempotent).
+- **A deadline per pass.** Each pass gets `PASS_BUDGET_SECONDS` (20 s) as a `time.monotonic()` deadline. The batch loops read it before every row (`ctem_scope_gate_store._decide_again`, `ctem_signal_inbox.drain`, `ctem_case_loop.open_waiting`): past it they stop, commit what was done and leave the rest (the inbox gives the attempt of an unreached row back and counts it `deferred`). A pass still running past the deadline and `PASS_GRACE_SECONDS` is cancelled, its open transaction rolled back, and the next pass runs.
+- **Visibility.** A cycle longer than `CYCLE_WARNING_SECONDS` logs one warning naming its slowest pass; the scheduler tick marks each of its remaining steps (`3a-quater ...`), so its overrun warning names the step that ran long.
+
 ## 10. Slices
 
 | Slice | Content | Gate |

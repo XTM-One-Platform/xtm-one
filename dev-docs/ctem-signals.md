@@ -300,7 +300,9 @@ Each source also names the integrations it reads (`integrations` on every
 source of `GET /api/v1/ctem-signals/paths`, from
 `ctem_signal_sources.provider_integrations`): `id`, `name`, `status`,
 `webhook_secret_set` (a delivery records a signal only when signed with it),
-`last_delivery_at` (`null` until a delivery time is stored) and `used`. A
+`last_delivery_at` (when a verified delivery of that integration last reached XTM One,
+whatever it recorded; `null` before any; table `ctem_integration_deliveries`, written by
+`note_delivery` at most once a minute per integration and pod) and `used`. A
 provider whose OAuth default app is configured lists it as `oauth_default`:
 the provider-level webhook route delivers on it. `used` is false for an
 integration in `signal_sources.excluded_integrations`, `{"provider:kind[:name]":

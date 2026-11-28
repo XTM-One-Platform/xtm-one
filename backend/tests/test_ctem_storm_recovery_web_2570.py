@@ -135,7 +135,7 @@ async def test_drain_records_deletes_retries_and_drops(monkeypatch: pytest.Monke
     monkeypatch.setattr(inbox, "_delete", delete)
 
     counts = await inbox.drain()
-    assert counts == {"recorded": 1, "retried": 1, "dropped": 1, "coalesced": 0}
+    assert counts == {"recorded": 1, "retried": 1, "dropped": 1, "coalesced": 0, "deferred": 0}
     assert deleted == [ok.id, last.id]  # the retried one stays for the next tick
 
 

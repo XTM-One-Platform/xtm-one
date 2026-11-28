@@ -40,6 +40,7 @@ import app.models.chat_image
 import app.models.conversation_channel_binding
 import app.models.conversation_share
 import app.models.ctem_case
+import app.models.ctem_integration_delivery
 import app.models.ctem_metric
 import app.models.ctem_posture_snapshot
 import app.models.ctem_signal

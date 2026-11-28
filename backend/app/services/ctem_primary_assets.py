@@ -562,6 +562,48 @@ def family_reach_allowed(ref: str, os_family: str, *, repository: bool = False, 
     return any(not is_family_word(label) and _platform_of_ref(label) == family for label in labels)
 
 
+def one_word_in_title(label: str, ref: str) -> bool:
+    """Whether a one-word *label* only names one word of a multi-word title *ref* (#2780).
+
+    ``analytics`` (an npm package) is a word of ``Citrix Analytics``, ``react`` of ``React Server
+    Components``: a one-word label carries no vendor, so it never names a vendor-qualified title by
+    one of its words. A CPE, a one-token package name (``nginx_plus``, the compound rules of #2711)
+    or a title of one name word (``Safari 0``, its version left out) answers False.
+    """
+    text = str(ref or "").strip()
+    if not text or text.lower().startswith("cpe:") or is_url_like(text):
+        return False
+    tokens = _name_tokens(text)
+    if len(tokens) < 2:
+        return False
+    words = [w for w in _name_words(text)[0] if not w.isdigit()]
+    named = _name_words(str(label or ""))[0]
+    return len(named) == 1 and len(words) >= 2 and named[0] in words
+
+
+def match_kind(ref: str, label: str) -> str:
+    """How software *ref* named the inventory *label* (#2780): ``cpe``, ``vendor_product`` or ``name``.
+
+    ``vendor_product``: the reference's name words, two or more, are the label's or open it after
+    nothing but a vendor word (``Citrix Analytics`` names ``Citrix Analytics 2.1``). Any other name
+    match is ``name``: one shared word (``analytics`` for ``Citrix Analytics``), a one-word name
+    (``Safari 0``), or a reference met after ``for`` (``Office`` in ``Teams Meeting Add-in for
+    Microsoft Office``): a possible exposure, never proof.
+    """
+    text = str(ref or "").strip()
+    if text.lower().startswith("cpe:"):
+        return "cpe"
+    words = _name_words(text)[0]
+    if len(words) < 2 or is_family_word(text):
+        return "name"
+    label_words = _TOKEN.findall(_name_part(str(label or "")).lower())
+    size = len(words)
+    for start in (0, 1):
+        if tuple(label_words[start : start + size]) == words:
+            return "vendor_product"
+    return "name"
+
+
 class ProductIndex:
     """Software names matched against references in either direction, by token (#2032).
 
@@ -769,6 +811,10 @@ class PrimaryAssetIndex:
                     if found[key]["family_only"] and not family_only:
                         found[key]["family_only"] = False
                         found[key]["software"], found[key]["reference"] = label, matched
+                        found[key]["match"] = match_kind(matched, label) if matched else ""
+                    elif found[key]["match"] == "name" and matched and match_kind(matched, label) != "name":
+                        found[key]["software"], found[key]["reference"] = label, matched
+                        found[key]["match"] = match_kind(matched, label)
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
@@ -776,6 +822,8 @@ class PrimaryAssetIndex:
                     "reference": matched,
                     "version_verified": verified,
                     "family_only": family_only,
+                    # #2780: how the reference named the label (cpe, vendor_product, name).
+                    "match": match_kind(matched, label) if matched else "",
                     "asset": reacher.name,
                     "through": through,
                     "through_kind": kind,

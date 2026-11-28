@@ -34,22 +34,29 @@ import { clearGateAnswer, itemAnswer, recordGateAnswer, recordGatePhase, useGate
  * the case still reads the gate waiting; open or done, #2757 UX round 2 B1),
  * kept in the page's store so every reader of
  * the gate (its line, the Worked-by row, the card) sees it. Null otherwise; a
- * gate that no longer waits forgets it.
+ * gate that no longer waits forgets it, and a kept answer older than the gate's
+ * current ask (an answer to an earlier ask of the same item, #2779) is dropped,
+ * as `itemAnswer` drops one the item carries.
  */
 export function useGateAnswerState(
   record: (Pick<CtemCaseGateRecord, "work_item_id"> & Partial<Pick<CtemCaseGateRecord, "asked_at">>) | null,
   waiting: boolean,
 ): GateAnswer | null {
   const id = record?.work_item_id ?? null;
-  const kept = useGateAnswer(id);
+  const stored = useGateAnswer(id);
+  const asked = record?.asked_at ? Date.parse(record.asked_at) : Number.NaN;
+  const stale = !!stored && Number.isFinite(asked) && stored.at < asked;
+  const kept = stale ? null : stored;
   const raw = useWorkItem(waiting ? id : null);
   const done = waiting && !kept ? itemAnswer(raw.data ?? null, record?.asked_at) : null;
+  const answeredAgain = !!done;
   useEffect(() => {
     if (id && done) recordGateAnswer(id, done.label, done.at);
   }, [id, done?.label, done?.at]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!waiting) clearGateAnswer(id);
-  }, [id, waiting]);
+    // A newer answer the item carries replaces a stale one above; a stale one with nothing newer is cleared.
+    if (!waiting || (stale && !answeredAgain)) clearGateAnswer(id);
+  }, [id, waiting, stale, answeredAgain]);
   return waiting ? (kept ?? done) : null;
 }
 

@@ -42,6 +42,8 @@ from app.services.ctem_primary_assets import (
     is_generic_word,
     is_url_like,
     link_basis,
+    match_kind,
+    one_word_in_title,
     reference_names,
 )
 from app.services.organization_context import (
@@ -427,6 +429,28 @@ def _product_matches(product: str, ref: str) -> bool:
 
 #: #2628: the paths whose subject is a vulnerability on software the organization may run.
 VERSION_PATHS: frozenset[str] = frozenset({"new_vulnerability"})
+#: #2780: the paths whose subject is a threat matched to the inventory by its software names.
+THREAT_PATHS: frozenset[str] = frozenset({"relevant_threat"})
+
+
+def name_only_hop(hop: dict[str, Any]) -> bool:
+    """Whether an inventory hop rests on a software name alone (#2780): no version verified, no CPE,
+    no vendor and product. A possible exposure that sets no criticality on a threat path."""
+    return not hop.get("version_verified") and bool(hop.get("reference")) and hop.get("match") == "name"
+
+
+def threat_profile_match(product: str, ref: str) -> bool:
+    """Whether software *ref* a threat names is the typed profile *product*, beyond one shared word (#2780).
+
+    The product's full name, a CPE, or a reference whose vendor and product words are the product's:
+    ``express`` (a profile npm row) is not ``Express 7 0`` (a hardware family), and a profile product
+    met only by one word never widens the reach of the threat as a new reference.
+    """
+    if " ".join(product.split()).casefold() == " ".join(ref.split()).casefold():
+        return True
+    if not _product_matches(product, ref) or one_word_in_title(product, ref):
+        return False
+    return match_kind(ref, product) != "name"
 
 
 def version_not_verified(facts: SignalFacts, resolution: Resolution) -> int:
@@ -636,10 +660,10 @@ def resolve(
     software += [s for s in facts.threat_software if str(s or "").strip()]
     software = list(dict.fromkeys(software))
     out.software_refs = software
+    # #2780: on a threat path a profile product is resolved by more than one shared word.
+    matches = threat_profile_match if facts.trigger_path in THREAT_PATHS else _product_matches
     for entry in profile.software:
-        if any(
-            _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
-        ):
+        if any(matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software):
             out.products.append(entry.product)
     if not narrow:
         # #2701: named assets are the whole reach; the software adds no repository of its own.
@@ -747,8 +771,13 @@ def _confidence(
 # ── scope gate ─────────────────────────────────────────────────────────
 
 
-def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
-    """``(name, criticality)`` of the primary assets the resolved assets and groups run."""
+def _primary_assets_of(
+    profile: OrganizationProfile, resolution: Resolution, *, threat: bool = False
+) -> list[tuple[str, str]]:
+    """``(name, criticality)`` of the primary assets the resolved assets and groups run.
+
+    *threat* (#2780): on a threat path a name-only hop (:func:`name_only_hop`) sets no criticality either.
+    """
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
     # #1773: the groups an asset joins by rule count as its groups too.
     names |= {g.name.lower() for a in resolution.assets for g in groups_of(profile, a)}
@@ -756,7 +785,11 @@ def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> 
     named = {n.lower() for n in resolution.named_primary_assets}
     # #2680: a hop reached only by a bare OS family reference is a possible exposure, never a
     # running product: it sets no scope criticality.
-    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets if not h.get("family_only")}
+    linked = {
+        str(h["primary_asset_key"])
+        for h in resolution.primary_assets
+        if not h.get("family_only") and not (threat and name_only_hop(h))
+    }
     out: list[tuple[str, str]] = []
     for pa_row in profile.primary_assets:
         if (
@@ -1014,7 +1047,8 @@ def decide(
         inherited = effective_criticality(profile, asset)
         if inherited in ASSET_TO_SCOPE:
             sources.append({"from": "asset_group", "name": asset.name, "criticality": ASSET_TO_SCOPE[inherited]})
-    pa_rows = _primary_assets_of(profile, resolution)
+    threat_path = facts.trigger_path in THREAT_PATHS
+    pa_rows = _primary_assets_of(profile, resolution, threat=threat_path)
     chains: dict[str, list[dict[str, Any]]] = {}
     for hit in resolution.primary_assets:
         chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
@@ -1055,6 +1089,19 @@ def decide(
         "opencrq": {"connected": scenarios.connected, "note": "" if scenarios.connected else scenarios.note},
         "risk_scenarios": [{"id": s.id, "name": s.name} for s in held],
     }
+    # #2780: the threat hops kept as possible exposures, none of which sets the criticality.
+    name_only = [h for h in resolution.primary_assets if threat_path and name_only_hop(h) and not h.get("family_only")]
+    if name_only:
+        record["scope"]["name_only_hops"] = len(name_only)
+    if name_only and not criticality:
+        # Only software-name hops reach the organization: a candidate to validate, never a case.
+        assets = len({h["asset"] for h in name_only})
+        return done(
+            "to_validate",
+            "version not verified: the threat matched inventory software by name only, no running product proven",
+            code="version_not_verified",
+            params={"assets": assets, "kind": "name_only_threat_reach"},
+        )
     checks: list[dict[str, Any]] = record["policy_checks"]
 
     accepted = _accepted(profile, facts, resolution, today)

@@ -2008,168 +2008,15 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Released %d shared-state hold(s) of runs that ended", freed)
         except Exception as e:
             logger.error("Shared-state hold release error: %s", format_exception_message(e), exc_info=True)
-        # CTEM cases (#11545): an accepted risk past its expiry returns to
-        # needs attention. Rules only, no model call: not gated on AI.
-        try:
-            from app.services.ctem_cases_store import expire_acceptances
-
-            expired = await expire_acceptances(db)
-            if expired:
-                await db.commit()
-                logger.info("Returned %d CTEM case(s) whose accepted risk expired", expired)
-        except Exception as e:
-            logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM signals still new past the grace (a record-time gate that failed, a
-        # case-delete release whose background re-decision was lost): decided on
-        # their own short cadence (#2530), batch after batch within a time budget,
-        # so a backlog drains in minutes and none waits "for reconcile" for good.
-        # Rules only, no model call; no case is opened here.
-        try:
-            from app.services import ctem_scope_gate_store
-
-            if await ctem_scope_gate_store.recheck_new_due():
-                undecided = await ctem_scope_gate_store.drain_new(db)
-                if undecided:
-                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
-                # #2542: the unmatched signals whose remote software read failed, read again with backoff.
-                retried = await ctem_scope_gate_store.recheck_lookup_failed(db)
-                await db.commit()
-                if retried:
-                    logger.info("CTEM signals decided again after a failed software read: %s", retried)
-        except Exception as e:
-            logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # #2570: the verified signal-source deliveries the webhook accepted, recorded off
-        # the request path, batch after batch within a time budget per tick (ctem_signal_inbox, #2584).
-        try:
-            from app.services import ctem_signal_inbox
-
-            drained = await ctem_signal_inbox.drain_within()
-            if any(drained.values()):
-                logger.info("CTEM signal inbox drained: %s", drained)
-        except Exception as e:
-            logger.error("CTEM signal inbox drain error: %s", format_exception_message(e), exc_info=True)
-        # #2570: the paced opening pass, once a minute, within the per-minute opening budget
-        # (CTEM_CASE_OPEN_PER_MINUTE): a platform restarted in a storm opens its waiting
-        # cases a budget at a time, by itself, one supervising run per case.
-        try:
-            from app.services import ctem_case_opening
-            from app.services.ctem_signal_purge import intake_paused
-
-            if not await intake_paused() and await ctem_case_opening.paced_pass_due():
-                paced = await ctem_case_opening.paced_pass("cyber")
-                if paced and (paced.get("opened") or paced.get("joined")):
-                    logger.info("CTEM paced case opening: %s", paced)
-        except Exception as e:
-            logger.error("CTEM paced case opening error: %s", format_exception_message(e), exc_info=True)
-        # CTEM case loop (#857): open the cases of confirmed signals still
-        # waiting, escalate SLA breaches once. Rules only, no model call;
-        # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).
-        try:
-            from app.services import ctem_case_loop
-            from app.services.ctem_signal_purge import intake_paused
-
-            # #2528: no recheck and no case sweep while a purge of every signal runs.
-            if not await intake_paused() and await ctem_case_loop.sweep_due():
-                # #1505: the unmatched signals a newer profile version may now hold, decided
-                # again first, so the sweep below opens their cases grouped by case key.
-                from app.services import ctem_scope_gate_store
-
-                # #2726: only the unmatched signals seen within their retention window.
-                from app.services.coordination_retention import effective_coordination_retention
-
-                unmatched_days = (await effective_coordination_retention()).get("ctem_signal_unmatched_days", 0)
-                rechecked = await ctem_scope_gate_store.recheck_parked(db, seen_within_days=unmatched_days)
-                await db.commit()
-                if rechecked:
-                    logger.info("CTEM unmatched signals re-checked after a profile change: %s", rechecked)
-                pending = ctem_case_loop.PendingEvents()
-                counts = await ctem_case_loop.sweep(db, events=pending)
-                await db.commit()
-                await ctem_case_loop.publish_pending(pending)
-                # The open cases their owning fleet never ran (#1390): handed to it once.
-                from app.services.ctem_case_routing import catch_up
-
-                counts["caught_up"] = await catch_up()
-                # Per-case decisions of a groupable kind asked of one person, folded into one card (#2451).
-                from app.services import ctem_decision_groups
-
-                counts["decisions_grouped"] = await ctem_decision_groups.consolidate(db)
-                await db.commit()
-                if any(counts.values()):
-                    logger.info("CTEM case sweep: %s", counts)
-        except Exception as e:
-            logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM cases kept current (dev-docs/ctem-cases.md s.4.3): the source recompute
-        # on its own interval (profile cases_recompute.interval_minutes, default 15),
-        # as the CTEM loop fleet's run-as users, else the recent viewers of Cases.
-        try:
-            from app.services import ctem_cases_refresh
-
-            refresh_counts = await ctem_cases_refresh.scheduled_pass(db)
-            if refresh_counts and refresh_counts.get("applied"):
-                logger.info("CTEM cases scheduled recompute: %s", refresh_counts)
-        except Exception as e:
-            logger.error("CTEM cases scheduled recompute error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM attack surface pass (CTEM-26): the outside lens, opt-in in the profile,
-        # its own cadence (attack_surface.cadence_hours, default daily). Rules only, no model call.
-        try:
-            from app.services import ctem_attack_surface
-            from app.services.ctem_signal_purge import intake_paused
-
-            # #2528: the pass keeps its cadence slot for after a purge of every signal.
-            surface_counts = None if await intake_paused() else await ctem_attack_surface.scheduled_pass(db)
-            if surface_counts:
-                logger.info("CTEM attack surface pass: %s", surface_counts)
-        except Exception as e:
-            logger.error("CTEM attack surface pass error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM evidence health pass (CTEM-28): evidence decay (path 9) and blind spots
-        # (path 12) from OpenCRQ, opt-in in the profile, its own cadence
-        # (evidence_health.cadence_hours, default daily). Rules only, no model call.
-        try:
-            from app.services import ctem_evidence_health
-            from app.services.ctem_signal_purge import intake_paused
-
-            evidence_counts = None if await intake_paused() else await ctem_evidence_health.scheduled_pass(db)
-            if evidence_counts:
-                logger.info("CTEM evidence health pass: %s", evidence_counts)
-        except Exception as e:
-            logger.error("CTEM evidence health pass error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM inventory evaluation (#2642): path 6 on the inventory as it stands, daily.
-        try:
-            from app.services import ctem_inventory_staleness
-            from app.services.ctem_signal_purge import intake_paused
-
-            inventory_counts = None if await intake_paused() else await ctem_inventory_staleness.scheduled_pass(db)
-            if inventory_counts:
-                logger.info("CTEM inventory evaluation: %s", inventory_counts)
-        except Exception as e:
-            logger.error("CTEM inventory evaluation error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
-        # CTEM ticketing sync (#917): create the ticket of a mobilized case,
-        # pull the ticket status (ServiceNow's inbound), push the case state.
-        # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).
-        try:
-            from app.core.config import settings as app_settings
-            from app.services import ctem_case_loop, ctem_ticketing
-
-            if await ctem_ticketing.sync_due():
-                pending = ctem_case_loop.PendingEvents()
-                counts = await ctem_ticketing.sync_cases(db, events=pending, base_url=app_settings.frontend_url)
-                await db.commit()
-                await ctem_case_loop.publish_pending(pending)
-                if any(v for k, v in counts.items() if k != "not_connected"):
-                    logger.info("CTEM ticketing sync: %s", counts)
-        except Exception as e:
-            logger.error("CTEM ticketing sync error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
+        # The CTEM passes (case expiry, the new-signal recheck, the signal inbox, the
+        # paced opening, the case sweep, the recompute, attack surface, evidence
+        # health, inventory, ticketing) no longer run on this tick (#2774): they run
+        # in their own background task, services/ctem_background_passes.py, started
+        # by main.py, so no CTEM backlog delays schedule evaluation.
+        _tick_clock.mark("3a-quater")
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
+        _tick_clock.mark("3a-quater assignment retirement")
         try:
             from app.services.assignment_retire import retire_assignments_after_runs
 
@@ -2180,6 +2027,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Assignment retirement error: %s", format_exception_message(e), exc_info=True)
         # A person's decision past its deadline expires and its run resumes
         # with the default option or no answer (human-gates.md section 7, F3).
+        _tick_clock.mark("3a-quater decision expiry")
         try:
             from app.services.decision_waits import expire_overdue_decisions
 
@@ -2191,6 +2039,7 @@ async def _run_autonomous_tick_inner() -> int:
         # A claim that records no run (a chat turn, a claim made by an older
         # release) and that no live run of its agent holds: released after its
         # grace, so the inbox below dispatches it in the same tick.
+        _tick_clock.mark("3a-quater legacy claim release")
         try:
             from app.services.work_item import release_orphaned_legacy_claims
 
@@ -2201,6 +2050,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Work-item claim release error: %s", format_exception_message(e), exc_info=True)
         # An item blocked on other items whose blockers are all done:
         # back in the queue, so the inbox below dispatches it in the same tick.
+        _tick_clock.mark("3a-quater dependency release")
         try:
             from app.services.work_item import release_satisfied_dependencies
 
@@ -2213,6 +2063,7 @@ async def _run_autonomous_tick_inner() -> int:
         # blocked on a pull request or issue of a repository that sends no
         # webhook, or that closed before the item was blocked on it, is read
         # every few ticks; the delivery stays the primary path.
+        _tick_clock.mark("3a-quater blocked references")
         try:
             from app.services.work_item_blocked_refs import (
                 POLL_EVERY_TICKS,
@@ -2248,6 +2099,7 @@ async def _run_autonomous_tick_inner() -> int:
         # The notification an ended work item asks for: sent here by
         # the platform, whatever ended it (an agent, the API, the reaper, an
         # exhausted pick-up), with a bounded retry. Not gated on AI.
+        _tick_clock.mark("3a-quater notifications")
         try:
             from app.services.work_item_notify import deliver_pending_notifications
 
@@ -2258,6 +2110,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Work-item notification error: %s", format_exception_message(e), exc_info=True)
         # The decision card of a work item waiting for a person, posted in the
         # Teams chat or channel its notify ask names, as its agent (#842 S9b).
+        _tick_clock.mark("3a-quater decision cards")
         try:
             from app.services.decision_graph_cards import deliver_work_item_cards
 
@@ -2268,6 +2121,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Decision card error: %s", format_exception_message(e), exc_info=True)
         # The timers runs armed for a date (arm_timer): each due one raises
         # timer.due once, or is skipped when its unless condition is met.
+        _tick_clock.mark("3a-quater timers")
         try:
             from app.services.platform_timers import fire_due_timers
 
@@ -2278,6 +2132,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Timer firing error: %s", format_exception_message(e), exc_info=True)
         # The open work items that crossed their due date: work_item.past_due
         # raised once each (#1662), so a fleet reacts before its weekly check.
+        _tick_clock.mark("3a-quater past due")
         try:
             from app.services.work_item_past_due import raise_past_due_items
 
@@ -2287,6 +2142,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Past-due raise error: %s", format_exception_message(e), exc_info=True)
         # The decision gates nobody opened in time: the administrators told once (#2390).
+        _tick_clock.mark("3a-quater unseen decisions")
         try:
             from app.services.work_item_decision_reach import raise_unseen_decisions
 
@@ -2298,6 +2154,7 @@ async def _run_autonomous_tick_inner() -> int:
         # The CI completions a trigger filter could not judge (their enriched
         # facts timed out or the provider failed): read again, and triggered on
         # a match, so the last check of a head is never lost to a slow read.
+        _tick_clock.mark("3a-quater event retries")
         try:
             if _ai_on:
                 from app.services.event_enrichment_retry import process_due_retries
