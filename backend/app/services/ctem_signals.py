@@ -61,6 +61,31 @@ PATH_CATALOG: dict[str, tuple[str, str]] = {
     "blind_spot": ("Blind spot or coverage gap", "inside"),
 }
 
+#: The subject kinds a path takes (#2797); a path absent here takes any kind of SUBJECT_KINDS.
+#: Path 2 is a threat (an intrusion set, actor, campaign, malware or a sighted indicator): a CVE
+#: on a running product is path 1, where the case reads the fixed version and verifies the exposure.
+PATH_SUBJECT_KINDS: dict[str, tuple[str, ...]] = {
+    "relevant_threat": ("threat",),
+}
+#: Where a subject kind a path refuses belongs, named in the refusal (#2797).
+PATH_FOR_SUBJECT_KIND: dict[str, str] = {"vulnerability": "new_vulnerability"}
+
+
+def subject_kind_error(trigger_path: str, subject_kind: str) -> str | None:
+    """Why *subject_kind* does not fit *trigger_path*, naming the path it belongs to; None when it fits."""
+    allowed = PATH_SUBJECT_KINDS.get(trigger_path)
+    if allowed is None or subject_kind in allowed:
+        return None
+    message = f"trigger_path {trigger_path} takes subject_kind {' or '.join(allowed)}, not {subject_kind}"
+    target = PATH_FOR_SUBJECT_KIND.get(subject_kind)
+    if target and target != trigger_path:
+        message += (
+            f": record a {subject_kind} on {target} (a CVE exposure on a running product is"
+            f" {target}, name the threat in evidence)"
+        )
+    return message
+
+
 #: Product names of the providers a signal or a validation names by key (#1782); any other key reads as written.
 PROVIDER_NAMES: dict[str, str] = {
     "openaev": "OpenAEV",
@@ -158,6 +183,9 @@ def normalize(inp: SignalInput) -> SignalInput:
         raise SignalError(f"lens must be one of: {', '.join(LENSES)}")
     if inp.subject_kind not in SUBJECT_KINDS:
         raise SignalError(f"subject_kind must be one of: {', '.join(SUBJECT_KINDS)}")
+    mismatch = subject_kind_error(inp.trigger_path, inp.subject_kind)
+    if mismatch:
+        raise SignalError(mismatch)
     provider = _clean(inp.source_provider, 40).lower()
     if not provider:
         raise SignalError("source_provider is required (the product or integration that saw it, or 'manual')")

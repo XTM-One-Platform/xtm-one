@@ -138,6 +138,12 @@ def check_new(trigger_path: str, name: str, subject_kind: str) -> str:
         raise WebhookSourceError(f"trigger_path must be one of: {', '.join(TRIGGER_PATHS)}")
     if subject_kind not in SUBJECT_KINDS:
         raise WebhookSourceError(f"subject_kind must be one of: {', '.join(SUBJECT_KINDS)}")
+    from app.services.ctem_signals import subject_kind_error
+
+    # #2797: a source whose every event intake would refuse is refused at creation.
+    mismatch = subject_kind_error(trigger_path, subject_kind)
+    if mismatch:
+        raise WebhookSourceError(mismatch)
     clean = (name or "").strip()[:120]
     if not clean:
         raise WebhookSourceError("a webhook source needs a name")
