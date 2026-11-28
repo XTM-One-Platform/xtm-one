@@ -141,3 +141,81 @@ async def test_a_delivery_of_an_excluded_integration_records_nothing(monkeypatch
     finally:
         sources.forget_exclusions()
     assert sources.cached_integration_exclusions() is None
+
+
+class _Recorder:
+    def __init__(self) -> None:
+        self.statements: list[Any] = []
+        self.commits = 0
+
+    def __call__(self) -> _Recorder:
+        return self
+
+    async def __aenter__(self) -> _Recorder:
+        return self
+
+    async def __aexit__(self, *_a: object) -> None:
+        return None
+
+    async def execute(self, statement: Any) -> None:
+        self.statements.append(statement)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+async def test_a_verified_delivery_stamps_its_integration_once_a_minute() -> None:
+    sources.forget_deliveries()
+    db = _Recorder()
+    try:
+        assert await sources.note_delivery("github", PROD.upper(), session_factory=db) is True
+        # A second delivery within the minute writes nothing: a storm costs one upsert.
+        assert await sources.note_delivery("github", PROD, session_factory=db) is False
+        # Another integration, or the provider route, is stamped apart.
+        assert await sources.note_delivery("github", "oauth_default", session_factory=db) is True
+        assert await sources.note_delivery("github", None, session_factory=db) is False
+        assert len(db.statements) == 2 and db.commits == 2
+        params = db.statements[0].compile().params
+        assert params["provider"] == "github" and params["integration_id"] == PROD
+        assert "ON CONFLICT" in str(db.statements[0].compile(dialect=_pg_dialect()))
+    finally:
+        sources.forget_deliveries()
+
+
+async def test_a_failed_stamp_never_raises_and_is_retried() -> None:
+    sources.forget_deliveries()
+
+    class _Broken(_Recorder):
+        async def execute(self, statement: Any) -> None:
+            raise RuntimeError("database down")
+
+    try:
+        assert await sources.note_delivery("aikido", LAB, session_factory=_Broken()) is False
+        db = _Recorder()
+        assert await sources.note_delivery("aikido", LAB, session_factory=db) is True
+    finally:
+        sources.forget_deliveries()
+
+
+async def test_note_event_stamps_a_verified_delivery_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    stamped: list[tuple[str, str | None]] = []
+
+    async def _stamp(provider: str, integration_id: str | None, **_kw: Any) -> bool:
+        stamped.append((provider, integration_id))
+        return True
+
+    monkeypatch.setattr(sources, "note_delivery", _stamp)
+    # An event no listener maps still proves the integration delivers.
+    await listeners.note_event("github", "push", {}, verified=True, integration_id=PROD)
+    await listeners.note_event("github", "push", {}, verified=False, integration_id=LAB)
+    await listeners.note_event("github", "push", {}, verified=True)
+    assert stamped == [("github", PROD)]
+
+
+def _pg_dialect() -> Any:
+    from sqlalchemy.dialects import postgresql
+
+    return postgresql.dialect()  # type: ignore[no-untyped-call]

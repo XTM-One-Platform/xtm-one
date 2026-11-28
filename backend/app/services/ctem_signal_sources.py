@@ -44,12 +44,15 @@ excluded map, so each recording point keeps reading one map.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 #: The providers a scheduled pass reads, by the profile field that switches it on.
 ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
@@ -489,12 +492,80 @@ def integration_excluded(
     return str(integration_id).lower() in excluded.get(source_key(provider, kind, name), set())
 
 
+#: Seconds between two writes of one integration's last delivery: a catch-up storm writes it once a minute.
+DELIVERY_WRITE_SECONDS = 60.0
+_delivery_written: dict[tuple[str, str], float] = {}
+
+
+async def note_delivery(provider: str, integration_id: str | None, *, session_factory: Any = None) -> bool:
+    """Stamp now as the last verified delivery of *integration_id* for *provider* (#2736); never raises.
+
+    Written at most once per :data:`DELIVERY_WRITE_SECONDS` per integration and pod, so a storm
+    of deliveries costs one upsert a minute. ``True`` when the row was written.
+    """
+    import time
+
+    if not integration_id:
+        return False
+    key = (provider, str(integration_id).lower())
+    now = time.monotonic()
+    last = _delivery_written.get(key)
+    if last is not None and now - last < DELIVERY_WRITE_SECONDS:
+        return False
+    _delivery_written[key] = now
+    from datetime import UTC, datetime
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.core.database import async_session
+    from app.models.ctem_integration_delivery import CtemIntegrationDelivery
+
+    stamp = datetime.now(UTC)
+    statement = pg_insert(CtemIntegrationDelivery).values(
+        provider=key[0], integration_id=key[1], last_delivery_at=stamp
+    )
+    statement = statement.on_conflict_do_update(
+        index_elements=["provider", "integration_id"], set_={"last_delivery_at": stamp}
+    )
+    try:
+        async with (session_factory or async_session)() as db:
+            await db.execute(statement)
+            await db.commit()
+    except Exception:
+        logger.warning("CTEM signal sources: last delivery of %s %s not stored", provider, key[1], exc_info=True)
+        _delivery_written.pop(key, None)
+        return False
+    return True
+
+
+def forget_deliveries() -> None:
+    """Drop the per-pod write throttle of :func:`note_delivery` (tests)."""
+    _delivery_written.clear()
+
+
+async def last_deliveries(db: AsyncSession, providers: Any) -> dict[tuple[str, str], str]:
+    """``(provider, integration_id)`` to the ISO time of its last verified delivery (#2736)."""
+    from app.models.ctem_integration_delivery import CtemIntegrationDelivery
+
+    rows = (
+        await db.execute(
+            select(
+                CtemIntegrationDelivery.provider,
+                CtemIntegrationDelivery.integration_id,
+                CtemIntegrationDelivery.last_delivery_at,
+            ).where(CtemIntegrationDelivery.provider.in_(list(providers)))
+        )
+    ).all()
+    return {(provider, integration_id): at.isoformat() for provider, integration_id, at in rows}
+
+
 async def provider_integrations(db: AsyncSession, user_id: Any) -> dict[str, list[dict[str, Any]]]:
     """Per provider of a signal source, the integrations its sources read, visible to the caller (#2736).
 
     One entry each: ``id``, ``name``, ``status`` (the integration's), ``webhook_secret_set`` (a
-    delivery is trusted with a signal only when signed with it) and ``last_delivery_at`` (``None``
-    until recorded). A provider whose OAuth default app is configured also lists that app under
+    delivery is trusted with a signal only when signed with it) and ``last_delivery_at`` (the ISO
+    time of its last verified delivery, :func:`note_delivery`; ``None`` before any). A provider
+    whose OAuth default app is configured also lists that app under
     :data:`OAUTH_DEFAULT_INTEGRATION`: the provider-level webhook route delivers on it.
     """
     from app.api.v1.helpers import integration_visible_filter
@@ -514,6 +585,7 @@ async def provider_integrations(db: AsyncSession, user_id: Any) -> dict[str, lis
         .scalars()
         .all()
     )
+    delivered = await last_deliveries(db, providers)
     out: dict[str, list[dict[str, Any]]] = {}
     for integration in rows:
         state = await webhook_secret_state(integration)
@@ -523,7 +595,7 @@ async def provider_integrations(db: AsyncSession, user_id: Any) -> dict[str, lis
                 "name": integration.name,
                 "status": integration.status,
                 "webhook_secret_set": state.startswith("set"),
-                "last_delivery_at": None,
+                "last_delivery_at": delivered.get((integration.provider, str(integration.id).lower())),
             }
         )
     defaults = (await db.execute(select(OAuthDefault).where(OAuthDefault.provider.in_(providers)))).scalars().all()
@@ -535,7 +607,7 @@ async def provider_integrations(db: AsyncSession, user_id: Any) -> dict[str, lis
                 "name": "OAuth default app",
                 "status": "connected",
                 "webhook_secret_set": state.startswith("set"),
-                "last_delivery_at": None,
+                "last_delivery_at": delivered.get((default.provider, OAUTH_DEFAULT_INTEGRATION)),
             }
         )
     return out
