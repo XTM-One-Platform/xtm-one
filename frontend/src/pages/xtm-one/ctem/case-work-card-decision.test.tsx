@@ -72,6 +72,35 @@ describe("Worked-by: the waiting decision", () => {
     expect(document.activeElement).toBe(anchor);
   });
 
+  // The arrow says where the card is: a section's card below the row, the page's waiting card above it.
+  it("points down when the decision card comes after the row", () => {
+    state.byId["wi-1"] = OPEN("wi-1");
+    const wait = caseLoopWait({ state: "waiting_decision", gates: [gate({})] });
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseWorkCard work={{ kind: "on", automations: [ON], last: null }} wait={wait} loopFleetId={null} />
+        <GateDecisionAnchor gate="ctem.close_without_retest">
+          <div>card</div>
+        </GateDecisionAnchor>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-case-work-gate-answer")).toHaveAttribute("data-direction", "down");
+  });
+
+  it("points up when the decision card comes before the row", () => {
+    state.byId["wi-1"] = OPEN("wi-1");
+    const wait = caseLoopWait({ state: "waiting_decision", gates: [gate({})] });
+    renderWithProviders(
+      <MemoryRouter>
+        <GateDecisionAnchor gate="ctem.close_without_retest">
+          <div>card</div>
+        </GateDecisionAnchor>
+        <CaseWorkCard work={{ kind: "on", automations: [ON], last: null }} wait={wait} loopFleetId={null} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-case-work-gate-answer")).toHaveAttribute("data-direction", "up");
+  });
+
   it("keeps Open the decision when the viewer cannot read the item", () => {
     const wait = caseLoopWait({ state: "waiting_decision", gates: [gate({ work_item_id: "wi-hidden" })] });
     renderWithProviders(

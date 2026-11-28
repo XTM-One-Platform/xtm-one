@@ -18,7 +18,7 @@
  * An observer of the case events (`trigger_config.role`, #2054) is never named.
  * Calls to action are DS buttons; no inline link in the secondary colour.
  */
-import { useState, type ComponentProps } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
@@ -42,7 +42,7 @@ import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline
 import { workItemPath } from "@/lib/task-routes";
 import { cn } from "@/lib/utils";
 import { GATE_LABEL } from "./case-gates";
-import { focusGateDecision, useGateDecisionItem } from "./CaseGateDecision";
+import { focusGateDecision, gateDecisionDirection, useGateDecisionItem } from "./CaseGateDecision";
 import type { CaseAutomation, CaseLoopWait, CaseWork } from "./case-workers";
 
 interface CaseWorkCardProps {
@@ -346,6 +346,15 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
   const gateWait = wait.kind === "gate" ? wait : null;
   // Readable, the decision's card is on this page (the waiting card or its section): point to it, never away.
   const { item: decisionInPage } = useGateDecisionItem({ work_item_id: gateWait?.workItemId ?? null }, !!gateWait?.workItemId);
+  // The arrow points where the card is: the page's waiting card sits above this row, a section's card below.
+  const answerRef = useRef<HTMLButtonElement>(null);
+  const [answerDirection, setAnswerDirection] = useState<"up" | "down">("down");
+  const waitGate = gateWait?.gate ?? null;
+  useLayoutEffect(() => {
+    if (!waitGate || !decisionInPage) return;
+    const direction = gateDecisionDirection(waitGate, answerRef.current);
+    if (direction) setAnswerDirection(direction);
+  }, [waitGate, decisionInPage]);
   const outcome = last ? timelineOutcome(last.outcome, last.status) : null;
   const ended = last ? (last.completed_at ?? last.created_at) : null;
   return (
@@ -361,12 +370,14 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
               variant="outline"
               size="sm"
               className="gap-1.5"
+              ref={answerRef}
               data-testid="ctem-case-work-gate-answer"
+              data-direction={answerDirection}
               onClick={() => {
                 if (!focusGateDecision(wait.gate)) navigate(workItemPath(wait.workItemId!));
               }}
             >
-              <Icon name="arrow-down" size={16} />
+              <Icon name={answerDirection === "up" ? "arrow-up" : "arrow-down"} size={16} aria-hidden />
               {t_i18n("Answer on this page")}
             </Button>
           )}

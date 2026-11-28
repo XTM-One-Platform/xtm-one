@@ -66,6 +66,18 @@ export function focusGateDecision(gate: string): boolean {
   return true;
 }
 
+/**
+ * Where a gate's decision card sits on the page relative to `from` (the control
+ * that points to it): "up" when the card comes before it, "down" when after,
+ * null when the page does not show the card. The control's icon says what is
+ * true: the page's waiting card is above the Worked-by row, a section card below.
+ */
+export function gateDecisionDirection(gate: string, from: Element | null): "up" | "down" | null {
+  const el = document.getElementById(gateDecisionAnchorId(gate));
+  if (!el || !from) return null;
+  return el.compareDocumentPosition(from) & Node.DOCUMENT_POSITION_FOLLOWING ? "up" : "down";
+}
+
 /** The wrapper of a decision card rendered in place: the target of "Answer on this page". */
 export function GateDecisionAnchor({ gate, children }: { gate: string; children: ReactNode }) {
   return (
