@@ -378,6 +378,8 @@ export function SignalPathSourcesSheet({
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const { count: formatCount } = useNumberFormat();
   const { intl } = useFormatter();
+  // The integrations a listener XTM One does not provision runs on (GitHub, Aikido), named on its row (#2736).
+  const { data: integrations = [] } = useIntegrations();
 
   const onSave = (next: Partial<OrganizationProfile>, done: string) => {
     if (!profile || !isAdmin) return;
@@ -411,7 +413,7 @@ export function SignalPathSourcesSheet({
     source,
     state: sourceDisplayState(source, connected, platformSources),
     name: sourceDisplayName(source, providerName),
-    integration: sourceIntegrationNames(source, platformSources),
+    integration: sourceIntegrationNames(source, platformSources, integrations),
     runAs: runAsUsers(source, platformSources),
   }));
   const columns: DataTableColumn<SourceTableRow>[] = [
@@ -450,7 +452,19 @@ export function SignalPathSourcesSheet({
       width: 144,
       sortValue: (row) => row.integration,
       csv: (row) => row.integration,
-      cell: (row) => <span className="truncate">{row.integration || t_i18n("None")}</span>,
+      // "No integration" in words, never "None" beside a status (#2736).
+      cell: (row) =>
+        row.integration ? (
+          <Tip content={row.integration}>
+            <span className="min-w-0 truncate" data-testid="ctem-path-source-integration">
+              {row.integration}
+            </span>
+          </Tip>
+        ) : (
+          <span className="truncate text-default-secondary" data-testid="ctem-path-source-integration">
+            {row.source.kind === "webhook" ? t_i18n("Its own receiver") : t_i18n("No integration")}
+          </span>
+        ),
     },
     {
       key: "run_as",
@@ -529,12 +543,13 @@ export function SignalPathSourcesSheet({
         {hook && isAdmin && (
           <Tip content={t_i18n("Configure and test")}>
             <Button variant="ghost" size="sm" onClick={() => setHookDialog({ source: hook })} data-testid="ctem-path-source-webhook-configure">
-              <Icon name="settings" size={16} aria-hidden />
+              <Icon name="chevron-right" size={16} aria-hidden />
               <span className="sr-only">{t_i18n("Configure and test")}</span>
             </Button>
           </Tip>
         )}
-        {!hook && (
+        {!(hook && isAdmin) && (
+          // A chevron says the row expands (#2736, Sam 28 Nov 2026): never a gear; the whole row toggles it too.
           <Tip content={opened.has(row.key) ? t_i18n("Close its settings") : t_i18n("Configure")}>
             <Button
               variant="ghost"
@@ -543,7 +558,7 @@ export function SignalPathSourcesSheet({
               onClick={() => setOpened((prev) => toggleSet(prev, row.key))}
               data-testid="ctem-path-source-configure"
             >
-              <Icon name={opened.has(row.key) ? "chevron-up" : "settings"} size={16} aria-hidden />
+              <Icon name="chevron-down" size={16} className={cn("transition-transform", opened.has(row.key) && "rotate-180")} aria-hidden />
               <span className="sr-only">{t_i18n("Configure")}</span>
             </Button>
           </Tip>
@@ -605,8 +620,12 @@ export function SignalPathSourcesSheet({
                 rowDataAttributes={(row) => ({ "data-state": row.state, "data-provider": row.source.provider, "data-kind": row.source.kind })}
                 rowActions={rowActions}
                 rowActionsWidth={isAdmin ? 104 : 56}
-                onRowClick={(row) => !row.source.webhook_id && setOpened((prev) => toggleSet(prev, row.key))}
-                rowOpens={(row) => !row.source.webhook_id}
+                // Every row opens on a click anywhere (#2736): a webhook row its configure view, any other its settings in place.
+                onRowClick={(row) => {
+                  const hook = row.source.webhook_id ? webhookById.get(row.source.webhook_id) : undefined;
+                  if (hook && isAdmin) setHookDialog({ source: hook });
+                  else setOpened((prev) => toggleSet(prev, row.key));
+                }}
                 toggleInCell
                 expandedRow={(row) =>
                   opened.has(row.key) ? (

@@ -17,6 +17,8 @@ vi.mock("@/hooks/api/useIntegrationApi", () => ({
     data: [
       { id: "i-shodan", name: "Shodan prod", provider: "shodan", status: "connected" },
       { id: "i-opencrq", name: "OpenCRQ risk", provider: "opencrq", status: "connected" },
+      { id: "i-gh-1", name: "GitHub Filigran", provider: "github", status: "connected" },
+      { id: "i-gh-2", name: "GitHub Labs", provider: "github", status: "connected" },
     ],
   }),
 }));
@@ -207,5 +209,34 @@ describe("the sources side panel (#1445)", () => {
     view.unmount();
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+
+  it("names every integration feeding a GitHub listener, says No integration in words, and opens a row on a click anywhere (#2736)", () => {
+    const code: CtemSignalPath = {
+      ...EXPOSURE,
+      id: "code_flaw",
+      label: "Code or dependency flaw before production",
+      default_lens: "inside",
+      sources: [
+        { provider: "github", kind: "listener", event: "A Dependabot alert is opened", bound: true },
+        { provider: "aikido", kind: "listener", event: "A new issue", bound: false },
+      ],
+    };
+    const paths = [code, ...OTHERS];
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={code} paths={paths} connected={connectedProviders(paths)} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    const rows = screen.getAllByTestId("ctem-path-source-row");
+    const github = rows.find((r) => r.getAttribute("data-provider") === "github") as HTMLElement;
+    const aikido = rows.find((r) => r.getAttribute("data-provider") === "aikido") as HTMLElement;
+    expect(within(github).getByTestId("ctem-path-source-integration").textContent).toBe("GitHub Filigran, GitHub Labs");
+    expect(within(aikido).getByTestId("ctem-path-source-integration").textContent).toBe("No integration");
+    // A click on the name cell opens the row's configuration in place; the toggle is a chevron with aria-expanded.
+    expect(screen.queryAllByTestId("ctem-path-source")).toHaveLength(0);
+    fireEvent.click(within(github).getByTestId("ctem-path-source-name"));
+    expect(screen.getAllByTestId("ctem-path-source")).toHaveLength(1);
+    expect(within(github).getByTestId("ctem-path-source-configure").getAttribute("aria-expanded")).toBe("true");
   });
 });

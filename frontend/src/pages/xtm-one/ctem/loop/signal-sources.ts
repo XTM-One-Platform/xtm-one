@@ -153,15 +153,25 @@ export function sourceDisplayState(
 /**
  * The integrations a source runs on, joined: a provisioned source by its own platform lines; the cases recompute,
  * which provisions nothing, by every connected integration of its provider (UX advisory A2 of #2592); a webhook none.
+ * A listener XTM One does not provision (GitHub, Aikido: a verified webhook delivery of any connected integration of
+ * its provider records it, #2736) is named by those connected integrations, never "None" beside "On".
  */
 export function sourceIntegrationNames(
   source: Pick<CtemSignalPathSource, "provider" | "kind">,
   platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
+  integrations: readonly { provider: string; name: string; status: string }[] = [],
 ): string {
   if (source.kind === "webhook") return "";
   const lines = platform.filter((s) => s.provider === source.provider && (source.kind === "cases_reader" || s.kind === source.kind));
-  return [...new Set(lines.map((s) => s.integration_name).filter(Boolean))].join(", ");
+  const names = lines.map((s) => s.integration_name).filter(Boolean) as string[];
+  if (names.length === 0 && source.kind === "listener" && !PROVISIONED_LISTENERS.has(source.provider)) {
+    names.push(...integrations.filter((i) => i.provider === source.provider && i.status === "connected").map((i) => i.name));
+  }
+  return [...new Set(names)].join(", ");
 }
+
+/** The providers whose listener XTM One provisions as a platform source: named by its platform lines alone. */
+const PROVISIONED_LISTENERS: ReadonlySet<string> = new Set(["opencti", "openaev"]);
 
 /** The signed request a tool sends to a webhook source (#2506), the secret left as $SECRET: never the real one in a copied command. */
 export function signedRequestExample(url: string, header: string): string {
@@ -175,21 +185,6 @@ export function signedRequestExample(url: string, header: string): string {
 /** The display name of a source: a webhook source by its own name, any other by its provider (#2506). */
 export function sourceDisplayName(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">, providerName: (provider: string) => string): string {
   return source.kind === "webhook" && source.name ? source.name : providerName(source.provider);
-}
-
-/**
- * A path's sources split by what feeds it on this platform (Sam, 23 Nov 2026, #1401): `live` are the
- * sources of a connected provider (bound, a pass turned off, or not set up yet), each saying its own
- * state; `possible` are the sources whose provider has no integration here. A possible source is never
- * listed with the weight of a live one: the Sources tab folds them into one muted "+N possible".
- */
-export function splitSources(
-  path: Pick<CtemSignalPath, "sources">,
-  connected: ReadonlySet<string>,
-): { live: CtemSignalPathSource[]; possible: CtemSignalPathSource[] } {
-  const sources = path.sources ?? [];
-  const possible = (s: CtemSignalPathSource) => sourceState(s, connected) === "not_connected";
-  return { live: sources.filter((s) => !possible(s)), possible: sources.filter(possible) };
 }
 
 /** Whether a path records from at least one of its sources: enabled or partly enabled. */
@@ -390,6 +385,37 @@ export const SOURCE_NAME_LABEL = {
   finding_created: "Finding created",
   asset_created: "Asset created",
 } as const;
+
+/**
+ * What an unnamed listener of a provider listens to on one path, where the provider name alone does not say it (#2736).
+ * @i18n-keys
+ */
+const UNNAMED_LISTENER_LABEL = {
+  "github:code_flaw": "Dependabot",
+  "github:new_vulnerability": "Security advisories",
+} as const;
+
+/** The short word of a kind on a source chip: a listener says none, its provider and name say what it is. @i18n-keys */
+const SHORT_KIND_LABEL = { pass: "Scheduled pass", pir_playbook: "PIR playbook", cases_reader: "Cases recompute" } as const;
+
+/**
+ * The short name of a source on its chip (#2736, Sam 28 Nov 2026): the provider, then what tells it apart on the path,
+ * "GitHub Dependabot", "GitHub Code scanning", "OpenCTI PIR playbook", "Shodan Scheduled pass"; a webhook by its own name.
+ */
+export function sourceShortName(
+  source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">,
+  pathId: string,
+  providerName: (provider: string) => string,
+  t: (key: string) => string,
+): string {
+  if (source.kind === "webhook") return source.name || providerName(source.provider);
+  const provider = providerName(source.provider);
+  const named = source.name ? (SOURCE_NAME_LABEL as Record<string, string>)[source.name] : undefined;
+  if (named) return `${provider} ${t(named)}`;
+  if (source.kind !== "listener") return `${provider} ${t(SHORT_KIND_LABEL[source.kind])}`;
+  const unnamed = (UNNAMED_LISTENER_LABEL as Record<string, string>)[`${source.provider}:${pathId}`];
+  return unnamed ? `${provider} ${t(unnamed)}` : provider;
+}
 
 /** The kind of a source in words, its name after it when it has one: "Live listener · Code scanning". */
 export function sourceKindText(t: (key: string) => string, source: Pick<CtemSignalPathSource, "kind" | "name">): string {

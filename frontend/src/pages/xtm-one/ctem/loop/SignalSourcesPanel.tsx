@@ -34,6 +34,8 @@ import {
   useCtemPlatformSources,
   useCtemSignalPaths,
 } from "@/hooks/api/useCtemSignalsApi";
+import { useIntegrations } from "@/hooks/api/useIntegrationApi";
+import type { Integration } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -59,24 +61,19 @@ import {
   pathStatusLabel,
   SOURCE_KIND_LABEL,
   connectedProviders,
-  sourceDisplayName,
+  type SourceState,
   sourceDisplayState,
+  sourceIntegrationNames,
   sourceKindText,
-  sourceState,
+  sourceShortName,
   silentReasonText,
   sourceStateIcon,
-  splitSources,
 } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
-/** The state word after a source in the folded line; bound and not connected say none. @i18n-keys */
-const COMPACT_STATE_WORD = {
-  error: "Error",
-  off: "Off",
-  not_set_up: "Not set up",
-  excluded: "Not used here",
-} as const satisfies Partial<Record<ReturnType<typeof sourceState>, string>>;
+/** The legend words of the source chips. @i18n-keys */
+const LEGEND_LABELS = ["On", "Off or not set up", "Error", "Not connected"] as const;
 
 /** The lens headings and what each sees. @i18n-keys */
 const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as const;
@@ -88,10 +85,10 @@ const LENS_HELP = {
 } as const;
 
 /**
- * The empty state of a path with no source on (#2506): what it means, and the way to its sources. On line 2 of
- * the first cell (`compact`) it is the sentence alone: the row itself opens the path's sources.
+ * The empty state of a path with no source on (#2506), on line 2 of the first cell of a folded row: the sentence
+ * alone, the row itself opens the path's sources.
  */
-function NoSourceOn({ onOpen, className, compact }: { onOpen: () => void; className?: string; compact?: boolean }) {
+function NoSourceOn({ className }: { className?: string }) {
   const { t_i18n } = useFormatter();
   const tabIndex = useTriggerTabIndex();
   return (
@@ -102,59 +99,67 @@ function NoSourceOn({ onOpen, className, compact }: { onOpen: () => void; classN
           {t_i18n("No source on: nothing records this path")}
         </span>
       </Tip>
-      {!compact && (
-      <Button
-        variant="ghost"
-        size="sm"
-        tabIndex={tabIndex}
-        className="shrink-0"
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpen();
-        }}
-        data-testid="ctem-signal-sources-open-sources"
-      >
-        {t_i18n("Open its sources")}
-      </Button>
-      )}
     </span>
   );
 }
 
 /**
- * One source: logo and name, the kind as secondary text, the event that fires it in a tooltip (never a third line).
- * A source turned off says Off after its kind; a source of a connected provider that is not set up says Not set up
- * (UX round 1 on #1405, B1). Only the sources of a connected provider are listed (#2506).
+ * The look of a source chip by its state (#2736, Sam 28 Nov 2026): on reads a success outline with its check, error an
+ * error outline, not connected a muted dashed outline, every other state (off, not set up, not used here, not
+ * configured) a neutral outline. The state word travels in the tooltip and the accessible name; the icon carries it too.
  */
-function SourceItem({
+const CHIP_TONE: Record<SourceState, string> = {
+  bound: "border-feedback-success-primary/60",
+  error: "border-feedback-error-primary/60",
+  not_connected: "border-dashed border-elevation-subtle-soft text-default-secondary",
+  off: "border-elevation-subtle-soft text-default-secondary",
+  excluded: "border-elevation-subtle-soft text-default-secondary",
+  not_set_up: "border-elevation-subtle-soft text-default-secondary",
+  not_configured: "border-elevation-subtle-soft text-default-secondary",
+};
+
+/** The icon of a source that is not connected here (its chip is dashed and muted). */
+const NOT_CONNECTED_ICON = { icon: "circle-plus", className: "text-default-secondary", label: "Not connected" } as const;
+
+/**
+ * One source of a path as a compact chip (#2736): its state icon, provider logo and short name ("GitHub Dependabot",
+ * "OpenCTI PIR playbook"); its kind, event, state and integrations in the tooltip. Every source of the path is drawn,
+ * a provider with no integration here included, so one look says what is on, off and not connected.
+ */
+function SourceChip({
   source,
+  pathId,
   connected,
   platform,
+  integrations,
 }: {
   source: CtemSignalPathSource;
+  pathId: string;
   connected: ReadonlySet<string>;
   platform: readonly CtemPlatformSource[];
+  integrations: readonly Integration[];
 }) {
   const { t_i18n } = useFormatter();
-  // The loop trace's naming (signalProviderName), read here without importing that module: it imports this one.
-  const name = sourceName(source);
   // The row opens the path's sources (#1445): it is the one tab stop, the tooltip triggers add none.
   const tabIndex = useTriggerTabIndex();
-  // One word per source on the row and in the path's sources panel (UX advisory A4 of #2436).
   const state = sourceDisplayState(source, connected, platform);
+  const name = sourceShortName(source, pathId, providerName, t_i18n);
+  const icon = sourceStateIcon(state) ?? NOT_CONNECTED_ICON;
   const event = source.event ? t_i18n(source.event) : null;
-  const icon = sourceStateIcon(state);
-  const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
-  // The tooltip names the source first, as MoreSources and the folded variant do (UX round 2 on #2509, B1): the name
-  // can be cut on a narrow cell, so it is always readable here, then the event that fires it.
-  const heading = `${name} (${sourceKindText(t_i18n, source)}${word ? `, ${t_i18n(word)}` : ""})`;
-  const stateLine = icon && !word ? t_i18n(icon.label) : null;
-  const tip = [heading, event, stateLine].filter(Boolean).join(". ");
+  const via = sourceIntegrationNames(source, platform, integrations);
+  const tip = [
+    `${name} (${sourceKindText(t_i18n, source)}): ${t_i18n(icon.label)}`,
+    event,
+    via ? `${t_i18n("Integration")}: ${via}` : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
   return (
     <Tip content={tip}>
       <span
         tabIndex={tabIndex}
-        className="inline-flex h-5 min-w-0 flex-wrap content-start items-center gap-x-1.5 gap-y-2 overflow-hidden rounded-sm"
+        aria-label={`${name}: ${t_i18n(icon.label)}`}
+        className={cn("inline-flex h-5 min-w-0 max-w-56 shrink-0 items-center gap-1 rounded-sm border px-1.5 content-caption", CHIP_TONE[state])}
         data-testid="ctem-signal-source"
         data-provider={source.provider}
         data-kind={source.kind}
@@ -162,89 +167,39 @@ function SourceItem({
         data-off={source.off ? true : undefined}
         data-state={state}
       >
-        {/* Icons and name stay together on line 1 whatever the name's length: the group is the first item of the line, so
-            it never wraps, and the name shrinks with an ellipsis inside it (up to 12rem); only a caption that does not fit
-            whole wraps onto the hidden second line, the tooltip carrying it (UX rounds 2 and 3 on #2509, B1). */}
-        <span className="inline-flex min-w-0 max-w-full flex-nowrap items-center gap-x-1.5" data-testid="ctem-signal-source-head">
-          {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
-          <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
-          <span className={cn("min-w-0 max-w-48 truncate", !source.bound && "text-default-secondary")} data-testid="ctem-signal-source-name">
-            {name}
-          </span>
+        <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />
+        <ProviderLogo provider={source.provider} className={cn("size-3.5 shrink-0", state === "not_connected" && "opacity-60")} decorative />
+        <span className="min-w-0 truncate" data-testid="ctem-signal-source-name">
+          {name}
         </span>
-        <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
-        {state === "off" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Off")}</span>}
-        {state === "excluded" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
-        {state === "not_set_up" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
-        {state === "error" && <span className="shrink-0 whitespace-nowrap content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
       </span>
     </Tip>
   );
 }
 
-/** The sources not used on this path: one muted item, the list in its tooltip (UX round 1 on #2454, B1). */
-function UnusedSources({ sources }: { sources: CtemSignalPathSource[] }) {
+/** The legend of the source chips, once above the table (#2736). */
+function ChipLegend() {
   const { t_i18n } = useFormatter();
-  const tabIndex = useTriggerTabIndex();
-  const tip = (
-    <span className="flex flex-col gap-0.5">
-      {sources.map((s) => (
-        <span key={s.key ?? `${s.provider}:${s.kind}`}>{`${sourceName(s)} (${sourceKindText(t_i18n, s)})`}</span>
-      ))}
-      <span className="text-default-secondary">{t_i18n("Not used here")}</span>
-    </span>
-  );
+  const items: { state: SourceState; label: (typeof LEGEND_LABELS)[number] }[] = [
+    { state: "bound", label: LEGEND_LABELS[0] },
+    { state: "off", label: LEGEND_LABELS[1] },
+    { state: "error", label: LEGEND_LABELS[2] },
+    { state: "not_connected", label: LEGEND_LABELS[3] },
+  ];
   return (
-    <Tip content={tip}>
-      <span
-        tabIndex={tabIndex}
-        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
-        data-testid="ctem-signal-sources-unused"
-      >
-        {t_i18n("{count, plural, other {+# not used here}}", { count: sources.length })}
-      </span>
-    </Tip>
-  );
-}
-
-/** How many sources a wide row lists before "+N more" (UX round 1 on #2509, B1). */
-const INLINE_SOURCES = 1;
-
-/** The sources past the first ones of a wide row: one muted item, the list with each state in its tooltip. */
-function MoreSources({
-  sources,
-  connected,
-  platform,
-}: {
-  sources: CtemSignalPathSource[];
-  connected: ReadonlySet<string>;
-  platform: readonly CtemPlatformSource[];
-}) {
-  const { t_i18n } = useFormatter();
-  const tabIndex = useTriggerTabIndex();
-  const tip = (
-    <span className="flex flex-col gap-0.5">
-      {sources.map((s) => {
-        const state = sourceDisplayState(s, connected, platform);
-        const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
+    <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 content-caption text-default-secondary" aria-label={t_i18n("Source states")} data-testid="ctem-signal-sources-legend">
+      {items.map(({ state, label }) => {
+        const icon = sourceStateIcon(state) ?? NOT_CONNECTED_ICON;
         return (
-          <span key={s.key ?? `${s.provider}:${s.kind}`}>
-            {`${sourceName(s)} (${sourceKindText(t_i18n, s)}${word ? `, ${t_i18n(word)}` : ""})`}
-          </span>
+          <li key={state} className="inline-flex items-center gap-1.5">
+            <span className={cn("inline-flex size-4 items-center justify-center rounded-sm border", CHIP_TONE[state])} aria-hidden>
+              <Icon name={icon.icon} size={16} className={icon.className} />
+            </span>
+            {t_i18n(label)}
+          </li>
         );
       })}
-    </span>
-  );
-  return (
-    <Tip content={tip}>
-      <span
-        tabIndex={tabIndex}
-        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
-        data-testid="ctem-signal-sources-more"
-      >
-        {t_i18n("{count, plural, other {+# more}}", { count: sources.length })}
-      </span>
-    </Tip>
+    </ul>
   );
 }
 
@@ -290,31 +245,51 @@ function QuietReasonCell({ reason, label }: { reason: string; label: string }) {
   );
 }
 
+/** The sources-on count with the sources not connected here named in its tooltip (#2736); no tab stop of its own. */
+function OnCountCell({ label, tip }: { label: string; tip: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={tip}>
+      <span className="rounded-sm tabular-nums" tabIndex={tabIndex} data-testid="ctem-signal-sources-on-count" data-missing-tip={tip}>
+        {label}
+      </span>
+    </Tip>
+  );
+}
+
 function providerName(provider: string): string {
   return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
 }
 
-function sourceName(source: CtemSignalPathSource): string {
-  return sourceDisplayName(source, providerName);
-}
+/** The order of the chips on a row: what records the path first, then what could, then what is not connected. */
+const CHIP_ORDER: Record<SourceState, number> = {
+  bound: 0,
+  error: 1,
+  not_set_up: 2,
+  not_configured: 3,
+  off: 4,
+  excluded: 5,
+  not_connected: 6,
+};
 
 /**
- * The sources of a path. `compact` (line 2 of a folded row) keeps one line: the names
- * cut with an ellipsis, the whole list in the tooltip, never a wrap to a third line
- * (UX round 1 on #1356, B2).
+ * The sources of a path (#2736, Sam 28 Nov 2026): every source as a chip, a provider with no integration here
+ * included, never "+N more"; a path has at most five, so they wrap to a second line rather than hide. `compact` (line
+ * 2 of a folded row) keeps one line: the short names with their state, cut with an ellipsis, the whole list in the
+ * tooltip (UX round 1 on #1356, B2).
  */
 function SourceList({
   path,
   connected,
   platform,
-  onOpen,
+  integrations,
   className,
   compact,
 }: {
   path: CtemSignalPath;
   connected: ReadonlySet<string>;
   platform: readonly CtemPlatformSource[];
-  onOpen: () => void;
+  integrations: readonly Integration[];
   className?: string;
   compact?: boolean;
 }) {
@@ -324,23 +299,17 @@ function SourceList({
   if (sources.length === 0) {
     return <span className={className ? `${className} text-default-secondary` : "text-default-secondary"}>{t_i18n("None")}</span>;
   }
-  // Only the sources of a connected provider are listed, each saying its own state (UX round 1 on #1405, B1); a
-  // provider with no integration here is never listed nor counted as "possible" (#2506): the sources count and the
-  // path's sources panel carry it. A path with no source on reads so and opens its sources (#2506).
-  const { live } = splitSources(path, connected);
-  const anyOn = live.some((s) => sourceDisplayState(s, connected, platform) === "bound");
-  if (!anyOn) return <NoSourceOn onOpen={onOpen} className={className} compact={compact} />;
-  // The sources that are on come first, so the row says what records the path, folded or wide (UX round 2 advisory
-  // A2 on #2509); the order is otherwise kept.
-  const isOn = (s: CtemSignalPathSource) => sourceDisplayState(s, connected, platform) === "bound";
-  const shown = [...live.filter(isOn), ...live.filter((s) => !isOn(s))];
+  const stateOf = (s: CtemSignalPathSource) => sourceDisplayState(s, connected, platform);
+  const shown = sources
+    .map((s, at) => ({ s, at }))
+    .sort((a, b) => CHIP_ORDER[stateOf(a.s)] - CHIP_ORDER[stateOf(b.s)] || a.at - b.at)
+    .map(({ s }) => s);
   if (compact) {
-    const stateWord = (s: CtemSignalPathSource) => {
-      const state = sourceDisplayState(s, connected, platform);
-      const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
-      return word ? `, ${t_i18n(word)}` : "";
+    if (!shown.some((s) => stateOf(s) === "bound")) return <NoSourceOn className={className} />;
+    const label = (s: CtemSignalPathSource) => {
+      const icon = sourceStateIcon(stateOf(s)) ?? NOT_CONNECTED_ICON;
+      return `${sourceShortName(s, path.id, providerName, t_i18n)} (${t_i18n(icon.label)})`;
     };
-    const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${sourceKindText(t_i18n, s)}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
     return (
       <Tip content={names}>
@@ -350,22 +319,11 @@ function SourceList({
       </Tip>
     );
   }
-  // A source not used on this path folds into one muted "+N not used here" while something else is listed, so the
-  // cell keeps to two lines (UX round 1 on #2454, B1: the default-off named sources wrapped a row to a third line).
-  const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
-  const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
-  const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
-  // One line, never a third row height (UX round 1 on #2509, B1): the first source, then "+N more" with the
-  // rest in the DS tooltip, as the folded variant does. Two sources with their kind and state never fit the cell.
-  const inline = listed.slice(0, INLINE_SOURCES);
-  const more = listed.slice(INLINE_SOURCES);
   return (
-    <span className={cn("flex min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden", className)} data-testid="ctem-signal-sources-line">
-      {inline.map((s) => (
-        <SourceItem key={s.key ?? `${s.provider}:${s.kind}`} source={s} connected={connected} platform={platform} />
+    <span className={cn("flex min-w-0 flex-wrap items-center gap-1", className)} data-testid="ctem-signal-sources-line">
+      {shown.map((s) => (
+        <SourceChip key={s.key ?? `${s.provider}:${s.kind}:${s.name ?? ""}`} source={s} pathId={path.id} connected={connected} platform={platform} integrations={integrations} />
       ))}
-      {more.length > 0 && <MoreSources sources={more} connected={connected} platform={platform} />}
-      {unused.length > 0 && <UnusedSources sources={unused} />}
     </span>
   );
 }
@@ -398,6 +356,12 @@ export function SignalSourcesPanel() {
   const connected = new Set([...connectedProviders(paths), ...platformSources.filter((s) => s.integration_connected).map((s) => s.provider)]);
   const lastSignal = (path: CtemSignalPath) =>
     path.last_signal_at ? formatShortDateTimeIntl(intl, path.last_signal_at) : t_i18n("None");
+  // The integrations each listener XTM One does not provision runs on, named in its chip's tooltip (#2736).
+  // A reader whose integrations read fails or answers no list still sees every chip (#2736).
+  const { data: integrationList } = useIntegrations();
+  const integrations = Array.isArray(integrationList) ? integrationList : [];
+  const sourcesOn = (path: CtemSignalPath) =>
+    (path.sources ?? []).filter((s) => sourceDisplayState(s, connected, platformSources) === "bound").length;
 
   const columns: DataTableColumn<CtemSignalPath>[] = [
     {
@@ -416,7 +380,7 @@ export function SignalSourcesPanel() {
               <span className="hidden truncate content-caption text-default-secondary @4xl:block">{t_i18n(path.description)}</span>
             )}
             <span className="flex min-w-0 items-center gap-3 whitespace-nowrap content-caption text-default-secondary @4xl:hidden">
-              <SourceList path={path} connected={connected} platform={platformSources} onOpen={() => setOpenPath(path.id)} compact />
+              <SourceList path={path} connected={connected} platform={platformSources} integrations={integrations} compact />
               {path.last_signal_at && <span className="shrink-0">{lastSignal(path)}</span>}
             </span>
           </span>
@@ -428,22 +392,36 @@ export function SignalSourcesPanel() {
       header: "Sources",
       hideBelow: "4xl",
       hideable: true,
-      interactive: true,
-      cell: (path) => <SourceList path={path} connected={connected} platform={platformSources} onOpen={() => setOpenPath(path.id)} />,
+      // Not interactive (#2736): a click anywhere on the chips opens the path's sources like the rest of the row.
+      cell: (path) => <SourceList path={path} connected={connected} platform={platformSources} integrations={integrations} />,
     },
     {
-      // Sources on, of the sources that are or could be on here (#2506): a provider with no integration counts in neither.
+      // Sources on, of every source of the path (#2736): the chips on the row and this count always agree; the
+      // sources whose provider has no integration here are named in its tooltip.
       key: "sources_on",
       header: "Sources on",
       align: "right",
       width: 120,
       hideable: true,
-      sortValue: (path) => path.sources_enabled ?? 0,
-      cell: (path) => (
-        <span className="tabular-nums" data-testid="ctem-signal-sources-on-count">
-          {t_i18n("{enabled} of {available}", { enabled: exactCount(path.sources_enabled ?? 0), available: exactCount(path.sources_available ?? 0) })}
-        </span>
-      ),
+      sortValue: (path) => sourcesOn(path),
+      cell: (path) => {
+        const label = t_i18n("{enabled} of {available}", { enabled: exactCount(sourcesOn(path)), available: exactCount(path.sources?.length ?? 0) });
+        const missing = (path.sources ?? []).filter((s) => sourceDisplayState(s, connected, platformSources) === "not_connected");
+        if (missing.length === 0) {
+          return (
+            <span className="tabular-nums" data-testid="ctem-signal-sources-on-count">
+              {label}
+            </span>
+          );
+        }
+        const names = [...new Set(missing.map((s) => providerName(s.provider)))].join(", ");
+        return (
+          <OnCountCell
+            label={label}
+            tip={t_i18n("{count, plural, other {# not connected: {names}}}", { count: missing.length, names })}
+          />
+        );
+      },
     },
     {
       key: "status",
@@ -461,7 +439,7 @@ export function SignalSourcesPanel() {
       align: "right",
       // Wide enough for the header and its sort mark at 1728 in every language (UX advisory A3 of #2436).
       width: 176,
-      interactive: true,
+      // Not interactive (#2736): the count opens the path's sources like the rest of the row; its tooltip stays.
       hideable: true,
       sortValue: (path) => path.count_30d ?? 0,
       cell: (path) => {
@@ -505,7 +483,7 @@ export function SignalSourcesPanel() {
       header: "Actions",
       align: "right",
       width: 160,
-      interactive: true,
+      // Not interactive (#2736): the empty part of the cell opens the row; each button stops its own click.
       cell: (path) => {
         // An enabled path has nothing to switch on; a partly enabled one offers its source that is off.
         const target = pathStatus(path) === "enabled" ? null : connectTarget(path);
@@ -516,12 +494,12 @@ export function SignalSourcesPanel() {
         return (
           <span className="inline-flex items-center justify-end gap-1">
             {setUp && (
-              <Button variant="secondary" size="sm" onClick={() => setEnabling(setUp)} data-testid="ctem-signal-sources-set-up">
+              <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); setEnabling(setUp); }} data-testid="ctem-signal-sources-set-up">
                 {t_i18n("Set up")}
               </Button>
             )}
             {actionable && !setUp && !(isProvisioned(target) && connected.has(target.provider)) && (
-              <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
+              <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); navigate(connectHref(target)); }} data-testid="ctem-signal-sources-connect">
                 {target.off ? t_i18n("Turn on") : t_i18n("Connect")}
               </Button>
             )}
@@ -530,7 +508,10 @@ export function SignalSourcesPanel() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate(signalsHref({ path: path.id }))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigate(signalsHref({ path: path.id }));
+                }}
                 title={exactCount(path.total)}
                 data-testid="ctem-signal-sources-path-open"
               >
@@ -545,6 +526,7 @@ export function SignalSourcesPanel() {
 
   return (
     <div data-testid="ctem-signal-sources">
+      <ChipLegend />
       <DataTable
         rows={paths}
         columns={columns}
@@ -556,7 +538,7 @@ export function SignalSourcesPanel() {
         searchFields={(path) => [
           t_i18n(path.label),
           path.description ? t_i18n(path.description) : null,
-          ...(path.sources ?? []).map((s) => sourceName(s)),
+          ...(path.sources ?? []).map((s) => sourceShortName(s, path.id, providerName, t_i18n)),
         ]}
         filters={[
           {
