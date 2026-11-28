@@ -151,7 +151,7 @@ export function CaseGateDecision({
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-gate={record.key}>
       <GateDecisionRecord
         record={record}
-        title={titled ? t_i18n(GATE_LABEL[record.key] ?? "Gate") : undefined}
+        title={titled ? (record.title || t_i18n(GATE_LABEL[record.key] ?? "Gate")) : undefined}
         byLabel={gateAnswererName(record, history, personName)}
         applying={applyingState?.phase ?? null}
         testId={`${testId}-record`}
