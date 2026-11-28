@@ -208,6 +208,20 @@ agents and the API only, never read as connected). In the path panel the
 source row of a provisioned source reads its platform status (Off, Connected
 or Error), the same word as its lines.
 
+An opened source row is its configuration panel (#2740,
+`frontend/src/pages/xtm-one/ctem/loop/SourceConfigPanel.tsx`), one skeleton
+for every source kind: a header (what the source listens to; for a
+provisioned source, one muted line on what XTM One provisions), then
+labelled sections on one grid: Integrations (one aligned row per integration
+with its state, run-as and Change, Open in actions and a labelled switch; a
+pass's runs-on, schedule, organization-wide switch and settings button;
+Connect), PIRs (the PIR playbook only), Objects in the platform (summarized
+by kind, "1 notifier and 8 triggers", one row each once expanded past three:
+the module event a trigger listens to or the path a playbook serves, owner,
+Open; the fleets' objects in their own collapsed group) and Paths (the paths
+one switch stops, as chips, this path marked; "Use on this path" as a
+labelled switch). No sentence carries a link.
+
 The evidence health pass is on by default (#1344): `evidence_health.enabled`
 is unset until an administrator saves it. Unset (or the legacy stored default,
 off with no integration declared) with no integration declared, the pass runs
