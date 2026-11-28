@@ -21882,7 +21882,7 @@
   "Signals the scope gate discarded are deleted this many days after they were last seen.": "Les signaux écartés par le filtre de périmètre sont supprimés ce nombre de jours après leur dernière observation.",
   "Watchlist CTEM signals": "Signaux CTEM sous surveillance",
   "Watchlist CTEM signals (days)": "Signaux CTEM sous surveillance (jours)",
-  "Watchlist signals are deleted this many days after they were last seen.": "Les signaux en surveillance sont supprimés ce nombre de jours après leur dernière observation.",
+  "Watchlist signals are deleted this many days after they were last seen.": "Les signaux sous surveillance sont supprimés ce nombre de jours après leur dernière observation.",
   "Unmatched CTEM signals": "Signaux CTEM non rattachés",
   "Unmatched CTEM signals (days)": "Signaux CTEM non rattachés (jours)",
   "Signals not in your inventory are deleted this many days after they were last seen. Older ones are not decided again after an inventory change.": "Les signaux absents de votre inventaire sont supprimés ce nombre de jours après leur dernière observation. Les plus anciens ne sont pas réévalués après un changement d'inventaire.",
