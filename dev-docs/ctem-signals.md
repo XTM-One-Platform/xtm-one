@@ -208,20 +208,6 @@ agents and the API only, never read as connected). In the path panel the
 source row of a provisioned source reads its platform status (Off, Connected
 or Error), the same word as its lines.
 
-An opened source row is its configuration panel (#2740,
-`frontend/src/pages/xtm-one/ctem/loop/SourceConfigPanel.tsx`), one skeleton
-for every source kind: a header (what the source listens to; for a
-provisioned source, one muted line on what XTM One provisions), then
-labelled sections on one grid: Integrations (one aligned row per integration
-with its state, run-as and Change, Open in actions and a labelled switch; a
-pass's runs-on, schedule, organization-wide switch and settings button;
-Connect), PIRs (the PIR playbook only), Objects in the platform (summarized
-by kind, "1 notifier and 8 triggers", one row each once expanded past three:
-the module event a trigger listens to or the path a playbook serves, owner,
-Open; the fleets' objects in their own collapsed group) and Paths (the paths
-one switch stops, as chips, this path marked; "Use on this path" as a
-labelled switch). No sentence carries a link.
-
 The evidence health pass is on by default (#1344): `evidence_health.enabled`
 is unset until an administrator saves it. Unset (or the legacy stored default,
 off with no integration declared) with no integration declared, the pass runs
@@ -630,7 +616,13 @@ order:
    (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
    windows live in `WINDOWS`; the dialog sends the chosen ones as
    `resync_windows`, validated by `validate_windows` (1 to 365 days; an
-   inside-state route also takes null, no age limit; a pass takes none):
+   inside-state route also takes null, no age limit; a pass takes none). The
+   dialog sends `resync_sources` `{route: {enabled, window, unit}}` instead,
+   validated by `plan`: an unticked route is never queried and an unticked pass
+   never runs (reported skipped, `not selected in the purge dialog`), a window is
+   in `days` (default) or `hours` (1 hour to 365 days), and the job carries the
+   windows in hours as `spans` and the unticked ones as `skip`; without
+   `resync_sources` every route reads its days window, as before:
    - one route per OpenCTI type the live listener reads (paths 1, 2, 10;
      vulnerabilities 7 days by default, the others 30), from every enabled
      OpenCTI source as its run-as, each fed to `note_event` as an `update`
@@ -667,8 +659,9 @@ holds the actor, the resync choice and the counts per step.
 
 `GET /api/v1/ctem-signals/purge` (administrators): the live counts
 (`{signals, cases}`), the confirmation word, the resync routes with their
-default windows (`resync_routes`, `resync_max_days`) and the running or last job.
-`POST /api/v1/ctem-signals/purge` `{confirm, resync, resync_windows?}`
+default windows (`resync_routes`, each with `selectable`; `resync_max_days`,
+`resync_units`) and the running or last job.
+`POST /api/v1/ctem-signals/purge` `{confirm, resync, resync_windows?, resync_sources?}`
 (administrators): 422 without the word `PURGE` or on a window it refuses, 409
 while a job runs, else 202 with the job's first status (its `windows` filled
 in with the defaults). A non-administrator gets 403 on both.
