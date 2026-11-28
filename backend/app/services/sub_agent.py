@@ -1832,18 +1832,70 @@ async def cancel_tasks_for_conversation(
     return cancelled_count
 
 
+#: Who stopped a background task, as its ``error`` and its child run's read (#2721).
+CANCELLED_BY_USER_REASON = "Cancelled by user."
+CANCELLED_BY_ADMIN_REASON = "Cancelled by an administrator."
+
+
+def cancelled_by_run_reason(run_id: str | uuid.UUID | None) -> str:
+    """The ``error`` of a task an agent stopped from one of its runs (#2721)."""
+    if run_id:
+        return f"Cancelled by parent run {run_id}."
+    return "Cancelled by the agent that spawned it."
+
+
+#: The statuses of a child run its task's cancel still ends.
+_CHILD_RUN_LIVE_STATUSES = ("pending", "delayed", "running", "awaiting_human")
+
+
+async def _cancel_child_run(db: AsyncSession, task: SubAgentTask, *, now: datetime, error: str) -> bool:
+    """End the child run of a cancelled *task* as ``cancelled``, never ``failed`` (#2721).
+
+    A cancel the parent, the user or an administrator chose is no failure of
+    the member: written ``failed``, it raised ``member_failing`` on a healthy
+    member and counted in its failure rate. ``cancelled`` stays out of the
+    member verdict (``run_outcome`` reads it as ``other``). A delegated child
+    run (no assignment) then raises ``run.failed`` with ``reason: "cancelled"``
+    and ``cancelled: true`` once *db* commits, so a listener sees the ending
+    and can tell it from a failure. Locks the run after the task (the
+    worker's order). Returns whether a run was ended here.
+    """
+    run_id = (task.metadata_json or {}).get("assignment_run_id")
+    if not run_id:
+        return False
+    try:
+        run_uuid = uuid.UUID(str(run_id))
+    except (ValueError, TypeError):
+        return False
+    from app.models.assignment import AssignmentRun
+
+    child_run = (
+        await db.execute(select(AssignmentRun).where(AssignmentRun.id == run_uuid).with_for_update())
+    ).scalar_one_or_none()
+    if child_run is None or child_run.status not in _CHILD_RUN_LIVE_STATUSES:
+        return False
+    child_run.status = "cancelled"
+    child_run.error = error
+    child_run.completed_at = now
+    if child_run.assignment_id is None:
+        _publish_delegated_run_ended_after_commit(db, child_run, "cancelled", error)
+    return True
+
+
 async def cancel_sub_agent_task(
     task_id: str,
     requester_id: str,
     *,
     is_admin: bool = False,
     spawned_by: str | None = None,
+    cancelled_by_run_id: str | None = None,
 ) -> dict | None:
     """Cancel a single background sub-agent task (owner or admin).
 
     ``spawned_by`` (an agent id) narrows the gate to the tasks that agent
     spawned: the agent-facing ``cancel_background_task`` tool passes its own
-    id, so an agent stops only its own tasks of the acting user (#2217).
+    id, so an agent stops only its own tasks of the acting user (#2217), and
+    ``cancelled_by_run_id``, the run it cancels from, which the error names.
 
     Best-effort, durable cancellation:
       * The ``sub_agent`` orchestration execution is transitioned to the FSM
@@ -1852,8 +1904,9 @@ async def cancel_sub_agent_task(
         we never hard-kill an in-flight asyncio task mid-step.
       * The ``SubAgentTask`` row is marked ``cancelled`` with delivery
         suppressed so a late result never lands in the conversation.
-      * The linked child ``AssignmentRun`` (if still active) is failed so the
-        run tree reflects the cancellation.
+      * The linked child ``AssignmentRun`` (if still active) is ended
+        ``cancelled``, never ``failed``, its error naming who cancelled
+        (:func:`_cancel_child_run`, #2721).
       * The ``background_task`` delegation audit row is closed.
 
     Returns a small status dict, or ``None`` when the task does not exist or the
@@ -1923,12 +1976,14 @@ async def cancel_sub_agent_task(
             await cancel_execution(own_db, execution_id=execution.id)
 
         # 2. Mark the task cancelled + suppress proactive delivery.
+        if is_admin and not is_owner:
+            reason = CANCELLED_BY_ADMIN_REASON
+        elif spawned_by is not None:
+            reason = cancelled_by_run_reason(cancelled_by_run_id or (task.metadata_json or {}).get("parent_run_id"))
+        else:
+            reason = CANCELLED_BY_USER_REASON
         task.status = "cancelled"
-        task.error = (
-            "Cancelled by an administrator."
-            if (is_admin and not is_owner)
-            else "Cancelled by user."
-        )
+        task.error = reason
         task.completed_at = now
         task.metadata_json = {
             **(task.metadata_json or {}),
@@ -1939,33 +1994,8 @@ async def cancel_sub_agent_task(
             # running task's worker keeps the ledger its run recorded.
             _record_no_turn_ledger(task)
 
-        # 3. Fail the linked child AssignmentRun if still active.
-        meta = task.metadata_json or {}
-        run_id = meta.get("assignment_run_id")
-        if run_id:
-            try:
-                run_uuid = uuid.UUID(str(run_id))
-            except (ValueError, TypeError):
-                run_uuid = None
-            if run_uuid is not None:
-                from app.models.assignment import AssignmentRun
-
-                child_run = (
-                    await own_db.execute(
-                        select(AssignmentRun)
-                        .where(AssignmentRun.id == run_uuid)
-                        .with_for_update()
-                    )
-                ).scalar_one_or_none()
-                if child_run is not None and child_run.status in (
-                    "pending",
-                    "delayed",
-                    "running",
-                    "awaiting_human",
-                ):
-                    child_run.status = "failed"
-                    child_run.error = "Background task cancelled."
-                    child_run.completed_at = now
+        # 3. End the linked child AssignmentRun as cancelled if still active.
+        await _cancel_child_run(own_db, task, now=now, error=reason)
 
         # 4. Close the delegation audit row.
         await _update_task_delegation(
@@ -2086,6 +2116,12 @@ async def cancel_sub_agent_tasks_for_scope(
         _mark_task_cancelled(task, now=now, error=error)
         await _update_task_delegation(db, str(task.id), "cancelled", error=error)
     if tasks:
+        await db.flush()
+        # Each task's own run stops with it, cancelled, never failed (#2721):
+        # after the flush wrote the task rows, so the run lock is taken after
+        # the task's, the worker's order.
+        for task in tasks:
+            await _cancel_child_run(db, task, now=now, error=error)
         await db.flush()
         logger.warning(
             "Emergency stop cancelled %d background task(s) (%d execution(s)) "
@@ -2245,6 +2281,14 @@ async def mark_sub_agent_tasks_cancelled_for_runs(
         )
         cancelled += 1
     if cancelled:
+        # A task stopped with its PARENT run: its own run, outside the runs
+        # being stopped, ends cancelled too, never failed (#2721); a run the
+        # caller deletes or cancels itself is left to the caller. The run read
+        # autoflushes the task rows first: task lock first, the worker's order.
+        stopped = set(ids)
+        for task in tasks_by_id.values():
+            if str((task.metadata_json or {}).get("assignment_run_id")) not in stopped:
+                await _cancel_child_run(db, task, now=now, error=reason)
         logger.info(
             "Cancelled %d background task(s) for %d deleted run(s)",
             cancelled,
@@ -5320,6 +5364,12 @@ def _publish_delegated_run_ended_after_commit(db: AsyncSession, run: Any, status
     scope), as an assignment run's does. A snapshot of the row is taken now:
     the ORM object is expired by the commit. A rolled-back ending publishes
     nothing. Never raises.
+
+    A run ended ``cancelled`` (its task cancelled by the parent run, the user
+    or an administrator, #2721) raises ``run.failed`` with ``reason:
+    "cancelled"`` and ``cancelled: true``: no event of its own, so a
+    ``run.failed`` listener sees every ending that is not a completion and
+    filters ``cancelled`` to tell a chosen stop from a defect.
     """
     try:
         from types import SimpleNamespace
@@ -5336,7 +5386,7 @@ def _publish_delegated_run_ended_after_commit(db: AsyncSession, run: Any, status
             is_company_managed=run.is_company_managed,
             stop_reason=getattr(run, "stop_reason", None),
         )
-        name = f"run.{status}"
+        name = "run.failed" if status == "cancelled" else f"run.{status}"
         reason = status
 
         def _after_commit(_session: Any) -> None:

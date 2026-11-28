@@ -806,7 +806,9 @@ def build_sub_agent_tools(
             if not _is_uuid_like(tid):
                 lines.append(_invalid_task_id_message(tid))
                 continue
-            result = await cancel_sub_agent_task(tid, user_id, spawned_by=str(parent_agent_id))
+            result = await cancel_sub_agent_task(
+                tid, user_id, spawned_by=str(parent_agent_id), cancelled_by_run_id=parent_run_id
+            )
             if result is None:
                 lines.append(f"{tid}: not found among your background tasks")
             elif result.get("already_terminal"):
