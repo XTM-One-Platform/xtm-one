@@ -149,17 +149,23 @@ def coalesce(batch: list[tuple[Any, ...]]) -> tuple[list[tuple[Any, ...]], list[
     return kept, folded
 
 
-async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
+async def drain(limit: int = DRAIN_BATCH, *, deadline: float | None = None) -> dict[str, int]:
     """Record up to *limit* waiting deliveries, oldest first; the counts recorded, retried and dropped.
 
     Rows are read with ``SKIP LOCKED`` so two pods never record one delivery twice, and
     each row is deleted in its own short transaction once recorded: no connection is
     held while a recorder works.
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is read before every row: past it the
+    batch stops, what was recorded is already deleted, and the rows left stay in the inbox
+    for the next pass (counted ``deferred``, their claimed attempt given back).
     """
+    import time
+
     from app.core.database import async_session
     from app.models.ctem_signal_inbox import CtemSignalInbox
 
-    counts = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
+    counts = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0, "deferred": 0}
     async with async_session() as db:
         rows = (
             (
@@ -189,7 +195,12 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
     for row_id in folded:
         await _delete(row_id)
     counts["coalesced"] = len(folded)
-    for row_id, provider, integration_id, event_key, payload, verified, attempts in batch:
+    for index, (row_id, provider, integration_id, event_key, payload, verified, attempts) in enumerate(batch):
+        if deadline is not None and time.monotonic() >= deadline:
+            left = [row[0] for row in batch[index:]]
+            counts["deferred"] = len(left)
+            await _give_back(left)
+            break
         try:
             await record(provider, integration_id, event_key, payload or {}, verified=verified)
         except Exception as exc:
@@ -212,22 +223,25 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
     return counts
 
 
-async def drain_within(budget_seconds: float = DRAIN_BUDGET_SECONDS, limit: int = DRAIN_BATCH) -> dict[str, int]:
-    """Drain batch after batch until the inbox is empty or *budget_seconds* have passed; the summed counts.
+async def drain_within(
+    budget_seconds: float = DRAIN_BUDGET_SECONDS, limit: int = DRAIN_BATCH, *, deadline: float | None = None
+) -> dict[str, int]:
+    """Drain batch after batch until the inbox is empty or the deadline has passed; the summed counts.
 
-    A batch is never cut: the budget is read between batches, so a tick overruns it by one batch at most.
+    The deadline is *deadline* when given, else now plus *budget_seconds*. It is read before
+    every row (#2774), so a slow recorder never holds the pass past it by more than one row.
     """
     import time
 
-    totals = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
-    deadline = time.monotonic() + budget_seconds
+    totals = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0, "deferred": 0}
+    stop = deadline if deadline is not None else time.monotonic() + budget_seconds
     while True:
-        counts = await drain(limit)
+        counts = await drain(limit, deadline=stop)
         for key, value in counts.items():
             totals[key] = totals.get(key, 0) + value
         handled = counts["recorded"] + counts["dropped"] + counts["coalesced"]
-        # Empty, or only retries left (a batch that recorded nothing): wait for the next tick.
-        if handled == 0 or time.monotonic() >= deadline:
+        # Empty, or only retries left (a batch that recorded nothing): wait for the next pass.
+        if handled == 0 or counts.get("deferred") or time.monotonic() >= stop:
             return totals
 
 
@@ -279,6 +293,22 @@ def note_depth(value: int) -> bool:
     )
     _last_logged_depth = value
     return True
+
+
+async def _give_back(row_ids: list[Any]) -> None:
+    """The rows a batch claimed and never reached (#2774): their attempt given back, so a deadline never drops a row."""
+    if not row_ids:
+        return
+    from app.core.database import async_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    async with async_session() as db:
+        await db.execute(
+            update(CtemSignalInbox)
+            .where(CtemSignalInbox.id.in_(row_ids), CtemSignalInbox.attempts > 0)
+            .values(attempts=CtemSignalInbox.attempts - 1)
+        )
+        await db.commit()
 
 
 async def _delete(row_id: Any) -> None:
