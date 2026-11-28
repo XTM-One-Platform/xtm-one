@@ -51,8 +51,15 @@ const SECONDARY_HIDE_BELOW = "4xl" as const;
  * names and versions to what a 708 px half draws whole, so they also fit the stacked card.
  * Whole class names, so Tailwind sees them.
  */
-export const ASSET_NAME_CAP = "max-w-[14rem] @4xl:max-w-none";
-export const RUNNING_VERSION_CAP = "max-w-[10rem] @4xl:max-w-none";
+const ASSET_NAME_CAP = "max-w-[14rem] @4xl:max-w-none";
+const RUNNING_VERSION_CAP = "max-w-[10rem] @4xl:max-w-none";
+
+/** The width rule of the Asset and Running version cells: none when paired, the 4xl cap otherwise. */
+export function affectedAssetCaps(paired: boolean): { asset: string; version: string } {
+  return paired
+    ? { asset: "whitespace-nowrap", version: "whitespace-nowrap" }
+    : { asset: ASSET_NAME_CAP, version: RUNNING_VERSION_CAP };
+}
 
 const STATUS_RANK: Record<NonNullable<CtemCaseAffectedAsset["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
 
@@ -64,8 +71,7 @@ function assetVersionText(asset: CtemCaseAffectedAsset, t: (s: string) => string
 
 export function CaseAffectedAssets({ data, paired = false }: { data: CtemCaseAffectedAssets | undefined; paired?: boolean }) {
   const { t_i18n, intl } = useFormatter();
-  const assetCap = paired ? "whitespace-nowrap" : ASSET_NAME_CAP;
-  const versionCap = paired ? "whitespace-nowrap" : RUNNING_VERSION_CAP;
+  const { asset: assetCap, version: versionCap } = affectedAssetCaps(paired);
   if (!data || data.asset_count === 0) return null;
   const fromInventory = data.version_source === "inventory";
   const withStatus = fromInventory && data.assets.some((a) => a.status);
