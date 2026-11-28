@@ -22,12 +22,19 @@ This module folds them into one grouped decision per recipient and kind:
   case's item reopens with the answer in ``payload.answer``, so the fleet's
   "Gate answered" listener applies it on the case as for an individual card.
 
+A member answers with one of its OWN gate's options, never a key the group
+invents (#2801): "approve all" gives each case the option recommended on its
+own ask, "decline all" the decline option the members share. Only a gate with a
+recommendation joins, and only a group whose members offer the same option keys;
+a member whose answer cannot be mapped gets its own card back.
+
 The group's key is ``ctem:group:<kind>:<recipient>``: under ``ctem:`` it is a
 CTEM key, but it names no case, so no case page counts it as its gate.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -53,21 +60,24 @@ APPROVE_ALL = "approve_all"
 APPROVE_SELECTED = "approve_selected"
 DECLINE_ALL = "decline_all"
 LATER = "later"
-#: The option each case's item receives.
+#: The option a legacy member receives when its gate's ask cannot be read (binary gates).
 CASE_APPROVE = "approve"
 CASE_DECLINE = "decline"
+#: The option keys "decline all" maps to, first found in the members' shared option set.
+DECLINE_KEYS: tuple[str, ...] = (CASE_DECLINE, "do_not_run", "reject", "park")
+_LABEL_CHARS = 80
 
 _CONTEXT_CHARS = 800
 #: A card number or range standing alone ("4", "7-9"), never digits inside a word such as "host-12".
 _NUMBERS = re.compile(r"(?<![\w-])(\d+)(?:\s*-\s*(\d+))?(?![\w-])")
 
 _QUESTIONS: dict[str, str] = {
-    FIRST_MEASURE: "Launch the first measurement of {n} asset(s) that have no test evidence yet?",
+    FIRST_MEASURE: "Answer {n} first-measure decision(s), each with the option recommended for its case?",
 }
 _ASKS: dict[str, str] = {
     FIRST_MEASURE: (
-        "Each case asks for a first validation run on one asset (no measurement ever booked in OpenCRQ). "
-        "The runs are not read-only."
+        "Each case asks how to measure one asset that has no test evidence yet. "
+        "Approve answers each case with its recommended option, shown after its title."
     ),
 }
 
@@ -117,9 +127,17 @@ def stays_individual(case: CaseFacts, now: datetime) -> bool:
     return due - now <= NEAR_SLA
 
 
-def group_key(kind: str, recipient: str) -> str:
-    """``ctem:group:<kind>:<recipient>`` (pure)."""
-    return f"{GROUP_PREFIX}{kind}:{recipient}"
+def group_key(kind: str, recipient: str, option_keys: Sequence[str] | None = None) -> str:
+    """``ctem:group:<kind>:<recipient>``, then ``:<option set digest>`` for members with an option set (pure).
+
+    Gates offering different option keys never share a group (#2801): one
+    answer must map to an option every member offers.
+    """
+    base = f"{GROUP_PREFIX}{kind}:{recipient}"
+    if not option_keys:
+        return base
+    digest = hashlib.sha256("\n".join(sorted(option_keys)).encode()).hexdigest()[:12]
+    return f"{base}:{digest}"
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -138,14 +156,83 @@ def _parse(value: object) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def member_choice(ask: object) -> tuple[tuple[str, ...], str, str] | None:
+    """``(sorted option keys, recommended key, its label)`` of a gate's ask, ``None`` when it cannot join (pure).
+
+    A gate joins a group only when its ask offers at least two options and
+    recommends one of them: the group's "approve" answers it with that option.
+    """
+    if not isinstance(ask, Mapping):
+        return None
+    options = [o for o in ask.get("options") or [] if isinstance(o, Mapping) and str(o.get("key") or "").strip()]
+    if len(options) < 2:
+        return None
+    recommended = str(ask.get("recommendation") or "").strip()
+    match = next((o for o in options if str(o["key"]).strip().casefold() == recommended.casefold()), None)
+    if not recommended or match is None:
+        return None
+    keys = tuple(sorted({str(o["key"]).strip() for o in options}))
+    label = str(match.get("label") or match["key"]).strip()[:_LABEL_CHARS]
+    return keys, str(match["key"]).strip(), label
+
+
+def decline_key(option_keys: Sequence[str] | None) -> str | None:
+    """The option "decline all" gives every member: the first of :data:`DECLINE_KEYS` the set offers (pure).
+
+    ``None`` for an option set with none of them. A legacy group, whose set was
+    never stored, keeps the binary ``decline``.
+    """
+    if option_keys is None:
+        return CASE_DECLINE
+    offered = {k.casefold(): k for k in option_keys}
+    return next((offered[k.casefold()] for k in DECLINE_KEYS if k.casefold() in offered), None)
+
+
+def member_answer(ask: object, *, approving: bool, legacy: bool) -> tuple[str, str] | None:
+    """``(option key, label)`` a member receives from its group's answer, ``None`` when none of its options fits (pure).
+
+    Approve gives the option its own ask recommends; decline gives the first
+    option of :data:`DECLINE_KEYS` its ask offers. A member whose ask cannot be
+    read at all keeps the binary ``approve`` / ``decline`` of a group opened
+    before #2801 (*legacy*); in a newer group it maps to nothing.
+    """
+    choice = member_choice(ask)
+    if choice is None:
+        if not legacy:
+            return None
+        return (CASE_APPROVE, "Approve") if approving else (CASE_DECLINE, "Decline")
+    option_keys, recommended, recommended_label = choice
+    if approving:
+        return recommended, recommended_label
+    key = decline_key(option_keys)
+    if key is None:
+        return None
+    options = ask.get("options") if isinstance(ask, Mapping) else None
+    label = next(
+        (str(o.get("label") or key) for o in options or [] if isinstance(o, Mapping) and str(o.get("key")) == key),
+        key,
+    )
+    return key, label[:_LABEL_CHARS]
+
+
 def earliest_due(members: Sequence[Mapping[str, Any]]) -> datetime | None:
     """The earliest ``due_at`` of the members, ``None`` when none has one (pure)."""
     dues = [d for d in (_parse(m.get("due_at")) for m in members) if d is not None]
     return min(dues) if dues else None
 
 
-def build_ask(kind: str, members: Sequence[Mapping[str, Any]], *, cases_url: str | None = None) -> dict[str, Any]:
-    """The card of a group: the count, the priority mix, the list of cases, the four options (pure)."""
+def build_ask(
+    kind: str,
+    members: Sequence[Mapping[str, Any]],
+    *,
+    cases_url: str | None = None,
+    option_keys: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """The card of a group: the count, the priority mix, each case with its recommended option, the options (pure).
+
+    "Decline all" is offered only when the members' option set has a decline
+    option (:func:`decline_key`).
+    """
     n = len(members)
     mix: dict[str, int] = {}
     for member in members:
@@ -157,6 +244,8 @@ def build_ask(kind: str, members: Sequence[Mapping[str, Any]], *, cases_url: str
     used = len(lead) + 2
     for index, member in enumerate(members):
         line = f"{index + 1}. {member.get('title') or 'case'}".rstrip()
+        if member.get("recommended_label"):
+            line = f"{line}: {member['recommended_label']}"
         if used + len(line) + 1 > _CONTEXT_CHARS - 40:
             lines.append(f"- and {n - index} more on the cases list")
             break
@@ -166,14 +255,22 @@ def build_ask(kind: str, members: Sequence[Mapping[str, Any]], *, cases_url: str
         "question": _QUESTIONS.get(kind, "Approve the {n} grouped decision(s)?").format(n=n),
         "context": "\n".join([lead, *lines]),
         "options": [
-            {"key": APPROVE_ALL, "label": "Approve all", "effect": "Every case of the list moves on."},
+            {
+                "key": APPROVE_ALL,
+                "label": "Approve all",
+                "effect": "Every case of the list is answered with the option shown after its title.",
+            },
             {
                 "key": APPROVE_SELECTED,
                 "label": "Approve selected",
-                "effect": "Name the case numbers shown on this card (e.g. 1, 4, 7-9): only those move on; "
-                "the rest stay in this decision and the card then lists the next ones.",
+                "effect": "Name the case numbers shown on this card (e.g. 1, 4, 7-9): only those are answered "
+                "with their option; the rest stay in this decision and the card then lists the next ones.",
             },
-            {"key": DECLINE_ALL, "label": "Decline all", "effect": "Every case is parked with your reason."},
+            *(
+                [{"key": DECLINE_ALL, "label": "Decline all", "effect": "Every case is parked with your reason."}]
+                if decline_key(option_keys)
+                else []
+            ),
             {
                 "key": LATER,
                 "label": "Later",
@@ -250,15 +347,22 @@ async def join_group(
     waits_for_user_id: uuid.UUID | None,
     waits_for_group_ids: list[Any] | None,
     now: datetime,
+    ask: object = None,
 ) -> tuple[Any, bool] | None:
     """The group item the decision *correlation_key* joins, and whether it was created; ``None`` to stay individual.
 
-    The caller writes the case's item blocked on the group, without ``needs_human``.
-    Never raises on a case it cannot read: that decision stays individual.
+    The caller writes the case's item blocked on the group, without ``needs_human``,
+    and keeps its *ask*. A gate whose ask recommends none of two or more options
+    stays individual (:func:`member_choice`). Never raises on a case it cannot
+    read: that decision stays individual.
     """
     case_id = case_id_of(correlation_key)
     if case_id is None or owner_agent_id is None:
         return None
+    choice = member_choice(ask)
+    if choice is None:
+        return None
+    option_keys, recommended, recommended_label = choice
     recipient = (
         f"user-{waits_for_user_id}"
         if waits_for_user_id
@@ -277,7 +381,7 @@ async def join_group(
         return None
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
 
-    key = group_key(kind, recipient)
+    key = group_key(kind, recipient, option_keys)
     await _lock(db, key)
     group = (
         await db.execute(
@@ -300,6 +404,8 @@ async def join_group(
         "severity": case.severity,
         "due_at": _iso(due_at),
         "priority": priority,
+        "recommended": recommended,
+        "recommended_label": recommended_label,
     }
     created = group is None
     if group is None:
@@ -329,7 +435,7 @@ async def join_group(
             if m.get("case_id") != case_id
         ]
         members.append(member)
-    _write_group(group, kind, recipient, members, now)
+    _write_group(group, kind, recipient, members, now, option_keys=list(option_keys))
     # The group's id is what the case's item waits on: give a new group its row now.
     await db.flush()
     return group, created
@@ -397,12 +503,13 @@ async def consolidate(db: AsyncSession, *, now: datetime | None = None, limit: i
             waits_for_user_id=item.waits_for_user_id,
             waits_for_group_ids=item.waits_for_group_ids,
             now=now,
+            ask=item.ask,
         )
         if joined is None:
             continue
         group = joined[0]
+        # The member keeps its ask (#2801): its options are what the group's answer maps to.
         item.needs_human = None
-        item.ask = None
         item.waits_for_user_id = None
         item.waits_for_group_ids = None
         item.status = "blocked"
@@ -416,17 +523,67 @@ async def consolidate(db: AsyncSession, *, now: datetime | None = None, limit: i
 _PRIORITY_RANK = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
 
 
-def _write_group(group: Any, kind: str, recipient: str, members: list[dict[str, Any]], now: datetime) -> None:
-    """Rewrite the group's title, card, due date, priority and member list from *members*."""
+def _write_group(
+    group: Any,
+    kind: str,
+    recipient: str,
+    members: list[dict[str, Any]],
+    now: datetime,
+    *,
+    option_keys: list[str] | None = None,
+) -> None:
+    """Rewrite the group's title, card, due date, priority and member list from *members*.
+
+    *option_keys* is the option set every member offers; ``None`` on a legacy
+    group (opened before #2801), which never stored one.
+    """
     payload = dict(group.payload or {})
-    payload["group"] = {"kind": kind, "recipient": recipient, "members": members}
+    spec: dict[str, Any] = {"kind": kind, "recipient": recipient, "members": members}
+    if option_keys is not None:
+        spec["option_keys"] = option_keys
+    payload["group"] = spec
     group.payload = payload
     group.title = f"CTEM: {len(members)} decision(s) grouped ({kind.replace('_', ' ')})"
-    group.ask = build_ask(kind, members, cases_url=_cases_url())
+    group.ask = build_ask(kind, members, cases_url=_cases_url(), option_keys=option_keys)
     group.due_at = earliest_due(members)
     ranks = [_PRIORITY_RANK.get(str(m.get("priority")), 2) for m in members]
     group.priority = next(p for p, r in _PRIORITY_RANK.items() if r == min(ranks or [2]))
     group.last_activity_at = now
+
+
+def _back_to_own_card(item: Any, group: Any, now: datetime) -> None:
+    """Give a member whose gate offers no option for the group's answer its own card back (#2801)."""
+    item.needs_human = True
+    item.waits_for_user_id = getattr(group, "waits_for_user_id", None)
+    item.waits_for_group_ids = getattr(group, "waits_for_group_ids", None)
+    item.status = "blocked"
+    item.blocked_on = None
+    item.blocked_reason = None
+    note = f"Left the grouped decision {group.id}: no option of this case fits its answer; asked on its own card."
+    item.description = f"{note}\n\n{item.description or ''}".rstrip()
+    item.last_activity_at = now
+
+
+async def _restore_asks(db: AsyncSession, items: Sequence[Any]) -> None:
+    """Put back the ask a member folded before #2801 lost, from its closed decision (``consolidate`` nulled it)."""
+    missing = {item.id: item for item in items if not isinstance(getattr(item, "ask", None), Mapping)}
+    if not missing:
+        return
+    try:
+        from app.models.decision import Decision
+
+        rows = (
+            await db.execute(
+                select(Decision.source_id, Decision.ask)
+                .where(Decision.source_type == "work_item", Decision.source_id.in_(list(missing)))
+                .order_by(Decision.created_at)
+            )
+        ).all()
+    except Exception:  # a session double without the decisions table: the member stays legacy
+        return
+    for source_id, ask in rows:  # the latest decision of each item wins
+        if source_id in missing and member_choice(ask) is not None:
+            missing[source_id].ask = dict(ask)
 
 
 async def fan_out(
@@ -441,27 +598,32 @@ async def fan_out(
 
     ``approve_selected`` answers the members the answer text names and keeps the
     rest grouped (``ValueError`` when it names none); ``approve_all`` and
-    ``decline_all`` answer every member. The caller commits, then publishes each
-    answered item's transition (answered) so the fleet's listener applies it.
+    ``decline_all`` answer every member. Each member receives an option of its
+    own gate (:func:`member_answer`); one whose gate offers none for the answer
+    is given its own card back and is not in the ids answered. The caller
+    commits, then publishes each answered item's transition (answered) so the
+    fleet's listener applies it.
     """
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
 
     spec = dict(group.payload or {}).get("group") or {}
     members: list[dict[str, Any]] = list(spec.get("members") or [])
+    stored_keys = spec.get("option_keys")
+    option_keys: list[str] | None = [str(k) for k in stored_keys] if isinstance(stored_keys, list) else None
     chosen: list[Mapping[str, Any]]
+    approving = option in (APPROVE_ALL, APPROVE_SELECTED)
     if option == APPROVE_SELECTED:
         chosen = selected_members(members, answer.get("text"))
         if not chosen:
             raise ValueError(
                 "approve_selected needs the cases to approve: name their numbers on the card (e.g. 1, 4, 7-9)"
             )
-        case_option = CASE_APPROVE
     elif option == APPROVE_ALL:
         chosen = [*members]
-        case_option = CASE_APPROVE
     elif option == DECLINE_ALL:
+        if decline_key(option_keys) is None:
+            raise ValueError("decline_all is not an answer of this grouped decision: its cases offer no decline")
         chosen = [*members]
-        case_option = CASE_DECLINE
     else:
         raise ValueError(f"option {option!r} is not an answer of a grouped decision")
     ids = [uuid.UUID(str(m["item_id"])) for m in chosen]
@@ -476,10 +638,18 @@ async def fan_out(
         .scalars()
         .all()
     )
+    await _restore_asks(db, rows)
     now = datetime.now(UTC)
     answered: list[uuid.UUID] = []
-    label = "Approve" if case_option == CASE_APPROVE else "Decline"
+    returned: list[uuid.UUID] = []
     for item in rows:
+        mapped = member_answer(item.ask, approving=approving, legacy=option_keys is None)
+        if mapped is None:
+            # No option of its own gate fits the group's answer: it gets its own card back (#2801).
+            _back_to_own_card(item, group, now)
+            returned.append(item.id)
+            continue
+        case_option, label = mapped
         payload = dict(item.payload or {})
         payload["answer"] = {
             **{k: v for k, v in answer.items() if k in ("text", "answered_by", "answered_at", "question")},
@@ -500,6 +670,13 @@ async def fan_out(
     chosen_ids = {str(m["item_id"]) for m in chosen}
     remaining = [m for m in members if str(m["item_id"]) not in chosen_ids]
     if remaining:
-        _write_group(group, str(spec.get("kind") or FIRST_MEASURE), str(spec.get("recipient") or ""), remaining, now)
+        _write_group(
+            group,
+            str(spec.get("kind") or FIRST_MEASURE),
+            str(spec.get("recipient") or ""),
+            remaining,
+            now,
+            option_keys=option_keys,
+        )
         return answered, True
     return answered, False
