@@ -4,13 +4,15 @@
  * CTEM > Inventory (with the outside lens card): "Evidence health" (#1344), the card the signal sources'
  * "Turn on" opens for the OpenCRQ evidence health pass (CTEM-28, trigger paths 9 and 12,
  * dev-docs/ctem-signals.md s.2bis). Read view at rest; Edit (administrators, like the PUT)
- * opens the switch, the integration and the two numbers; Save writes a new profile version
+ * opens the switch, the integration, the run-as user (#2739) and the two numbers; Save writes a new profile version
  * with this field alone changed. On by default: until an administrator saves it, the pass
  * runs on the single connected OpenCRQ integration.
  */
 
 import { useId, useState } from "react";
 import { Icon } from "@filigran/design-system";
+import { ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
+import { useRunAsUserName } from "@/components/module-run-as/useRunAsUserName";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
@@ -37,8 +39,10 @@ import {
   EVIDENCE_HEALTH_BOUNDS,
   type EvidenceHealthPass,
   evidenceHealthIntegrationChoice,
+  evidenceHealthRunAs,
   evidenceHealthRuns,
   evidenceHealthSavedIntegration,
+  evidenceHealthSavedRunAs,
   fromForm,
   toForm,
 } from "@/lib/organization-profile";
@@ -57,6 +61,8 @@ function CardIcon({ className }: { className?: string }) {
 interface Draft {
   enabled: boolean;
   integration: string;
+  /** The user picked in the run-as field; the integration's owner until changed. */
+  runAs: string;
   maxAge: string;
   cadence: string;
 }
@@ -96,6 +102,11 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
           ? t_i18n("None picked: several are connected")
           : t_i18n("No connected OpenCRQ integration");
 
+  // Who the pass reads OpenCRQ as (#2739): the picked user, else the owner of the integration it reads.
+  const readIntegration = integrations.find((integration) => integration.id === (state.integration || declared));
+  const runAs = evidenceHealthRunAs(pass, readIntegration);
+  const runAsText = useRunAsUserName(runAs.userId, { owner: runAs.owner, ownerName: readIntegration?.owner_name });
+
   const statusText = state.runs
     ? t_i18n("On, reading {name}", { name: nameOf(state.integration) })
     : !candidates.length
@@ -108,6 +119,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
     setDraft({
       enabled: pass.enabled ?? true,
       integration: declared || AUTO,
+      runAs: runAs.userId ?? "",
       maxAge: String(pass.max_age_days),
       cadence: String(pass.cadence_hours),
     });
@@ -119,11 +131,21 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
   // Off on the default setting names the single connected integration, so the off holds (UX round 1 on #1356, B4).
   const savedIntegration = (pick: string, enabled: boolean) =>
     evidenceHealthSavedIntegration(pick === AUTO ? "" : pick, enabled, candidates.map((integration) => integration.id));
+  // The owner of the integration the draft reads: a pick of that owner on an unset run-as stays unset.
+  const draftIntegration = draft ? (draft.integration === AUTO ? state.integration || (candidates.length === 1 ? candidates[0].id : "") : draft.integration) : "";
+  const draftOwner = integrations.find((integration) => integration.id === draftIntegration)?.user_id ?? null;
   const next: EvidenceHealthPass | null =
     draft && maxAge !== null && cadence !== null
-      ? { enabled: draft.enabled, integration: savedIntegration(draft.integration, draft.enabled), max_age_days: maxAge, cadence_hours: cadence }
+      ? {
+          enabled: draft.enabled,
+          integration: savedIntegration(draft.integration, draft.enabled),
+          run_as_user_id: evidenceHealthSavedRunAs(draft.runAs, pass.run_as_user_id, draftOwner),
+          max_age_days: maxAge,
+          cadence_hours: cadence,
+        }
       : null;
-  const dirty = draft !== null && (next === null || JSON.stringify(next) !== JSON.stringify({ ...pass, enabled: pass.enabled ?? true }));
+  const dirty =
+    draft !== null && (next === null || JSON.stringify(next) !== JSON.stringify({ ...pass, enabled: pass.enabled ?? true, run_as_user_id: pass.run_as_user_id ?? null }));
   const blocked = next === null || pickMissing;
 
   const onSave = () => {
@@ -182,6 +204,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
             data-testid="settings.organization.evidence-health.status"
           />
           <SettingsReadField label={t_i18n("OpenCRQ integration")} value={integrationText} />
+          <SettingsReadField label={t_i18n("Run as")} value={runAsText} data-testid="settings.organization.evidence-health.run-as" />
           <SettingsReadField
             label={t_i18n("Re-test delay")}
             value={t_i18n("{count, plural, one {# day} other {# days}}", { count: pass.max_age_days })}
@@ -207,7 +230,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
               label={t_i18n("OpenCRQ integration")}
               helper={
                 candidates.length
-                  ? t_i18n("The integration the pass reads, with its owner's credential.")
+                  ? t_i18n("The integration the pass reads.")
                   : t_i18n("No connected OpenCRQ integration. Connect one in Integrations first.")
               }
               error={pickMissing ? t_i18n("Several OpenCRQ integrations are connected: pick the one the pass reads.") : undefined}
@@ -228,6 +251,14 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
                 onValueChange={(integration) => setDraft({ ...draft, integration: integration || AUTO })}
               />
             </SettingsField>
+            <div data-testid="settings.organization.evidence-health.run-as-field">
+              <ModuleRunAsField
+                module="opencrq"
+                value={draft.runAs}
+                onChange={(runAs) => setDraft((current) => (current ? { ...current, runAs } : current))}
+                helper={t_i18n("The user the pass reads OpenCRQ as. Default: the integration's owner.")}
+              />
+            </div>
             <SettingsField
               id={`${id}-max-age`}
               label={t_i18n("Re-test delay (days)")}
