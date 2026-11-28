@@ -22298,5 +22298,12 @@
   "Turn off {integration}?": "{integration} をオフにしますか?",
   "Turn off the outside lens?": "外部ビューをオフにしますか?",
   "Turn off the evidence health pass?": "エビデンス健全性パスをオフにしますか?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}",
+  "Waiting for webhook": "Webhook 待ち",
+  "On, no delivery yet": "オン、まだ配信なし",
+  "Last delivery: {date}": "最終配信: {date}",
+  "Use on this source": "このソースで使用",
+  "OAuth default app": "OAuth 既定アプリ",
+  "Integration used on this source": "このソースでインテグレーションを使用します",
+  "Integration taken off this source": "このソースからインテグレーションを外しました"
 }

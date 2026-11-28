@@ -334,4 +334,62 @@ describe("the sources side panel (#1445)", () => {
     expect(screen.getAllByTestId("ctem-path-source")).toHaveLength(1);
     expect(within(github).getByTestId("ctem-path-source-configure").getAttribute("aria-expanded")).toBe("true");
   });
+
+  const GH = (over: Partial<NonNullable<CtemSignalPath["sources"]>[number]> = {}) => ({
+    provider: "github",
+    kind: "listener" as const,
+    key: "github:listener",
+    event: "A Dependabot alert is opened",
+    bound: true,
+    integrations: [
+      { id: "i-gh-1", name: "GitHub Filigran", status: "connected", webhook_secret_set: true, last_delivery_at: "2026-11-28T09:00:00Z", used: true },
+      { id: "i-gh-2", name: "GitHub Labs", status: "connected", webhook_secret_set: false, last_delivery_at: null, used: true },
+    ],
+    ...over,
+  });
+  const codePath = (source: ReturnType<typeof GH>): CtemSignalPath => ({ ...EXPOSURE, id: "code_flaw", label: "Code flaw", sources: [source] });
+
+  it("lists each integration of a webhook listener with its state, last delivery and its own switch, and writes the exclusion (#2736)", () => {
+    const path = codePath(GH());
+    open(path);
+    const config = configOf("github");
+    const rows = within(config).getAllByTestId("ctem-path-source-integration-row");
+    expect(rows.map((r) => r.getAttribute("data-state"))).toEqual(["connected", "waiting"]);
+    expect(within(rows[0]).getByTestId("ctem-path-source-integration-delivery").textContent).not.toContain("Never");
+    expect(within(rows[1]).getByTestId("ctem-path-source-integration-delivery").textContent).toContain("Never");
+    // The source reads its event on line 2 of the Source cell.
+    expect(screen.getByTestId("ctem-path-source-event").textContent).toBe("A Dependabot alert is opened");
+    fireEvent.click(within(rows[1]).getByTestId("ctem-path-source-integration-use"));
+    const body = state.saved[0] as { fields: { signal_sources: Record<string, unknown> } };
+    expect(body.fields.signal_sources.excluded_integrations).toEqual({ "github:listener": ["i-gh-2"] });
+    // The other lists travel whole.
+    expect(body.fields.signal_sources.excluded).toEqual({ new_exposure: ["gti:pass"] });
+  });
+
+  it("reads On only when a used integration can deliver: Waiting for webhook without a secret, On, no delivery yet before any (#2736)", () => {
+    const waiting = codePath(GH({ integrations: [{ id: "i-gh-2", name: "GitHub Labs", status: "connected", webhook_secret_set: false, last_delivery_at: null, used: true }] }));
+    const first = renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={waiting} paths={[waiting, ...OTHERS]} connected={connectedProviders([waiting])} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-path-source-row").getAttribute("data-state")).toBe("waiting");
+    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Waiting for webhook");
+    first.unmount();
+    const fresh = codePath(GH({ integrations: [{ id: "i-gh-1", name: "GitHub Filigran", status: "connected", webhook_secret_set: true, last_delivery_at: null, used: true }] }));
+    const second = renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={fresh} paths={[fresh, ...OTHERS]} connected={connectedProviders([fresh])} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("On, no delivery yet");
+    second.unmount();
+    const allOff = codePath(GH({ integrations: [{ id: "i-gh-1", name: "GitHub Filigran", status: "connected", webhook_secret_set: true, last_delivery_at: null, used: false }] }));
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={allOff} paths={[allOff, ...OTHERS]} connected={connectedProviders([allOff])} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-path-source-row").getAttribute("data-state")).toBe("off");
+  });
 });
