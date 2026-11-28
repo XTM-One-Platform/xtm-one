@@ -132,6 +132,8 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "excluded": False,
         "available": False,
         "also_feeds": ["credential_leak"],
+        # #2736: the integrations the source reads; none when the caller asked for none.
+        "integrations": [],
     }
     assert rows["new_exposure"]["last_signal_at"] is None
 
