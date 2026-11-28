@@ -2466,6 +2466,7 @@ async def create_work_item(
                     waits_for_user_id=waits_for,
                     waits_for_group_ids=waits_for_groups,
                     now=now,
+                    ask=structured_ask,
                 )
             if grouped is not None:
                 group_item = grouped[0]
@@ -5364,7 +5365,8 @@ async def answer_work_item(
         fanned: list[uuid.UUID] = []
         from app.services import ctem_decision_groups
 
-        if ctem_decision_groups.is_group_key(item.correlation_key) and key:
+        group_answer = bool(ctem_decision_groups.is_group_key(item.correlation_key) and key)
+        if group_answer:
             # One answer to a grouped CTEM decision answers each case it lists (#2451).
             fanned, still_waiting = await ctem_decision_groups.fan_out(db, item, option=key, answer=answer, note=note)
             if still_waiting:
@@ -5374,8 +5376,9 @@ async def answer_work_item(
                     await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
                 return await _read_back(work_item_id, user_id=user_id, writer=writer)
         previous_status = item.status
-        item.status = "done" if fanned else "open"
-        if fanned:
+        # A group answered whole is done, even when each case went back to its own card (#2801).
+        item.status = "done" if fanned or group_answer else "open"
+        if fanned or group_answer:
             item.completed_at = now
             item.result = f"Answered for {len(fanned)} grouped case(s): {said}"
         item.claimed_by_agent_id = None
