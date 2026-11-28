@@ -32,6 +32,9 @@ import {
 import { useFormatter } from "@/i18n";
 import { formatList } from "@/lib/format-list";
 import {
+  PLATFORM_NAME,
+  PLATFORM_OBJECT_COUNT_TEXT,
+  PLATFORM_OBJECT_KIND_ONE,
   PLATFORM_OBJECT_KIND_TEXT,
   PLATFORM_OBJECT_OPEN_LABEL,
   PLATFORM_SOURCE_STATUS_LABEL,
@@ -39,13 +42,10 @@ import {
   enableRefusalText,
   legacyCleanupCount,
   moduleEventText,
+  platformObjectHref,
   platformObjectLinks,
-  sharedFeeds,
   sourceReasonLine,
 } from "./platform-sources";
-
-/** The platform's name on an Open in label. */
-const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
 
 /**
  * One labelled button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
@@ -232,11 +232,18 @@ function PlatformSourceLine({
       onError: (err) => toast({ title: t_i18n("The source could not be turned off"), description: err.message, variant: "error" }),
     });
   };
+  // One aligned row (#2740): name and state, then the labelled switch at the row's end; under them the run-as and
+  // the Open in actions as key-value lines of one grid, so no link floats in a sentence.
   return (
-    <li className="flex flex-col gap-1 content-compact" data-testid="ctem-platform-source" data-status={source.status} data-integration={source.integration_id}>
-      <div className="flex min-w-0 items-center gap-2">
+    <li
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-2 content-compact"
+      data-testid="ctem-platform-source"
+      data-status={source.status}
+      data-integration={source.integration_id}
+    >
+      <span className="flex min-w-0 items-center gap-2">
         <Tip content={source.integration_name}>
-          <span className="min-w-0 truncate" data-testid="ctem-platform-source-name">
+          <span className="min-w-0 truncate font-medium" data-testid="ctem-platform-source-name">
             {source.integration_name}
           </span>
         </Tip>
@@ -246,7 +253,9 @@ function PlatformSourceLine({
           className="shrink-0"
           data-testid="ctem-platform-source-status"
         />
-        <span className="ml-auto" />
+      </span>
+      <label className="flex items-center gap-2 justify-self-end">
+        <span className="text-default-secondary">{t_i18n("Provisioned")}</span>
         <Switch
           className="shrink-0"
           checked={source.enabled}
@@ -255,33 +264,41 @@ function PlatformSourceLine({
           aria-label={t_i18n("Source on {integration}", { integration: source.integration_name })}
           data-testid="ctem-platform-source-switch"
         />
-      </div>
-      {/* The Open in links take their own wrapping line under the name, so neither the name nor a link label is cut (#2649 UX r1 B1). */}
-      {source.enabled && <PlatformObjectLinks source={source} />}
+      </label>
       {source.enabled && (
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-default-secondary" data-testid="ctem-platform-source-run-as">
-            {t_i18n("Runs as: {user}", { user: runAs })}
-          </span>
-          {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
-          {isAdmin && source.integration_connected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onEnable(source)}
-              aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
-              data-testid="ctem-platform-source-run-as-change"
-            >
-              {t_i18n("Change")}
-            </Button>
+        <dl className="col-span-2 grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+          <dt className="text-default-secondary">{t_i18n("Runs as")}</dt>
+          <dd className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate" data-testid="ctem-platform-source-run-as">
+              {runAs}
+            </span>
+            {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
+            {isAdmin && source.integration_connected && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onEnable(source)}
+                aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
+                data-testid="ctem-platform-source-run-as-change"
+              >
+                {t_i18n("Change")}
+              </Button>
+            )}
+          </dd>
+          {platformObjectLinks(source).length > 0 && (
+            <>
+              <dt className="text-default-secondary">{t_i18n("Open in {platform}", { platform: PLATFORM_NAME[source.provider] ?? source.provider })}</dt>
+              <dd className="min-w-0">
+                <PlatformObjectLinks source={source} />
+              </dd>
+            </>
           )}
-        </span>
+        </dl>
       )}
-      <PlatformSourceBlastRadius source={source} />
-      {!source.integration_connected && <span className="text-default-secondary">{t_i18n("The integration is not connected.")}</span>}
+      {!source.integration_connected && <span className="col-span-2 text-default-secondary">{t_i18n("The integration is not connected.")}</span>}
       {reason && (
-        <span className="text-feedback-error-primary" data-testid="ctem-platform-source-reason">
+        <span className="col-span-2 text-feedback-error-primary" data-testid="ctem-platform-source-reason">
           {reason}
         </span>
       )}
@@ -289,86 +306,142 @@ function PlatformSourceLine({
   );
 }
 
-/**
- * What one switch of this source turns off (#2583 point 6): the paths it feeds when it feeds more than one,
- * and the objects it holds in its platform by name, so an administrator reads the blast radius first.
- */
-function PlatformSourceBlastRadius({ source }: { source: CtemPlatformSource }) {
-  const { t_i18n } = useFormatter();
-  const feeds = sharedFeeds(source);
-  const own = (source.objects ?? []).filter((o) => Boolean(o.name));
-  const others = (source.fleet_objects ?? []).filter((o) => Boolean(o.name));
-  if (feeds.length === 0 && own.length === 0 && others.length === 0) return null;
-  const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+/** How many objects of each kind, in words: "1 notifier and 8 triggers" (#2740). */
+function useObjectSummary(objects: readonly CtemPlatformSourceObject[]): string {
+  const { t_i18n, locale } = useFormatter();
+  const counts = new Map<CtemPlatformSourceObject["kind"], number>();
+  for (const o of objects) counts.set(o.kind, (counts.get(o.kind) ?? 0) + 1);
+  return formatList(
+    [...counts.entries()].map(([kind, count]) => t_i18n(PLATFORM_OBJECT_COUNT_TEXT[kind], { count })),
+    locale,
+  );
+}
+
+/** The objects one integration's source holds, then the fleets' objects on it, collapsed apart (#2740). */
+function PlatformObjectsGroup({ line, named }: { line: CtemPlatformSource; named: boolean }) {
+  const { t_i18n, locale } = useFormatter();
+  const own = line.objects ?? [];
+  const others = line.fleet_objects ?? [];
+  const [showAll, setShowAll] = useState(own.length <= 3);
+  const [showOthers, setShowOthers] = useState(false);
+  const summary = useObjectSummary(own);
+  const platform = PLATFORM_NAME[line.provider] ?? line.provider;
+  // One note per module event other owners also listen to: each owner gets its own delivery and run (#2640).
+  const shared = new Map<string, string[]>();
+  for (const o of own) if (o.event && (o.shared_with ?? []).length > 0) shared.set(o.event, o.shared_with ?? []);
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 text-default-secondary" data-testid="ctem-platform-source-blast-radius">
-      {feeds.length > 0 && (
-        <span data-testid="ctem-platform-source-feeds">
-          {t_i18n("Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.", {
-            count: feeds.length,
-            paths: feeds.map((f) => t_i18n(f.label)).join(", "),
-          })}
-        </span>
-      )}
+    <div className="flex min-w-0 flex-col gap-1.5 content-compact" data-testid="ctem-platform-source-object-group" data-integration={line.integration_id}>
       {own.length > 0 && (
-        <>
-          <span>
-            {t_i18n("Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):", { platform, count: own.length })}
+        <div className="flex min-w-0 items-center gap-2">
+          {named && <span className="min-w-0 truncate font-medium">{line.integration_name}</span>}
+          <span className="min-w-0 text-default-secondary" data-testid="ctem-platform-source-object-summary">
+            {t_i18n("{summary}, owned by Signals", { summary })}
           </span>
-          <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object-names">
-            {own.map((o) => (
-              <PlatformObjectName key={`${o.kind}:${o.id}`} object={o} />
-            ))}
-          </ul>
-        </>
+          {own.length > 3 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              aria-expanded={showAll}
+              onClick={() => setShowAll((v) => !v)}
+              data-testid="ctem-platform-source-objects-toggle"
+            >
+              <Icon name={showAll ? "chevron-up" : "chevron-down"} size={16} aria-hidden />
+              {showAll ? t_i18n("Hide") : t_i18n("Show all")}
+            </Button>
+          )}
+        </div>
+      )}
+      {own.length > 0 && showAll && (
+        <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object-names">
+          {own.map((o) => (
+            <PlatformObjectRow key={`${o.kind}:${o.id}`} object={o} source={line} />
+          ))}
+        </ul>
       )}
       {others.length > 0 && (
-        <>
+        <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-platform-source-fleet-group">
           <span>
-            {t_i18n("Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):", {
-              platform,
-              count: others.length,
-            })}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={showOthers}
+              onClick={() => setShowOthers((v) => !v)}
+              data-testid="ctem-platform-source-fleet-toggle"
+            >
+              <Icon name={showOthers ? "chevron-up" : "chevron-down"} size={16} aria-hidden />
+              {t_i18n("Other XTM One objects in {platform}, not managed here ({count, plural, one {# object} other {# objects}})", {
+                platform,
+                count: others.length,
+              })}
+            </Button>
           </span>
-          <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-fleet-objects">
-            {others.map((o) => (
-              <PlatformObjectName key={`${o.kind}:${o.id}`} object={o} />
-            ))}
-          </ul>
-        </>
+          {showOthers && (
+            <>
+              {[...shared.entries()].map(([event, owners]) => (
+                <span key={event} className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
+                  {t_i18n(
+                    "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
+                    { count: owners.length, owners: formatList(owners, locale), event: moduleEventText(t_i18n, event) },
+                  )}
+                </span>
+              ))}
+              <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-fleet-objects">
+                {others.map((o) => (
+                  <PlatformObjectRow key={`${o.kind}:${o.id}`} object={o} source={line} />
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 /**
- * One object a source or a fleet holds in its platform, with its owner (#2640). A trigger another owner
- * also holds on the same module event says why: each owner gets its own delivery and its own run.
+ * One object a source or a fleet holds in its platform (#2640, #2740), on one aligned row: its kind, what tells it
+ * apart (the module event a trigger listens to, the path a playbook serves, else its name), its owner and its Open
+ * in link. The full name stays in the row's tooltip.
  */
-function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
-  const { t_i18n, locale } = useFormatter();
+function PlatformObjectRow({ object, source }: { object: CtemPlatformSourceObject; source: CtemPlatformSource }) {
+  const { t_i18n } = useFormatter();
   const name = object.name ?? "";
-  const shared = object.shared_with ?? [];
+  const what = object.event ? moduleEventText(t_i18n, object.event) : object.path_label ? t_i18n(object.path_label) : name;
+  const href = platformObjectHref(source, object);
+  const platform = PLATFORM_NAME[source.provider] ?? source.provider;
   return (
-    <li className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object" data-owner={object.owner ?? ""}>
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate" title={name}>
-          {name}
+    <li
+      className="grid min-h-8 grid-cols-[minmax(0,6rem)_minmax(0,1fr)_minmax(0,12rem)_5rem] items-center gap-x-3 border-t border-elevation-subtle-soft"
+      data-testid="ctem-platform-source-object"
+      data-kind={object.kind}
+      data-owner={object.owner ?? ""}
+    >
+      <span className="truncate text-default-secondary">{t_i18n(PLATFORM_OBJECT_KIND_ONE[object.kind])}</span>
+      <Tip content={name || what}>
+        <span className="min-w-0 truncate" data-testid="ctem-platform-source-object-what" title={name}>
+          {what}
         </span>
-        {object.owner && (
-          <span className="shrink-0" data-testid="ctem-platform-source-object-owner">
-            {t_i18n("Owner: {owner}", { owner: object.owner })}
-          </span>
+      </Tip>
+      <span className="min-w-0 truncate" data-testid="ctem-platform-source-object-owner">
+        {object.owner ?? ""}
+      </span>
+      <span className="justify-self-end">
+        {href && (
+          <Button asChild variant="ghost" size="sm">
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t_i18n(PLATFORM_OBJECT_OPEN_LABEL[object.kind], { platform })}
+              data-testid="ctem-platform-source-object-open"
+            >
+              <span>{t_i18n("Open")}</span>
+              <Icon name="external-link" size={16} aria-hidden />
+            </a>
+          </Button>
         )}
       </span>
-      {shared.length > 0 && object.event && (
-        <span className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
-          {t_i18n(
-            "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
-            { count: shared.length, owners: formatList(shared, locale), event: moduleEventText(t_i18n, object.event) },
-          )}
-        </span>
-      )}
     </li>
   );
 }
@@ -486,7 +559,10 @@ function LegacyOpenctiCleanup({ pending, integrationNames }: { pending: number; 
   );
 }
 
-/** The platform sources of one path source, one line per integration of its provider. */
+/**
+ * The Integrations section of a source XTM One provisions (#2740): one aligned row per integration of its
+ * provider, its state, run-as, Open in actions and labelled switch; the legacy cleanup action under them.
+ */
 export function PlatformSourceControls({
   source,
   platformSources,
@@ -498,15 +574,11 @@ export function PlatformSourceControls({
   isAdmin: boolean;
   onEnable: (source: CtemPlatformSource) => void;
 }) {
-  const { t_i18n } = useFormatter();
   const own = platformSources.filter((s) => s.provider === source.provider && s.kind === source.kind);
   return (
     <div className="flex flex-col gap-1.5" data-testid="ctem-platform-sources">
-      <p className="content-compact text-default-secondary">
-        {t_i18n("XTM One provisions this source in its platform when you turn it on, as the run-as user you pick. Fleets and agents never turn it off.")}
-      </p>
       {own.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col divide-y divide-elevation-subtle-soft">
           {own.map((s) => (
             <PlatformSourceLine key={platformSourceKey(s)} source={s} isAdmin={isAdmin} onEnable={onEnable} />
           ))}
@@ -518,6 +590,31 @@ export function PlatformSourceControls({
           integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The Objects section of a source XTM One provisions (#2740): per enabled integration, the objects it holds in
+ * its platform summarized by kind, then one distinguishable row each (what it listens to or serves, its owner,
+ * its Open in link), collapsed past three; the fleets' objects on the same integration in their own group.
+ */
+export function PlatformSourceObjects({
+  source,
+  platformSources,
+}: {
+  source: Pick<CtemSignalPathSource, "provider" | "kind">;
+  platformSources: readonly CtemPlatformSource[];
+}) {
+  const lines = platformSources.filter(
+    (s) => s.provider === source.provider && s.kind === source.kind && ((s.objects ?? []).length > 0 || (s.fleet_objects ?? []).length > 0),
+  );
+  if (lines.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3" data-testid="ctem-platform-source-blast-radius">
+      {lines.map((line) => (
+        <PlatformObjectsGroup key={platformSourceKey(line)} line={line} named={lines.length > 1} />
+      ))}
     </div>
   );
 }

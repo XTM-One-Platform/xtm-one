@@ -197,6 +197,34 @@ export function moduleEventText(t: (key: string) => string, event: string): stri
   return label ? t(label) : event;
 }
 
+/** The platform's name on an Open in label and a section title. */
+export const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
+
+/** One object's kind on its row (#2740). @i18n-keys */
+export const PLATFORM_OBJECT_KIND_ONE = {
+  notifier: "Notifier",
+  trigger: "Trigger",
+  playbook: "Playbook",
+} as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
+
+/** How many objects of one kind, for the summary line (#2740). @i18n-keys */
+export const PLATFORM_OBJECT_COUNT_TEXT = {
+  notifier: "{count, plural, one {# notifier} other {# notifiers}}",
+  trigger: "{count, plural, one {# trigger} other {# triggers}}",
+  playbook: "{count, plural, one {# playbook} other {# playbooks}}",
+} as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
+
+/** The URL of one object in its platform, or null without a web UI host or a route for its kind (#2740). */
+export function platformObjectHref(
+  source: Pick<CtemPlatformSource, "provider" | "integration_url">,
+  object: Pick<CtemPlatformSourceObject, "kind" | "id">,
+): string | null {
+  const base = (source.integration_url ?? "").replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(base)) return null;
+  const route = (OBJECT_ROUTES[source.provider] ?? {})[object.kind];
+  return route ? `${base}${route(object.id)}` : null;
+}
+
 /** One Open in link: the object, its kind, and the URL in its platform. */
 export interface PlatformObjectLink {
   kind: CtemPlatformSourceObject["kind"];
@@ -210,24 +238,12 @@ export interface PlatformObjectLink {
 export function platformObjectLinks(
   source: Pick<CtemPlatformSource, "provider" | "objects" | "integration_url">,
 ): PlatformObjectLink[] {
-  const base = (source.integration_url ?? "").replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(base)) return [];
-  const routes = OBJECT_ROUTES[source.provider] ?? {};
   const links: PlatformObjectLink[] = [];
   for (const object of source.objects ?? []) {
-    const route = routes[object.kind];
-    if (route) links.push({ kind: object.kind, id: object.id, href: `${base}${route(object.id)}`, pathLabel: object.path_label });
+    const href = platformObjectHref(source, object);
+    if (href) links.push({ kind: object.kind, id: object.id, href, pathLabel: object.path_label });
   }
   return links;
-}
-
-/**
- * The paths a source's one switch turns off when it feeds more than one (#2583 point 6): none for a source
- * that feeds a single path, whose own row already names it.
- */
-export function sharedFeeds(source: Pick<CtemPlatformSource, "feeds">): { path: string; label: string }[] {
-  const feeds = source.feeds ?? [];
-  return feeds.length > 1 ? feeds : [];
 }
 
 /**

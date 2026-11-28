@@ -5,8 +5,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemPlatformSource } from "@/hooks/api/useCtemSignalsApi";
-import { PlatformSourceControls } from "./PlatformSourceControls";
-import { legacyCleanupCount, moduleEventText, sharedFeeds } from "./platform-sources";
+import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
+import { legacyCleanupCount, moduleEventText } from "./platform-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -52,27 +52,49 @@ beforeEach(() => {
   get.mockResolvedValue([]);
 });
 
-describe("Blast radius of a shared source (#2583 point 6)", () => {
-  it("names every path the one switch stops, and the objects it holds by name", () => {
-    renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "listener" }} platformSources={[listener()]} isAdmin onEnable={() => {}} />);
+describe("Objects a source holds in its platform (#2583 point 2, #2740)", () => {
+  it("summarizes the objects by kind, then lists one row each with what tells it apart and its Open link", () => {
+    renderWithProviders(<PlatformSourceObjects source={{ provider: "opencti", kind: "listener" }} platformSources={[listener()]} />);
     const radius = screen.getByTestId("ctem-platform-source-blast-radius");
-    expect(within(radius).getByTestId("ctem-platform-source-feeds").textContent).toBe(
-      "Feeds 3 paths: New vulnerability on a running version, Relevant new threat or actor, Credential or secret leak. Turning it off stops all of them.",
-    );
-    expect(within(radius).getByText("XTM One - Signals - OpenCTI live listener - Trigger")).toHaveAttribute(
-      "title",
-      "XTM One - Signals - OpenCTI live listener - Trigger",
-    );
+    expect(within(radius).getByTestId("ctem-platform-source-object-summary").textContent).toBe("1 notifier and 1 trigger, owned by Signals");
+    // Three objects or fewer: listed at once, no toggle.
+    expect(within(radius).queryByTestId("ctem-platform-source-objects-toggle")).toBeNull();
+    const rows = within(radius).getAllByTestId("ctem-platform-source-object");
+    expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual(["notifier", "trigger"]);
+    expect(within(rows[1]).getByTestId("ctem-platform-source-object-what")).toHaveAttribute("title", "XTM One - Signals - OpenCTI live listener - Trigger");
+    expect(within(rows[1]).getByTestId("ctem-platform-source-object-open")).toHaveAttribute("href", "https://octi.example.com/dashboard/profile/triggers");
+  });
+});
+
+describe("Eight per-event triggers read apart (#2740)", () => {
+  const events = ["simulation_finished", "atomic_test_finished", "finding_created", "finding_updated", "finding_deleted", "simulation_finished", "finding_created", "finding_updated"];
+  const source = listener({
+    provider: "openaev",
+    integration_url: "https://oaev.example.com",
+    objects: [
+      { kind: "notifier", id: "n1", name: "XTM One - Signals - OpenAEV listener - Notifier", owner: "Signals" },
+      ...events.slice(0, 5).map((event, i) => ({ kind: "trigger" as const, id: `t${i}`, name: "XTM One - Signals - OpenAEV listener - Trigger", owner: "Signals", event })),
+      ...["t5", "t6", "t7"].map((id) => ({ kind: "trigger" as const, id, name: "XTM One - Signals - OpenAEV listener - Trigger", owner: "Signals" })),
+    ],
   });
 
-  it("says nothing more for a source that feeds one path", () => {
-    expect(sharedFeeds({ feeds: [{ path: "a", label: "A" }] })).toEqual([]);
-    expect(sharedFeeds({ feeds: undefined })).toEqual([]);
+  it("collapses nine objects to their summary, then shows nine rows on Show all", () => {
+    renderWithProviders(<PlatformSourceObjects source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} />);
+    expect(screen.getByTestId("ctem-platform-source-object-summary").textContent).toBe("1 notifier and 8 triggers, owned by Signals");
+    expect(screen.queryAllByTestId("ctem-platform-source-object")).toHaveLength(0);
+    const toggle = screen.getByTestId("ctem-platform-source-objects-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    const rows = screen.getAllByTestId("ctem-platform-source-object");
+    expect(rows).toHaveLength(9);
+    const whats = rows.slice(1, 6).map((r) => within(r).getByTestId("ctem-platform-source-object-what").textContent);
+    expect(whats).toEqual(["Simulation finished", "Atomic test finished", "Finding created", "Finding updated", "Finding deleted"]);
+    expect(rows.every((r) => r.getAttribute("data-owner") === "Signals")).toBe(true);
   });
 });
 
 describe("Owner of each provisioned object (#2640)", () => {
-  it("counts only the source's own objects and lists the fleets' objects apart, each with its owner", () => {
+  it("lists the fleets' objects apart, collapsed, each with its owner and the note on separate deliveries", () => {
     const source = listener({
       provider: "openaev",
       objects: [
@@ -96,19 +118,23 @@ describe("Owner of each provisioned object (#2640)", () => {
         },
       ],
     });
-    renderWithProviders(<PlatformSourceControls source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} isAdmin onEnable={() => {}} />);
+    renderWithProviders(<PlatformSourceObjects source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} />);
     const radius = screen.getByTestId("ctem-platform-source-blast-radius");
-    expect(within(radius).getByText("Objects in OpenAEV, owned by Signals (2 objects):")).toBeInTheDocument();
+    expect(within(radius).getByTestId("ctem-platform-source-object-summary").textContent).toBe("1 notifier and 1 trigger, owned by Signals");
     const own = within(radius).getByTestId("ctem-platform-source-object-names");
-    expect(within(own).getAllByTestId("ctem-platform-source-object")).toHaveLength(2);
-    expect(within(own).getAllByText("Owner: Signals")).toHaveLength(2);
-    expect(within(own).getByTestId("ctem-platform-source-object-shared").textContent).toBe(
+    expect(within(own).getAllByTestId("ctem-platform-source-object-owner").map((o) => o.textContent)).toEqual(["Signals", "Signals"]);
+    // The fleets' group is collapsed by default.
+    expect(within(radius).queryByTestId("ctem-platform-source-fleet-objects")).toBeNull();
+    const toggle = within(radius).getByTestId("ctem-platform-source-fleet-toggle");
+    expect(toggle).toHaveTextContent("Other XTM One objects in OpenAEV, not managed here (1 object)");
+    fireEvent.click(toggle);
+    const fleets = within(radius).getByTestId("ctem-platform-source-fleet-objects");
+    expect(within(fleets).getByTestId("ctem-platform-source-object-owner")).toHaveTextContent("Detection validation desk");
+    const shared = within(radius).getByTestId("ctem-platform-source-object-shared").textContent ?? "";
+    expect(shared).toBe(
       "Detection validation desk also listens to the \"Simulation finished\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
     );
-    expect(within(own).getByTestId("ctem-platform-source-object-shared").textContent).not.toContain("simulation_finished");
-    const fleets = within(radius).getByTestId("ctem-platform-source-fleet-objects");
-    expect(within(fleets).getByText("Owner: Detection validation desk")).toBeInTheDocument();
-    expect(within(radius).getByText("Other XTM One objects in OpenAEV, owned by fleets, not counted here (1 object):")).toBeInTheDocument();
+    expect(shared).not.toContain("simulation_finished");
   });
 });
 
@@ -135,8 +161,10 @@ describe("Several other owners of one event (UX round 2 on #2664, B1)", () => {
           shared_with: ["CTEM Orchestrator", "Exposure desk"],
         },
       ],
+      fleet_objects: [{ kind: "trigger", id: "t8", name: "XTM One - Exposure desk - X - Trigger", owner: "Exposure desk", event: "simulation_finished" }],
     });
-    renderWithProviders(<PlatformSourceControls source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} isAdmin onEnable={() => {}} />);
+    renderWithProviders(<PlatformSourceObjects source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} />);
+    fireEvent.click(screen.getByTestId("ctem-platform-source-fleet-toggle"));
     const line = screen.getByTestId("ctem-platform-source-object-shared").textContent ?? "";
     expect(line).toBe(
       "CTEM Orchestrator and Exposure desk also listen to the \"Simulation finished\" event, each with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
@@ -193,7 +221,7 @@ describe("Remove legacy OpenCTI objects (#2583 point 4, #2627)", () => {
 });
 
 describe("Open in links of a per-path source (#2627)", () => {
-  it("labels two playbooks of one row with the path each serves", () => {
+  it("labels two playbooks of one row with the path each serves, on a labelled line under the name and switch", () => {
     const pir = listener({
       kind: "pir_playbook",
       objects: [
@@ -205,11 +233,11 @@ describe("Open in links of a per-path source (#2627)", () => {
     renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "pir_playbook" }} platformSources={[pir]} isAdmin onEnable={() => {}} />);
     const texts = screen.getAllByTestId("ctem-platform-source-object-link").map((a) => a.textContent);
     expect(texts).toEqual(["Notifier", "Playbook: New vulnerability on a running version", "Playbook: Relevant new threat or actor"]);
-    // #2649 UX r1 B1: the links take their own line under the name and switch, not the first line beside them.
+    // #2740: the links sit in their own "Open in OpenCTI" cell of the row's key-value grid, never beside the switch.
     const objects = screen.getByTestId("ctem-platform-source-objects");
-    const row = screen.getByTestId("ctem-platform-source-switch").closest("li");
-    expect(objects.parentElement).toBe(row);
+    expect(objects.closest("dd")?.previousElementSibling).toHaveTextContent("Open in OpenCTI");
     expect(screen.getByTestId("ctem-platform-source-switch").parentElement).not.toContainElement(objects);
+    expect(screen.getByTestId("ctem-platform-source-switch").closest("label")).toHaveTextContent("Provisioned");
     expect(screen.getByTestId("ctem-platform-source-name")).toHaveTextContent(pir.integration_name);
   });
 });

@@ -112,7 +112,12 @@ describe("the sources side panel (#1445)", () => {
     expect(rowsBy().map((r) => r.getAttribute("data-state"))).toEqual(["bound", "excluded", "not_connected"]);
     const [shodan, gti, censys] = [configOf("shodan"), configOf("gti"), configOf("censys")];
     expect(within(shodan).getByTestId("ctem-path-source-runs-on").textContent).toContain("Shodan prod");
-    expect(within(shodan).getByTestId("ctem-path-source-shared").textContent).toContain("Stale or orphaned asset, Attack-surface drift");
+    // #2740: the paths the pass feeds read as chips, this path first and marked.
+    const feeds = within(shodan).getAllByTestId("ctem-path-source-feed");
+    expect(feeds[0].getAttribute("data-current")).toBe("true");
+    expect(feeds.map((f) => f.textContent).slice(1)).toEqual(["Stale or orphaned asset", "Attack-surface drift"]);
+    expect(within(shodan).getByTestId("ctem-path-source-integrations")).toContainElement(within(shodan).getByTestId("ctem-path-source-pass"));
+    expect(within(shodan).getByTestId("ctem-path-source-paths")).toContainElement(within(shodan).getByTestId("ctem-path-source-use"));
     expect(within(gti).getByTestId("ctem-path-source-use").getAttribute("aria-checked")).toBe("false");
     expect(within(censys).getByTestId("ctem-path-source-connect")).toBeTruthy();
     expect(within(censys).queryByTestId("ctem-path-source-use")).toBeNull();
