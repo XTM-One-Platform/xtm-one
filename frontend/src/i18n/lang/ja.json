@@ -21257,7 +21257,6 @@
   "Source taken off this path": "このパスからソースを外しました",
   "No owned domain or address range is set: the pass has nothing to look up.": "所有ドメインまたはアドレス範囲が設定されていないため、パスで調べる対象がありません。",
   "The switch is organization-wide. Also feeds: {paths}": "このスイッチは組織全体に適用されます。ほかの供給先: {paths}",
-  "A live listener runs while its integration is connected.": "ライブリスナーは統合が接続されている間動作します。",
   "Only an administrator can change the sources of a trigger path.": "トリガーパスのソースを変更できるのは管理者のみです。",
   "Agents and the API record this path: it has no integration source.": "このパスはエージェントと API が記録します。統合ソースはありません。",
   "Validated by a person": "担当者が承認",
@@ -22047,10 +22046,7 @@
   "Indicator sighting": "インジケーターの検知",
   "Code scanning": "コードスキャン",
   "Secret scanning": "シークレットスキャン",
-  "{count, plural, other {+# not used here}}": "{count, plural, other {ここでは未使用 +#}}",
-  "{count, plural, other {+# more}}": "{count, plural, other {他 # 件}}",
   "No source on: nothing records this path": "有効なソースがありません: このパスを記録するものはありません",
-  "Open its sources": "ソースを開く",
   "Sources on": "有効なソース",
   "{enabled} of {available}": "{available} 件中 {enabled} 件",
   "Signed webhook": "署名付き Webhook",
@@ -22252,5 +22248,12 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。"
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。",
+  "Dependabot": "Dependabot",
+  "Security advisories": "セキュリティアドバイザリ",
+  "Off or not set up": "オフまたは未設定",
+  "Source states": "ソースの状態",
+  "{count, plural, other {# not connected: {names}}}": "{count, plural, other {未接続 # 件: {names}}}",
+  "Its own receiver": "専用の受信エンドポイント",
+  "A live listener runs while its integration is connected.": "ライブリスナーは統合が接続されている間動作します。"
 }

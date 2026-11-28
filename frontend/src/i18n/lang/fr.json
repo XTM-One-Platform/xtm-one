@@ -21257,7 +21257,6 @@
   "Source taken off this path": "Source retirée de ce chemin",
   "No owned domain or address range is set: the pass has nothing to look up.": "Aucun domaine ni plage d’adresses détenus n’est défini : la passe n’a rien à rechercher.",
   "The switch is organization-wide. Also feeds: {paths}": "Ce réglage vaut pour toute l’organisation. Alimente aussi : {paths}",
-  "A live listener runs while its integration is connected.": "Un écouteur en direct fonctionne tant que son intégration est connectée.",
   "Only an administrator can change the sources of a trigger path.": "Seul un administrateur peut modifier les sources d’un chemin de déclenchement.",
   "Agents and the API record this path: it has no integration source.": "Les agents et l’API enregistrent ce chemin : il n’a pas de source d’intégration.",
   "Validated by a person": "Validé par une personne",
@@ -22047,10 +22046,7 @@
   "Indicator sighting": "Observation d’indicateur",
   "Code scanning": "Analyse de code",
   "Secret scanning": "Détection de secrets",
-  "{count, plural, other {+# not used here}}": "{count, plural, one {+# non utilisée ici} other {+# non utilisées ici}}",
-  "{count, plural, other {+# more}}": "{count, plural, other {+# de plus}}",
   "No source on: nothing records this path": "Aucune source active : rien n'enregistre ce déclencheur",
-  "Open its sources": "Ouvrir ses sources",
   "Sources on": "Sources actives",
   "{enabled} of {available}": "{enabled} sur {available}",
   "Signed webhook": "Webhook signé",
@@ -22252,5 +22248,12 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
+  "Dependabot": "Dependabot",
+  "Security advisories": "Avis de sécurité",
+  "Off or not set up": "Désactivée ou non configurée",
+  "Source states": "États des sources",
+  "{count, plural, other {# not connected: {names}}}": "{count, plural, one {# non connectée : {names}} other {# non connectées : {names}}}",
+  "Its own receiver": "Son propre récepteur",
+  "A live listener runs while its integration is connected.": "Un écouteur en direct fonctionne tant que son intégration est connectée."
 }
