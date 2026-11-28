@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 from app.services import ctem_signal_inbox as inbox
@@ -149,20 +151,20 @@ async def test_a_tick_drains_batch_after_batch_until_the_inbox_is_empty(monkeypa
     batches = [{"recorded": 150, "retried": 0, "dropped": 0, "coalesced": 50}] * 3
     calls: list[int] = []
 
-    async def drain(limit: int) -> dict[str, int]:
+    async def drain(limit: int, *, deadline: float | None = None) -> dict[str, int]:
         calls.append(limit)
         return dict(batches[len(calls) - 1]) if len(calls) <= len(batches) else dict.fromkeys(batches[0], 0)
 
     monkeypatch.setattr(inbox, "drain", drain)
     totals = await inbox.drain_within(60)
     assert len(calls) == 4
-    assert totals == {"recorded": 450, "retried": 0, "dropped": 0, "coalesced": 150}
+    assert totals == {"recorded": 450, "retried": 0, "dropped": 0, "coalesced": 150, "deferred": 0}
 
 
 async def test_a_tick_stops_at_its_budget_and_on_retries_alone(monkeypatch: Any) -> None:
     calls: list[int] = []
 
-    async def busy(limit: int) -> dict[str, int]:
+    async def busy(limit: int, *, deadline: float | None = None) -> dict[str, int]:
         calls.append(limit)
         return {"recorded": 200, "retried": 0, "dropped": 0, "coalesced": 0}
 
@@ -172,10 +174,97 @@ async def test_a_tick_stops_at_its_budget_and_on_retries_alone(monkeypatch: Any)
 
     calls.clear()
 
-    async def failing(limit: int) -> dict[str, int]:
+    async def failing(limit: int, *, deadline: float | None = None) -> dict[str, int]:
         calls.append(limit)
         return {"recorded": 0, "retried": 200, "dropped": 0, "coalesced": 0}
 
     monkeypatch.setattr(inbox, "drain", failing)
     assert (await inbox.drain_within(60))["retried"] == 200
     assert len(calls) == 1
+
+
+class _InboxSession:
+    """The inbox table as the drain sees it: a select answers the rows, an update or delete is recorded."""
+
+    def __init__(self, rows: list[Any], log: list[str]) -> None:
+        self.rows = rows
+        self.log = log
+
+    async def __aenter__(self) -> _InboxSession:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+    async def execute(self, statement: Any) -> Any:
+        kind = type(statement).__name__.lower()
+        self.log.append(kind)
+        rows = self.rows
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+
+    async def commit(self) -> None:
+        return None
+
+
+async def test_a_batch_stops_at_its_deadline_row_by_row_and_leaves_the_rest(monkeypatch: Any) -> None:
+    # #2774: a 200-row batch whose recorder is slow per row returns within the budget plus one row.
+    import time
+
+    from app.core import database
+
+    rows = [
+        SimpleNamespace(
+            id=i, provider="openaev", integration_id="i", event_key="update", payload={}, verified=True, attempts=0
+        )
+        for i in range(200)
+    ]
+    log: list[str] = []
+    deleted: list[int] = []
+    given_back: list[list[int]] = []
+    monkeypatch.setattr(database, "async_session", lambda: _InboxSession(rows, log))
+
+    async def slow_record(*_a: Any, **_kw: Any) -> bool:
+        await asyncio.sleep(0.01)
+        return True
+
+    async def delete(row_id: int) -> None:
+        deleted.append(row_id)
+
+    async def give_back(row_ids: list[int]) -> None:
+        given_back.append(list(row_ids))
+
+    monkeypatch.setattr(inbox, "record", slow_record)
+    monkeypatch.setattr(inbox, "_delete", delete)
+    monkeypatch.setattr(inbox, "_give_back", give_back)
+    budget = 0.2
+    started = time.monotonic()
+    totals = await inbox.drain_within(deadline=started + budget)
+    took = time.monotonic() - started
+    assert took < budget + 0.15, took
+    assert 0 < totals["recorded"] < 200
+    assert totals["recorded"] + totals["deferred"] == 200
+    assert deleted == list(range(totals["recorded"]))
+    assert given_back == [list(range(totals["recorded"], 200))]
+
+
+async def test_a_drain_without_deadline_records_the_whole_batch(monkeypatch: Any) -> None:
+    from app.core import database
+
+    rows = [
+        SimpleNamespace(
+            id=i, provider="openaev", integration_id="i", event_key="update", payload={}, verified=True, attempts=0
+        )
+        for i in range(5)
+    ]
+    monkeypatch.setattr(database, "async_session", lambda: _InboxSession(rows, []))
+
+    async def record(*_a: Any, **_kw: Any) -> bool:
+        return True
+
+    async def delete(_row_id: int) -> None:
+        return None
+
+    monkeypatch.setattr(inbox, "record", record)
+    monkeypatch.setattr(inbox, "_delete", delete)
+    counts = await inbox.drain(5)
+    assert counts["recorded"] == 5 and counts["deferred"] == 0

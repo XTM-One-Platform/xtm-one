@@ -263,6 +263,27 @@ async def test_a_row_the_drain_cannot_decide_leaves_the_selection_and_never_loop
     assert db.selects == 3
 
 
+async def test_the_drain_stops_inside_a_batch_at_its_deadline(fake_io, monkeypatch):
+    # #2774: the deadline is read before every row, so a slow row never holds the pass for a whole batch.
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(store, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    rows = [_row(f"host-{i}.example.com") for i in range(10)]
+    decided: list[str] = []
+    real = store.evaluate
+
+    async def _slow(db, row, **kw):
+        decided.append(row.id)
+        await real(db, row, **kw)
+        clock.now += 10.0  # each row takes 10 s
+
+    monkeypatch.setattr(store, "evaluate", _slow)
+    db = _Backlog(rows)
+    counts = await store.drain_new(db, now=NOW, batch=10, deadline=25.0, clock=lambda: clock.now)
+    assert counts == {"to_validate": 3, "deferred": 7, "batches": 1}
+    assert sum(r.state == "new" for r in rows) == 7
+    assert db.commits == 1
+
+
 async def test_an_empty_drain_answers_nothing(fake_io):
     db = _Backlog([])
     assert await store.drain_new(db, now=NOW) == {}

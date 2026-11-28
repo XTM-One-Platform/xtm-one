@@ -323,6 +323,8 @@ STARTUP_HOLD_SECONDS = 8.0
 _startup_error: str | None = None
 _startup_retrying: str | None = None
 _scheduler_task: asyncio.Task | None = None
+# The CTEM passes, off the scheduler tick (#2774, services/ctem_background_passes.py).
+_ctem_passes_task: asyncio.Task | None = None
 # The sweep resuming the chat turns a platform stop cut: every
 # worker, from its start, on its own short cadence.
 _cut_turn_sweep_task: asyncio.Task | None = None
@@ -2056,7 +2058,7 @@ async def _do_all_startup_work() -> None:
     """
     global _scheduler_task, _ann_index_task, _a2a_reaper_task, _a2a_client_sweep_task
     global _a2a_owed_cancel_task, _cut_turn_sweep_task, _work_item_wake_task
-    global _branding_refresh_task, _security_options_refresh_task
+    global _branding_refresh_task, _security_options_refresh_task, _ctem_passes_task
 
     from app.core.database import async_session
     from app.core.db_availability import retry_while_database_unavailable
@@ -2197,6 +2199,11 @@ async def _do_all_startup_work() -> None:
     # Start the assignment scheduler
     _scheduler_task = asyncio.create_task(_autonomous_loop())
     logger.info("Assignment scheduler started")
+
+    # The CTEM passes on their own cadence and lock, never on the scheduler tick (#2774).
+    from app.services.ctem_background_passes import run_loop as run_ctem_passes
+
+    _ctem_passes_task = asyncio.create_task(run_ctem_passes(), name="ctem-background-passes")
 
     # Resume the chat turns the rollout that started this pod cut: at
     # once and every few seconds, not at the next scheduler window.
@@ -2435,7 +2442,7 @@ async def lifespan(app: FastAPI):
     # rebound names do.
     global _startup_error, _startup_retrying, _scheduler_task, _ann_index_task, _a2a_reaper_task
     global _a2a_client_sweep_task, _a2a_owed_cancel_task, _branding_refresh_task
-    global _security_options_refresh_task, _cut_turn_sweep_task, _work_item_wake_task
+    global _security_options_refresh_task, _cut_turn_sweep_task, _work_item_wake_task, _ctem_passes_task
 
     # Install the asyncio exception handler on uvicorn's running loop so
     # routine WebSocket keepalive-ping-timeout exceptions are demoted from
@@ -2535,6 +2542,7 @@ async def lifespan(app: FastAPI):
     _startup_error = None
     _startup_retrying = None
     _scheduler_task = None
+    _ctem_passes_task = None
     _cut_turn_sweep_task = None
     _work_item_wake_task = None
     _ann_index_task = None
@@ -2612,6 +2620,11 @@ async def lifespan(app: FastAPI):
         with suppress(asyncio.CancelledError):
             _ = await _scheduler_task  # wait for clean shutdown
     logger.info("Assignment scheduler stopped")
+
+    if _ctem_passes_task is not None:
+        _ctem_passes_task.cancel()
+        with suppress(asyncio.CancelledError):
+            _ = await _ctem_passes_task
 
     if _cut_turn_sweep_task is not None:
         _cut_turn_sweep_task.cancel()
