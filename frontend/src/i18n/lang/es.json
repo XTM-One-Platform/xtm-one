@@ -18416,9 +18416,11 @@
   "The sync could not run": "No se pudo ejecutar la sincronización",
   "The syncs could not run": "Las sincronizaciones no se pudieron ejecutar",
   "{count, plural, one {# sync failed} other {# syncs failed}}": "{count, plural, one {# sincronización falló} other {# sincronizaciones fallaron}}",
+  "{count, plural, one {# sync ran with a warning} other {# syncs ran with a warning}}": "{count, plural, one {# sincronización se ejecutó con una advertencia} other {# sincronizaciones se ejecutaron con una advertencia}}",
   "{count, plural, one {# sync started} other {# syncs started}}": "{count, plural, one {# sincronización iniciada} other {# sincronizaciones iniciadas}}",
   "Run all syncs": "Ejecutar todas las sincronizaciones",
   "The sync ran and failed": "La sincronización se ejecutó y falló",
+  "The sync ran with a warning": "La sincronización se ejecutó con una advertencia",
   "The sync was not saved. Try again in a moment.": "La sincronización no se guardó. Inténtelo de nuevo en un momento.",
   "The time the run starts, in the time zone below.": "La hora en que empieza la ejecución, en la zona horaria de abajo.",
   "This import runs again on the schedule below, with the same filters and the same choice for the rows that left.": "Esta importación se repite según la programación de abajo, con los mismos filtros y la misma elección para las filas que ya no están.",
@@ -22299,5 +22301,6 @@
   "Turn off {integration}?": "¿Desactivar {integration}?",
   "Turn off the outside lens?": "¿Desactivar la vista externa?",
   "Turn off the evidence health pass?": "¿Desactivar la pasada de salud de las evidencias?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# ruta deja de recibir sus señales:} other {# rutas dejan de recibir sus señales:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# ruta deja de recibir sus señales:} other {# rutas dejan de recibir sus señales:}}",
+  "{count, plural, one {# warning} other {# warnings}}": "{count, plural, one {# advertencia} other {# advertencias}}"
 }

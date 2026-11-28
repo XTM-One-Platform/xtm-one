@@ -18416,9 +18416,11 @@
   "The sync could not run": "The sync could not run",
   "The syncs could not run": "The syncs could not run",
   "{count, plural, one {# sync failed} other {# syncs failed}}": "{count, plural, one {# sync failed} other {# syncs failed}}",
+  "{count, plural, one {# sync ran with a warning} other {# syncs ran with a warning}}": "{count, plural, one {# sync ran with a warning} other {# syncs ran with a warning}}",
   "{count, plural, one {# sync started} other {# syncs started}}": "{count, plural, one {# sync started} other {# syncs started}}",
   "Run all syncs": "Run all syncs",
   "The sync ran and failed": "The sync ran and failed",
+  "The sync ran with a warning": "The sync ran with a warning",
   "The sync was not saved. Try again in a moment.": "The sync was not saved. Try again in a moment.",
   "The time the run starts, in the time zone below.": "The time the run starts, in the time zone below.",
   "This import runs again on the schedule below, with the same filters and the same choice for the rows that left.": "This import runs again on the schedule below, with the same filters and the same choice for the rows that left.",
@@ -22299,5 +22301,6 @@
   "Turn off {integration}?": "Turn off {integration}?",
   "Turn off the outside lens?": "Turn off the outside lens?",
   "Turn off the evidence health pass?": "Turn off the evidence health pass?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}",
+  "{count, plural, one {# warning} other {# warnings}}": "{count, plural, one {# warning} other {# warnings}}"
 }
