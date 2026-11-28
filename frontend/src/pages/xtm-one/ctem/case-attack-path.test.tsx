@@ -1,7 +1,7 @@
 // Attack path and blast radius on a case (CTEM-23-UI, #1289): the hops nearest
 // first with proven or inferred, the primary assets reached, a restricted
-// reading for a viewer who does not read OpenCRQ, and empty states that are
-// never blank.
+// reading for a viewer who does not read OpenCRQ, and the card left out of the
+// page while no reading is written (#2786), unless OpenCRQ is not connected.
 
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { CaseAttackPath } from "./CaseAttackPath";
+import { CaseLoopProvider } from "./CaseSectionReason";
 
 const READING: CtemCaseAttackPath = {
   origin: { asset: "Edge bastion", exposure: "internet_facing" },
@@ -87,9 +88,30 @@ describe("CaseAttackPath", () => {
     expect(screen.getByTestId("ctem-case-attack-path-no-primary")).toBeInTheDocument();
   });
 
-  it("is never blank before triage reads it", () => {
-    renderWithProviders(<MemoryRouter><CaseAttackPath reading={null} /></MemoryRouter>);
+  it("is left out of the page before triage reads it (#2786)", () => {
+    const { unmount } = renderWithProviders(<MemoryRouter><CaseAttackPath reading={null} /></MemoryRouter>);
+    expect(screen.queryByTestId("ctem-case-attack-path")).toBeNull();
+    unmount();
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseLoopProvider value={{ sources: { opencrq: true, opencti: true, openaev: true } }}>
+          <CaseAttackPath reading={null} />
+        </CaseLoopProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("ctem-case-attack-path")).toBeNull();
+  });
+
+  it("keeps its not-started line with Connect when OpenCRQ is not connected (#2786)", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseLoopProvider value={{ sources: { opencrq: false, opencti: true, openaev: true } }}>
+          <CaseAttackPath reading={null} />
+        </CaseLoopProvider>
+      </MemoryRouter>,
+    );
     expect(screen.getByTestId("ctem-case-attack-path-empty")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect OpenCRQ" })).toBeInTheDocument();
   });
 
   it("folds a long path to the five nearest hops behind Show all (#1679, point 5)", () => {

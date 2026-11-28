@@ -9,7 +9,8 @@
  * (dev-docs/human-gates.md), never a CTEM card. The figures (cost, expected loss
  * before and after) live only in that item's options, written for the deciding
  * user's OpenCRQ access; a viewer who cannot see the item sees that it waits,
- * and no figure. Never blank: a case not decided yet says so.
+ * and no figure. Left out of the page while the case met no remediation gate
+ * and wrote no option (#2786); a waiting decision always shows.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
@@ -29,7 +30,7 @@ import {
   remediationDecisionKey,
   remediationOptionLines,
 } from "./case-gates";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { useHideEmptySection } from "./CaseSectionReason";
 import { GateDecisionAnchor, useGateDecisionItem } from "./CaseGateDecision";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
@@ -59,6 +60,7 @@ export function CaseRemediationDecision({
   // Who answered: their directory name, else "a person", never the raw id.
   const who = gate?.to === "answered" ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
   const why = gate ? gateReason(gate.reason, gate.to) : null;
+  if (useHideEmptySection(!record && !gate && options.length === 0)) return null;
 
   return (
     <Card data-testid="ctem-case-remediation">
@@ -74,13 +76,7 @@ export function CaseRemediationDecision({
             byLabel={gateAnswererName(record, history, personName)}
             testId="ctem-case-remediation-record"
           />
-        ) : !gate ? (
-          <CaseSectionReason
-            own={t_i18n("The remediation options with their cost and the one approved, once the case is validated.")}
-            icon={CASE_SECTION_ICON.remediation_decision}
-            testId="ctem-case-remediation-empty"
-          />
-        ) : (
+        ) : !gate ? null : (
           <div className="flex flex-wrap items-baseline gap-x-2" data-testid="ctem-case-remediation-outcome">
             <span className="font-medium">
               {gate.to === "passed_automatically"
