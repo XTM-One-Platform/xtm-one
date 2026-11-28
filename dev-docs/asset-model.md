@@ -334,10 +334,16 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
   and matched against every source record of the primary organization, then the asset's name. A key of the form
   `<source>:<external id>` (`openaev:<asset id>`) is a source reference: it is matched exactly on the source and
   external id of the records and, when found, wins over every weak reading of the same key, so a product that
-  imported the same OpenAEV asset finds it whatever its name or addresses. The answer holds one
-  item per key found: `{key, id, name, category, criticality, internet_facing, owner, matches, url}`, `url` the
-  asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets holding a weak key (the first by name
-  answers). The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
+  imported the same OpenAEV asset finds it whatever its name or addresses. The readings are ranked, never
+  unioned (#2803, `organization_asset_store.MATCH_TIERS`): source reference or record id, then exact FQDN, exact
+  asset name, hostname, IP, MAC; the first tier holding an asset answers. A key that is an FQDN never falls back to
+  its bare first label (`kibana.b.example.com` never answers `kibana.a.example.com`): no asset holding the FQDN or
+  that name leaves it unanswered, and the inventory tool `lookup_assets` lists the hostname's assets under
+  `possible_matches` only. The answer holds one item per key found:
+  `{key, id, name, category, criticality, internet_facing, owner, matches, match_kind, ambiguous, url}`, `url` the
+  asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets of the answering tier (the first by
+  name answers), `ambiguous` true when it is more than one. `get_asset` answers the same `match_kind` (`id` for an
+  asset id or prefix) and `ambiguous`/`matches` when the tier is shared. The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
   answers him.
 - The OpenAEV assets import reads `/api/endpoints/search` (endpoints with hostname, IPs and MACs), then
   `/api/assets/search` for the rest of the inventory (web applications, cloud resources, SaaS, network devices

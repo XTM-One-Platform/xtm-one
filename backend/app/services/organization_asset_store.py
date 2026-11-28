@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -1250,25 +1250,90 @@ def _lookup_keys(value: str) -> set[tuple[str, str]]:
     return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
 
 
+#: The readings of a value from the strongest to the weakest (#2803): a lookup answers the first
+#: tier that holds an asset, never the union of every reading. ``reference`` (a source reference or
+#: a source record id) is tried before these; ``name`` is the asset's exact name.
+MATCH_TIERS: tuple[str, ...] = ("fqdn", "name", "hostname", "ip", "mac")
+#: The most possible matches named for a value no tier answered.
+MAX_POSSIBLE_MATCHES = 10
+
+
+@dataclass
+class IdentifierLookup:
+    """What :func:`match_assets_by_identifier` answers: the assets found and the near misses."""
+
+    #: Each value found, its asset summary with ``matches``, ``match_kind`` and ``ambiguous``.
+    found: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Each FQDN value no asset holds as an FQDN or a name, with the assets its bare first label
+    #: names: ``{"count": N, "items": [{"id", "name"}]}``. Never an answer, only a hint.
+    possible: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+def _hostname_fqdns(identifiers: Mapping[str, Any] | None) -> set[str]:
+    """The FQDNs a record writes in its ``hostname`` field (``kibana.a.example.com``), normalised."""
+    values = (identifiers or {}).get("hostname") or []
+    if isinstance(values, str):
+        values = [values]
+    return {key for key in (identity.normalize_identifier("fqdn", v) for v in values) if key}
+
+
+def _tiers(
+    value: str,
+    keys: set[tuple[str, str]],
+    held: dict[tuple[str, str], set[uuid.UUID]],
+    by_name: dict[str, set[uuid.UUID]],
+) -> tuple[str, set[uuid.UUID], set[uuid.UUID]]:
+    """``(match_kind, ids, possible)``: the strongest reading of *value* that holds an asset.
+
+    A value that reads as an FQDN stops after the name tier: its bare first label (the derived
+    hostname) is another host's name as often as its own, so those assets are only possible matches.
+    """
+    is_fqdn = any(kind == "fqdn" for kind, _ in keys)
+    for kind in MATCH_TIERS:
+        if kind == "name":
+            ids = set(by_name.get(_key(value), set()))
+        else:
+            ids = set()
+            for pair_kind, key in keys:
+                if pair_kind == kind:
+                    ids |= held.get((pair_kind, key), set())
+        if is_fqdn and kind == "hostname":
+            return "", set(), ids
+        if ids:
+            return kind, ids, set()
+    return "", set(), set()
+
+
 async def find_assets_by_identifier(
     db: AsyncSession,
     organization_id: uuid.UUID,
     values: Sequence[str],
 ) -> dict[str, dict[str, Any]]:
-    """The canonical asset each of *values* names, by the value as asked.
+    """The canonical asset each of *values* names, by the value as asked (see :func:`match_assets_by_identifier`)."""
+    return (await match_assets_by_identifier(db, organization_id, values)).found
+
+
+async def match_assets_by_identifier(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    values: Sequence[str],
+) -> IdentifierLookup:
+    """The canonical asset each of *values* names, by the value as asked, and the near misses.
 
     A value is read as every :data:`LOOKUP_KINDS` kind it can be (``web-02`` a
     hostname, ``10.0.0.5`` an IP, ``aa:bb:...`` a MAC, ``web-02.corp.example``
-    an FQDN and the hostname ``web-02``) and matched against the identifiers of every
-    source record, normalised as the identity engine compares them, then
-    against the asset's name. A value of the form ``<source>:<external id>``
-    (``openaev:<asset id>``) names one source record: it is matched exactly on
-    the records' source and external id and, when found, wins over every
-    weak reading of the same value. A source record id (a bare UUID or
-    ``record:<uuid>``, what the inventory change log names, #2702) answers the
-    asset the record is merged into. A value no asset holds is absent; when
-    several assets hold it (a weak key such as a shared IP), the first by name
-    answers. The profile caps its rows at 5,000, so one scan of the records is bounded.
+    an FQDN and the hostname ``web-02``), normalised as the identity engine
+    compares them, and as an exact asset name. The readings are ranked, never
+    unioned (#2803): a source reference ``<source>:<external id>`` or a source
+    record id (a bare UUID or ``record:<uuid>``, #2702) first, then
+    :data:`MATCH_TIERS` (exact FQDN, exact name, hostname, IP, MAC); the first
+    tier holding an asset answers. A value that is an FQDN never falls back to
+    its bare first label: when no asset holds the FQDN or that name, it is
+    absent from ``found`` and the assets of the hostname are listed in
+    ``possible``. Each found entry says its ``match_kind`` (``reference``,
+    ``fqdn``, ``name``, ``hostname``, ``ip``, ``mac``), ``matches`` the assets of
+    that tier and ``ambiguous`` when several hold it (a shared IP): the first by
+    name answers. The profile caps its rows at 5,000, so one scan of the records is bounded.
     """
     asked: dict[str, set[tuple[str, str]]] = {}
     references: dict[str, tuple[str, str]] = {}
@@ -1282,7 +1347,7 @@ async def find_assets_by_identifier(
             elif (reference := _source_reference(text_value)) is not None:
                 references[text_value] = reference
     if not asked:
-        return {}
+        return IdentifierLookup()
     of_records = await assets_of_records(db, organization_id, set(record_refs.values()))
     held: dict[tuple[str, str], set[uuid.UUID]] = {}
     by_reference: dict[tuple[str, str], set[uuid.UUID]] = {}
@@ -1303,6 +1368,9 @@ async def find_assets_by_identifier(
         for kind in LOOKUP_KINDS:
             for key in record.keys(kind):
                 held.setdefault((kind, key), set()).add(asset_id)
+        # A source that writes the full name in its hostname field holds that FQDN exactly too (#2803).
+        for key in _hostname_fqdns(identifiers):
+            held.setdefault(("fqdn", key), set()).add(asset_id)
     by_name: dict[str, set[uuid.UUID]] = {}
     names = {_key(v) for v in asked}
     for asset_id, name_key in (
@@ -1313,35 +1381,38 @@ async def find_assets_by_identifier(
         )
     ).all():
         by_name.setdefault(name_key, set()).add(asset_id)
-    matched: dict[str, set[uuid.UUID]] = {}
+    matched: dict[str, tuple[str, set[uuid.UUID]]] = {}
+    near: dict[str, set[uuid.UUID]] = {}
     for value, keys in asked.items():
         if value in record_refs and (record_asset := of_records.get(record_refs[value])) is not None:
-            matched[value] = {record_asset}
+            matched[value] = ("reference", {record_asset})
             continue
         exact = by_reference.get(references[value], set()) if value in references else set()
         if exact:
-            matched[value] = exact
+            matched[value] = ("reference", exact)
             continue
-        ids: set[uuid.UUID] = set()
-        for pair in keys:
-            ids |= held.get(pair, set())
-        ids |= by_name.get(_key(value), set())
+        kind, ids, possible = _tiers(value, keys, held, by_name)
         if ids:
-            matched[value] = ids
-    if not matched:
-        return {}
-    every = {i for ids in matched.values() for i in ids}
+            matched[value] = (kind, ids)
+        elif possible:
+            near[value] = possible
+    if not matched and not near:
+        return IdentifierLookup()
+    every = {i for _, ids in matched.values() for i in ids} | {i for ids in near.values() for i in ids}
     assets = {
         a.id: a
         for a in (await db.execute(select(OrganizationAsset).where(OrganizationAsset.id.in_(every)))).scalars().all()
     }
-    out: dict[str, dict[str, Any]] = {}
-    for value, ids in matched.items():
-        found = sorted((assets[i] for i in ids if i in assets), key=lambda a: (a.name_key, a.canonical_key))
+
+    def _ordered(ids: set[uuid.UUID]) -> list[OrganizationAsset]:
+        return sorted((assets[i] for i in ids if i in assets), key=lambda a: (a.name_key, a.canonical_key))
+
+    out = IdentifierLookup()
+    for value, (kind, ids) in matched.items():
+        found = _ordered(ids)
         if found:
-            asset = found[0]
-            summary = _summary(asset, [], 0)
-            out[value] = {
+            summary = _summary(found[0], [], 0)
+            out.found[value] = {
                 "id": summary["id"],
                 "name": summary["name"],
                 "category": summary["category"],
@@ -1349,6 +1420,17 @@ async def find_assets_by_identifier(
                 "internet_facing": summary["internet_facing"],
                 "owner": summary["owner"],
                 "matches": len(found),
+                "match_kind": kind,
+                "ambiguous": len(found) > 1,
+            }
+    for value, ids in near.items():
+        candidates = _ordered(ids)
+        if candidates:
+            out.possible[value] = {
+                "count": len(candidates),
+                "items": [
+                    {"id": str(a.id), "name": _summary(a, [], 0)["name"]} for a in candidates[:MAX_POSSIBLE_MATCHES]
+                ],
             }
     return out
 

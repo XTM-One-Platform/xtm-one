@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.decision import Decision
 from app.services.channel_notices import notice
+from app.services.decision_ask import without_recommended_mark
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def _compose(view: Any, ask: dict[str, Any], language: str, *, answerable: bool,
         if recommendation and str(option.get("key")) == recommendation:
             line += f" ({notice('card_recommended', language)})"
         if option.get("effect"):
-            line += f": {_clip(option['effect'], 120)}"
+            line += f": {_clip(without_recommended_mark(option['effect']), 120)}"
         lines.append(line)
     deadline = None if closed else _utc(ask.get("deadline"))
     if deadline:
@@ -257,7 +258,7 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
             "title": _label(option, kind, language, _MAX_ROW_TITLE),
         }
         if option.get("effect"):
-            entry["description"] = _clip(option["effect"], _MAX_ROW_DESCRIPTION)
+            entry["description"] = _clip(without_recommended_mark(option["effect"]), _MAX_ROW_DESCRIPTION)
         rows.append(entry)
     if not _distinct([str(entry["title"]) for entry in rows]):
         # Rows that still read the same cannot be told apart: the text with the link instead.

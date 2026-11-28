@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.utils import format_exception_message
 from app.models.decision import Decision
 from app.services.channel_notices import notice
+from app.services.decision_ask import without_recommended_mark
 from app.services.decision_cards import (
     _MAX_CONTEXT,
     _MAX_EFFECT,
@@ -190,7 +191,7 @@ def _ask_blocks(ask: dict[str, Any], kind: str, language: str, *, show_effects: 
         if recommendation and str(option.get("key")) == recommendation:
             line += f" ({_escape(notice('card_recommended', language))})"
         if show_effects and option.get("effect"):
-            line += f": {_escape(_clip(option['effect'], _MAX_EFFECT))}"
+            line += f": {_escape(_clip(without_recommended_mark(option['effect']), _MAX_EFFECT))}"
         lines.append(f"• {line}")
     if lines:
         blocks.append(_section({"type": "mrkdwn", "text": _clip_lines("\n".join(lines)), "verbatim": True}))
