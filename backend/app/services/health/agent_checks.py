@@ -62,7 +62,6 @@ from app.core.docs_links import docs_url
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
     FINDING_ADVICE,
-    SILENT_GRACE,
     SPIKE_FACTOR,
     SPIKE_MIN_TOKENS,
     assignment_is_failing,
@@ -217,7 +216,6 @@ async def schedule_silent(db: AsyncSession, now: datetime, agents: list[uuid.UUI
                         "schedule_resumed_at": resumed.isoformat() if resumed else None,
                         "missed_slots": missed,
                     },
-                    "threshold": f"a due slot past {int(SILENT_GRACE.total_seconds() // 60)} minutes",
                 },
                 recommendation=FINDING_ADVICE["assignment_silent"],
             )

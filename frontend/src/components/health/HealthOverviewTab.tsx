@@ -48,6 +48,7 @@ import {
 } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { EVALUATION_CHART_COLORS } from "@/lib/constants";
+import { formatDateTime } from "@/lib/utils";
 import {
   HEALTH_MODULE_LABELS,
   categoryLabel,
@@ -109,6 +110,12 @@ function findingTitle(finding: HealthFinding, t: Translate): string {
   return finding.subject_name ? `${title} · ${finding.subject_name}` : title;
 }
 
+/** A time of the evidence (a key ending in _at) is a formatted date, a missing one "Never" (UX round 1 B2 on #2724). */
+function evidenceTime(value: unknown, t: Translate): string {
+  if (value === null || value === undefined || value === "") return t("Never");
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? formatDateTime(value) : String(value);
+}
+
 function evidenceValue(value: unknown, t: Translate): string {
   if (typeof value === "boolean") return value ? t("Yes") : t("No");
   if (Array.isArray(value)) return value.map((item) => evidenceValue(item, t)).join(", ");
@@ -120,7 +127,11 @@ function evidenceLines(finding: HealthFinding, t: Translate): [string, string][]
   const values = (finding.evidence?.values ?? {}) as Record<string, unknown>;
   // A quota period is a word to translate (UX round 2 B2 on #634: never "month" raw).
   const lines = Object.entries(values).map(
-    ([key, value]) => [evidenceLabel(key, t), key === "period" && typeof value === "string" ? periodLabel(value, t) : evidenceValue(value, t)] as [string, string],
+    ([key, value]) =>
+      [
+        evidenceLabel(key, t),
+        key === "period" && typeof value === "string" ? periodLabel(value, t) : key.endsWith("_at") ? evidenceTime(value, t) : evidenceValue(value, t),
+      ] as [string, string],
   );
   const threshold = finding.evidence?.threshold;
   if (threshold !== undefined && threshold !== null) lines.push([evidenceLabel("threshold", t), evidenceValue(threshold, t)]);
