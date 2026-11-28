@@ -286,14 +286,61 @@ def _deadline(value: object) -> str | None:
     return parsed.astimezone(UTC).isoformat()
 
 
-def _context(value: object) -> str:
-    """The context lines, each trimmed, blank lines dropped, line breaks kept."""
+def _context_text(value: object) -> str:
+    """The context lines, each trimmed, blank lines dropped, line breaks kept, before any cut."""
     if value in (None, ""):
         return ""
     if isinstance(value, list):
         value = "\n".join(str(line) for line in value)
     lines = [" ".join(line.split()) for line in str(value).splitlines()]
-    return fit("\n".join(line for line in lines if line), MAX_CONTEXT_CHARS)
+    return "\n".join(line for line in lines if line)
+
+
+def _context(value: object) -> str:
+    """The context as stored: :func:`_context_text` within :data:`MAX_CONTEXT_CHARS`."""
+    return fit(_context_text(value), MAX_CONTEXT_CHARS)
+
+
+def _cut_warning(field: str, text: str, limit: int) -> str | None:
+    if len(text) <= limit:
+        return None
+    kept = fit(text, limit)[: -len(CUT_MARK)].rstrip()
+    tail = " ".join(kept.split()[-6:])
+    return (
+        f"ask.{field} is {len(text)} characters and the card shows {limit}: it was cut after '{tail}', "
+        "so the reader does not see the rest. Rewrite it shorter with the decisive facts first"
+    )
+
+
+def cut_warnings(value: object) -> list[str]:
+    """What of a written ask its caps cut, one warning per text, for the caller to shorten on purpose (#2778).
+
+    :func:`normalize_ask` cuts the question, the context and the option texts
+    to their caps with a visible mark; the person reads the cut text, so the
+    writer is told which text lost its end. Pure; an ask it cannot read
+    answers no warning (:func:`normalize_ask` refuses it).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else None
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, dict):
+        return []
+    found: list[str | None] = []
+    if value.get("question") is not None:
+        found.append(_cut_warning("question", " ".join(str(value["question"]).split()), MAX_QUESTION_CHARS))
+    found.append(_cut_warning("context", _context_text(value.get("context")), MAX_CONTEXT_CHARS))
+    options = value.get("options")
+    for raw in options if isinstance(options, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        key = " ".join(str(raw.get("key") or "").split())
+        for name, limit in (("label", MAX_LABEL_CHARS), ("effect", MAX_EFFECT_CHARS)):
+            if raw.get(name) is not None:
+                text = " ".join(str(raw[name]).split())
+                found.append(_cut_warning(f"options[{key}].{name}", text, limit))
+    return [warning for warning in found if warning]
 
 
 # The card marks the recommended option itself (dev-docs/human-gates.md, J.1):
