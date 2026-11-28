@@ -112,7 +112,8 @@ export function CaseRunningVersions({
     {
       key: "version",
       header: "Version",
-      cell: (r) => (r.version === UNKNOWN ? t_i18n("Unknown") : r.version),
+      // One line, so the trailing Sources column (w-full) never squeezes it to two (UX r1 B3 on #2758).
+      cell: (r) => <span className="whitespace-nowrap">{r.version === UNKNOWN ? t_i18n("Unknown") : r.version}</span>,
       sortValue: (r) => r.version,
       csv: (r) => r.version,
     },
@@ -121,7 +122,7 @@ export function CaseRunningVersions({
           {
             key: "platform",
             header: "Platform",
-            cell: (r: CtemCaseRunningVersion) => r.platform ?? t_i18n("Not known"),
+            cell: (r: CtemCaseRunningVersion) => <span className="whitespace-nowrap">{r.platform ?? t_i18n("Not known")}</span>,
             sortValue: (r: CtemCaseRunningVersion) => r.platform ?? "",
             csv: (r: CtemCaseRunningVersion) => r.platform ?? "",
           } satisfies DataTableColumn<CtemCaseRunningVersion>,
@@ -179,6 +180,8 @@ export function CaseRunningVersions({
       ),
       csv: (r) => r.sources.map(versionSourceName).join("; "),
       hideable: true,
+      // The last column takes the free width: the others hug their content (#2750).
+      headerClassName: "w-full",
     },
   ];
 
@@ -209,13 +212,14 @@ export function CaseRunningVersions({
   const fixNotKnown = versions?.assets_fix_not_known_for_platform ?? 0;
 
   return (
-    <Card data-testid="ctem-case-running-versions">
+    // A flex column, so next to Affected assets both cards share the row's height and the pager sits at the bottom (#2750).
+    <Card data-testid="ctem-case-running-versions" className="flex flex-col">
       <CardHeader>
         <CardTitle>
           <CaseCardTitleText icon={CASE_SECTION_ICON.running_versions}>{t_i18n("Running versions")}</CaseCardTitleText>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 content-base">
+      <CardContent className="flex flex-1 flex-col gap-3 content-base">
         {versions ? (
           <p data-testid="ctem-case-running-versions-summary">
             {t_i18n("The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.", {
@@ -305,6 +309,7 @@ export function CaseRunningVersions({
 
         {rows.length > 0 && (
           <DataTable
+            fill
             framed={false}
             rows={rows}
             columns={columns}

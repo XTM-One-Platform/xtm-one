@@ -19,6 +19,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseAffectedAsset, CtemCaseAffectedAssets } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
+import { cn } from "@/lib/utils";
 import { SourceMark, versionSourceName } from "./CaseRunningVersions";
 import { INVENTORY_PATH } from "./inventory";
 
@@ -36,10 +37,29 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string>
 /**
  * Status steps aside below a 896 px card (the case page at 1080), back from the Columns pill:
  * every row keeps one height and the table never scrolls sideways (design standards s.3, UX r1
- * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). The
- * text cells are cut on one line with a tooltip.
+ * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). Status
+ * is cut on one line with a tooltip.
  */
 const SECONDARY_HIDE_BELOW = "4xl" as const;
+
+/**
+ * Asset and Running version from the same 4xl (896 px) table width: drawn whole on one line from
+ * it (the paired half and the stacked card at 1728 and wider, UX r1 B2 on #2758), cut on one line
+ * with the design-system tooltip below it (the stacked card at 1080), so a long FQDN or version
+ * never scrolls the table sideways (UX r2 B4 on #2758). The DataTable box is the container.
+ * A case paired with Running versions is never capped: pairVersionsAndAssets already bounds its
+ * names and versions to what a 708 px half draws whole, so they also fit the stacked card.
+ * Whole class names, so Tailwind sees them.
+ */
+const ASSET_NAME_CAP = "max-w-[14rem] @4xl:max-w-none";
+const RUNNING_VERSION_CAP = "max-w-[10rem] @4xl:max-w-none";
+
+/** The width rule of the Asset and Running version cells: none when paired, the 4xl cap otherwise. */
+export function affectedAssetCaps(paired: boolean): { asset: string; version: string } {
+  return paired
+    ? { asset: "whitespace-nowrap", version: "whitespace-nowrap" }
+    : { asset: ASSET_NAME_CAP, version: RUNNING_VERSION_CAP };
+}
 
 const STATUS_RANK: Record<NonNullable<CtemCaseAffectedAsset["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
 
@@ -49,8 +69,9 @@ function assetVersionText(asset: CtemCaseAffectedAsset, t: (s: string) => string
   return (asset.versions ?? []).map((v) => (v === "unknown" ? t("Unknown") : v)).join(", ");
 }
 
-export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | undefined }) {
+export function CaseAffectedAssets({ data, paired = false }: { data: CtemCaseAffectedAssets | undefined; paired?: boolean }) {
   const { t_i18n, intl } = useFormatter();
+  const { asset: assetCap, version: versionCap } = affectedAssetCaps(paired);
   if (!data || data.asset_count === 0) return null;
   const fromInventory = data.version_source === "inventory";
   const withStatus = fromInventory && data.assets.some((a) => a.status);
@@ -59,8 +80,8 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
     {
       key: "name",
       header: "Asset",
-      // A free-text cell of an auto-layout table carries a width cap (13.ak).
-      cell: (a) => <TruncatedText text={a.name} className="max-w-[14rem]" />,
+      // Whole from a 4xl table, cut with a tooltip below it: the trailing Sources column takes only the width left over.
+      cell: (a) => <TruncatedText text={a.name} className={assetCap} />,
       sortValue: (a) => a.name.toLowerCase(),
       csv: (a) => a.name,
     },
@@ -98,9 +119,10 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             key: "version",
             header: "Running version",
             cell: (a: CtemCaseAffectedAsset) => (
-              <span className={a.in_inventory ? undefined : "text-default-secondary"}>
-                <TruncatedText text={assetVersionText(a, t_i18n)} className="max-w-[10rem]" />
-              </span>
+              <TruncatedText
+                text={assetVersionText(a, t_i18n)}
+                className={cn(versionCap, !a.in_inventory && "text-default-secondary")}
+              />
             ),
             sortValue: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join(",") : "~"),
             csv: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join("; ") : ""),
@@ -132,6 +154,8 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             ),
             csv: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map(versionSourceName).join("; "),
             hideable: true,
+            // The last column takes the free width: the others hug their content (#2750).
+            headerClassName: "w-full",
           } satisfies DataTableColumn<CtemCaseAffectedAsset>,
         ]
       : []),
@@ -160,19 +184,21 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
   ];
 
   return (
-    <Card data-testid="ctem-case-affected-assets">
+    // A flex column, so next to Running versions both cards share the row's height and the pager sits at the bottom (#2750).
+    <Card data-testid="ctem-case-affected-assets" className="flex flex-col">
       <CardHeader>
         <CardTitle>
           <CaseCardTitleText icon={CASE_SECTION_ICON.affected_assets}>{t_i18n("Affected assets")}</CaseCardTitleText>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 content-base">
+      <CardContent className="flex flex-1 flex-col gap-3 content-base">
         {!fromInventory && (
           <p className="text-default-secondary" data-testid="ctem-case-affected-assets-no-version">
             {t_i18n("Version source: none yet")}
           </p>
         )}
         <DataTable
+          fill
           framed={false}
           rows={data.assets}
           columns={columns}
