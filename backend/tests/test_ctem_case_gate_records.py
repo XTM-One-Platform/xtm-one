@@ -232,3 +232,48 @@ def test_attach_keeps_what_the_case_event_said() -> None:
     assert asked["answer"]["at"] == _at("12:10")
     assert asked["answer"]["option"] == "B"
     assert asked["answer"]["recorded_on_case"] is True
+
+
+def test_other_key_names_a_decision_outside_the_catalog() -> None:
+    """#2782: ctem:<x>:<case id> outside the catalog is a record key; a catalog key or another case's is not."""
+    assert gates.other_key(f"ctem:evidence:{CASE}", CASE) == "ctem:evidence"
+    assert gates.other_key(f"ctem:version-check:{CASE}", CASE) == "ctem:version-check"
+    assert gates.other_key(f"ctem:review:{CASE}", CASE) is None
+    assert gates.other_key(f"ctem:accept-risk:{CASE}", CASE) is None
+    assert gates.other_key(f"ctem:evidence:{ITEM}", CASE) is None
+    assert gates.other_key(f"dev:evidence:{CASE}", CASE) is None
+
+
+def test_open_decisions_outside_the_catalog_are_served_once_each() -> None:
+    """#2782: a ctem:evidence decision renders like a gate record with its title; a catalog gate item never twice."""
+    other = "55555555-5555-5555-5555-555555555555"
+    items: list[dict[str, Any]] = [
+        {
+            "id": other,
+            "correlation_key": f"ctem:version-check:{CASE}",
+            "title": "Confirm the version",
+            "created_by_agent_id": AGENT,
+            "created_at": _at("12:10"),
+            "due_at": None,
+        },
+        {
+            "id": ITEM,
+            "correlation_key": f"ctem:evidence:{CASE}",
+            "title": "Provide the evidence",
+            "created_by_agent_id": AGENT,
+            "created_at": _at("11:56"),
+            "due_at": _at("18:00"),
+        },
+        {"id": ITEM, "correlation_key": f"ctem:evidence:{CASE}", "title": "Provide the evidence"},
+        {"id": "66666666-6666-6666-6666-666666666666", "correlation_key": f"ctem:review:{CASE}", "title": "Review"},
+    ]
+    rows = {ITEM: _decision("open")["decision"]}
+    records = gates.resolve_others(items, rows, case_id=CASE, names=NAMES, now=NOW)
+    assert [r["key"] for r in records] == ["ctem:evidence", "ctem:version-check"]
+    evidence = records[0]
+    assert evidence["status"] == gates.WAITING and evidence["work_item_id"] == ITEM
+    assert evidence["title"] == "Provide the evidence" and evidence["decision_filed"] is True
+    assert evidence["asked_of"] == {"type": "user", "id": PERSON, "name": "Sam"}
+    assert evidence["deadline"] == _at("18:00") and evidence["phase"] is None
+    # No decision row yet: still drawn, asked when the item was filed.
+    assert records[1]["status"] == gates.WAITING and records[1]["asked_at"] == _at("12:10")

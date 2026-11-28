@@ -626,6 +626,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 extra: dict[str, Any] = {"running_versions": running, "version_match": match}
                 if place is not None:
                     extra["catch_up"] = place
+                from app.services import ctem_gate_order
+
+                # The open decisions the case waits on, whatever their key (#2782): the agent sees what the page shows.
+                extra["pending_decisions"] = await ctem_gate_order.pending_decisions(
+                    str(shown[0].id), user_id=str(scope)
+                )
                 # One page under the answer budget (#2681), whatever the size of each row.
                 rendered = _bounded_issues(shown[2], issues_offset, limit=limit, fields=fields, extra=extra)
                 elapsed = time.perf_counter() - started
@@ -756,6 +762,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         str(gate.get("key") or "").strip(),
                         str(case.id),
                         await ctem_gate_order.open_gate_item_keys(db, str(case.id)),
+                    )
+                    if refusal:
+                        raise rules.CaseRuleError(refusal)
+                elif str(state or "").strip() == "waiting_decision" and case.state != "waiting_decision":
+                    from app.services import ctem_gate_order
+
+                    # An agent's move to waiting_decision names a decision the page can show (#2782):
+                    # one open needs_human item keyed ctem:<x>:<case id>, checked before any write.
+                    refusal = ctem_gate_order.waiting_state_refusal(
+                        str(case.id), await ctem_gate_order.open_gate_item_keys(db, str(case.id))
                     )
                     if refusal:
                         raise rules.CaseRuleError(refusal)

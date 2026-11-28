@@ -284,7 +284,10 @@ export default function CtemCaseDetail() {
     [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
   );
   // What the loop waits on between runs: its open gate, else the stage the case reached.
-  const loopWait = useMemo(() => caseLoopWait({ state: kase?.state, gates: kase?.gates }), [kase]);
+  const loopWait = useMemo(
+    () => caseLoopWait({ state: kase?.state, gates: kase?.gates, otherDecisions: kase?.other_decisions }),
+    [kase],
+  );
   const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
   const moduleUrls = useModuleBaseUrls();
   const update = useUpdateCtemCase(id);
@@ -916,7 +919,13 @@ export default function CtemCaseDetail() {
       )}
 
       {/* Every waiting decision, whoever works the case (#2464), first: a gate no section owns is answered here. */}
-      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
+      <CaseWaitingGates
+        state={kase.state}
+        gates={kase.gates}
+        otherDecisions={kase.other_decisions}
+        history={kase.history}
+        personName={personName}
+      />
 
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard

@@ -135,3 +135,48 @@ async def gate_records(
     records = gates.resolve(history, decisions, names=names, filed=filed)
     gates.attach(history, records)
     return records
+
+
+async def other_decisions(db: AsyncSession, case_id: str, *, viewer_id: uuid.UUID) -> list[dict[str, Any]]:
+    """The open decisions of the case keyed outside the gate catalog that this viewer may read (#2782).
+
+    The keys come from ``ctem_gate_order.open_gate_item_keys`` (whoever reads them);
+    each item is then read with the viewer's own work-item visibility, so a
+    decision the viewer may not read is never served.
+    """
+    from app.services import ctem_gate_order
+    from app.services import work_item as work_item_service
+
+    keys = sorted(k for k in await ctem_gate_order.open_gate_item_keys(db, case_id) if gates.other_key(k, case_id))
+    items: list[dict[str, Any]] = []
+    for key in keys:
+        found = await work_item_service.list_work_items(
+            user_id=str(viewer_id), correlation_key=key, open_only=True, limit=5
+        )
+        items.extend(i for i in found if i.get("needs_human"))
+    if not items:
+        return []
+    rows: dict[str, dict[str, Any]] = {}
+    for decision in (
+        await db.execute(
+            select(Decision).where(
+                Decision.source_type == "work_item",
+                Decision.source_id.in_([u for u in (_uuid(i.get("id")) for i in items) if u]),
+            )
+        )
+    ).scalars():
+        row = _row(decision)
+        kept = rows.get(str(decision.source_id))
+        # The newest decision row of an item wins (an item asked again opens a new one).
+        if kept is None or str(row.get("created_at") or "") >= str(kept.get("created_at") or ""):
+            rows[str(decision.source_id)] = row
+    ids: dict[str, set[str]] = {"user": set(), "group": set(), "agent": set()}
+    for item in items:
+        if item.get("created_by_agent_id"):
+            ids["agent"].add(str(item["created_by_agent_id"]))
+    for row in rows.values():
+        kind, _, ident = (row.get("recipient") or "").partition(":")
+        if kind in ("user", "group") and ident:
+            ids[kind].add(ident)
+    names = await _names(db, ids, viewer_id)
+    return gates.resolve_others(items, rows, case_id=case_id, names=names)

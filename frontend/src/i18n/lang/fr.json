@@ -22032,6 +22032,7 @@
   "everyone in the company": "toute l'entreprise",
   "the administrators": "les administrateurs",
   "Waits for {name}: {gate}": "Attend {name} : {gate}",
+  "Waiting for: {decision}": "En attente de : {decision}",
   "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision n'a été déposée pour cette validation, personne ne peut donc y répondre pour l'instant. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
   "This gate waits for a person: the decision is in their Waiting for you list.": "Cette validation attend une personne : la décision est dans sa liste En attente de vous.",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal en 30 jours} other {{shown} signaux en 30 jours}}",
