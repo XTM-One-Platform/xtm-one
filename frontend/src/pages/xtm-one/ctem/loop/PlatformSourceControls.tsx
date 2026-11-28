@@ -8,7 +8,7 @@
  * provisioned at once or refused with the reason, which the dialog shows on the field. Turning it
  * off removes what it provisioned. A reader sees the same lines without controls.
  */
-import { useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { Chip, Icon } from "@filigran/design-system";
 import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,8 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
   const perKind = links.reduce<Record<string, number>>((n, link) => ({ ...n, [link.kind]: (n[link.kind] ?? 0) + 1 }), {});
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-2" data-testid="ctem-platform-source-objects">
+    // UX round 2 B1: -ml-2 cancels the ghost sm padding, so the first action starts on the value column edge.
+    <span className="-ml-2 flex min-w-0 flex-wrap items-center gap-2" data-testid="ctem-platform-source-objects">
       {links.map((link) => {
         const path = perKind[link.kind] > 1 && link.pathLabel ? t_i18n(link.pathLabel) : null;
         const open = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
@@ -316,6 +317,44 @@ function useObjectSummary(objects: readonly CtemPlatformSourceObject[]): string 
   );
 }
 
+/**
+ * One collapsible group header (UX round 2 B2 on #2743): a muted summary line, then the same ghost Show all / Hide
+ * toggle, so the source's own objects and the fleets' objects read with one pattern.
+ */
+function CollapsibleSummary({
+  lead,
+  summary,
+  open,
+  onToggle,
+  collapsible = true,
+  summaryTestId,
+  toggleTestId,
+}: {
+  lead?: ReactNode;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  collapsible?: boolean;
+  summaryTestId: string;
+  toggleTestId: string;
+}) {
+  const { t_i18n } = useFormatter();
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {lead}
+      <span className="min-w-0 text-default-secondary" data-testid={summaryTestId}>
+        {summary}
+      </span>
+      {collapsible && (
+        <Button variant="ghost" size="sm" className="shrink-0" aria-expanded={open} onClick={onToggle} data-testid={toggleTestId}>
+          <Icon name={open ? "chevron-up" : "chevron-down"} size={16} aria-hidden />
+          {open ? t_i18n("Hide") : t_i18n("Show all")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** The objects one integration's source holds, then the fleets' objects on it, collapsed apart (#2740). */
 function PlatformObjectsGroup({ line, named }: { line: CtemPlatformSource; named: boolean }) {
   const { t_i18n, locale } = useFormatter();
@@ -331,25 +370,15 @@ function PlatformObjectsGroup({ line, named }: { line: CtemPlatformSource; named
   return (
     <div className="flex min-w-0 flex-col gap-1.5 content-compact" data-testid="ctem-platform-source-object-group" data-integration={line.integration_id}>
       {own.length > 0 && (
-        <div className="flex min-w-0 items-center gap-2">
-          {named && <span className="min-w-0 truncate font-medium">{line.integration_name}</span>}
-          <span className="min-w-0 text-default-secondary" data-testid="ctem-platform-source-object-summary">
-            {t_i18n("{summary}, owned by Signals", { summary })}
-          </span>
-          {own.length > 3 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              aria-expanded={showAll}
-              onClick={() => setShowAll((v) => !v)}
-              data-testid="ctem-platform-source-objects-toggle"
-            >
-              <Icon name={showAll ? "chevron-up" : "chevron-down"} size={16} aria-hidden />
-              {showAll ? t_i18n("Hide") : t_i18n("Show all")}
-            </Button>
-          )}
-        </div>
+        <CollapsibleSummary
+          lead={named ? <span className="min-w-0 truncate font-medium">{line.integration_name}</span> : undefined}
+          summary={t_i18n("{summary}, owned by Signals", { summary })}
+          open={showAll}
+          onToggle={() => setShowAll((v) => !v)}
+          collapsible={own.length > 3}
+          summaryTestId="ctem-platform-source-object-summary"
+          toggleTestId="ctem-platform-source-objects-toggle"
+        />
       )}
       {own.length > 0 && showAll && (
         <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object-names">
@@ -360,21 +389,16 @@ function PlatformObjectsGroup({ line, named }: { line: CtemPlatformSource; named
       )}
       {others.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-platform-source-fleet-group">
-          <span>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-expanded={showOthers}
-              onClick={() => setShowOthers((v) => !v)}
-              data-testid="ctem-platform-source-fleet-toggle"
-            >
-              <Icon name={showOthers ? "chevron-up" : "chevron-down"} size={16} aria-hidden />
-              {t_i18n("Other XTM One objects in {platform}, not managed here ({count, plural, one {# object} other {# objects}})", {
-                platform,
-                count: others.length,
-              })}
-            </Button>
-          </span>
+          <CollapsibleSummary
+            summary={t_i18n("Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}", {
+              platform,
+              count: others.length,
+            })}
+            open={showOthers}
+            onToggle={() => setShowOthers((v) => !v)}
+            summaryTestId="ctem-platform-source-fleet-summary"
+            toggleTestId="ctem-platform-source-fleet-toggle"
+          />
           {showOthers && (
             <>
               {[...shared.entries()].map(([event, owners]) => (

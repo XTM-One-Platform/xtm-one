@@ -76,7 +76,7 @@ export function PirSelection({
                 })}
           </span>
           {isAdmin && !isDefault && (
-            <span>
+            <span className="-ml-2">
               <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={saving} data-testid="ctem-path-source-pirs-reset">
                 {t_i18n("Use the default")}
               </Button>
@@ -85,7 +85,8 @@ export function PirSelection({
         </>
       )}
       {isAdmin && (
-        <span>
+        // UX round 2 B1 on #2743: -ml-2 cancels the ghost sm padding, so the action starts on its text's edge.
+        <span className="-ml-2">
           <Button variant="ghost" size="sm" onClick={() => navigate(profileFieldHref("pir_ids"))} data-testid="ctem-path-source-pirs-policy">
             {t_i18n("Open the Intelligence policy")}
           </Button>

@@ -22260,7 +22260,7 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
   "Provisioned": "Provisioned",
   "{summary}, owned by Signals": "{summary}, owned by Signals",
-  "Other XTM One objects in {platform}, not managed here ({count, plural, one {# object} other {# objects}})": "Other XTM One objects in {platform}, not managed here ({count, plural, one {# object} other {# objects}})",
+  "Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}": "Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}",
   "{count, plural, one {# notifier} other {# notifiers}}": "{count, plural, one {# notifier} other {# notifiers}}",
   "{count, plural, one {# trigger} other {# triggers}}": "{count, plural, one {# trigger} other {# triggers}}",
   "{count, plural, one {# playbook} other {# playbooks}}": "{count, plural, one {# playbook} other {# playbooks}}",

@@ -127,7 +127,12 @@ describe("Owner of each provisioned object (#2640)", () => {
     // The fleets' group is collapsed by default.
     expect(within(radius).queryByTestId("ctem-platform-source-fleet-objects")).toBeNull();
     const toggle = within(radius).getByTestId("ctem-platform-source-fleet-toggle");
-    expect(toggle).toHaveTextContent("Other XTM One objects in OpenAEV, not managed here (1 object)");
+    // UX round 2 B2 on #2743: the fleets' group reads like the own group, a muted summary then the same Show all toggle.
+    expect(within(radius).getByTestId("ctem-platform-source-fleet-summary")).toHaveTextContent(
+      "Other XTM One objects in OpenAEV, not managed here: 1 object",
+    );
+    expect(toggle).toHaveTextContent("Show all");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
     const fleets = within(radius).getByTestId("ctem-platform-source-fleet-objects");
     expect(within(fleets).getByTestId("ctem-platform-source-object-owner")).toHaveTextContent("Detection validation desk");
