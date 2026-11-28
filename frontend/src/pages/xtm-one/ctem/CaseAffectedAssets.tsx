@@ -37,10 +37,22 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string>
 /**
  * Status steps aside below a 896 px card (the case page at 1080), back from the Columns pill:
  * every row keeps one height and the table never scrolls sideways (design standards s.3, UX r1
- * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). Asset
- * and Running version are drawn whole on one line; Status is cut on one line with a tooltip.
+ * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). Status
+ * is cut on one line with a tooltip.
  */
 const SECONDARY_HIDE_BELOW = "4xl" as const;
+
+/**
+ * Asset and Running version from the same 4xl (896 px) table width: drawn whole on one line from
+ * it (the paired half and the stacked card at 1728 and wider, UX r1 B2 on #2758), cut on one line
+ * with the design-system tooltip below it (the stacked card at 1080), so a long FQDN or version
+ * never scrolls the table sideways (UX r2 B4 on #2758). The DataTable box is the container.
+ * A case paired with Running versions is never capped: pairVersionsAndAssets already bounds its
+ * names and versions to what a 708 px half draws whole, so they also fit the stacked card.
+ * Whole class names, so Tailwind sees them.
+ */
+export const ASSET_NAME_CAP = "max-w-[14rem] @4xl:max-w-none";
+export const RUNNING_VERSION_CAP = "max-w-[10rem] @4xl:max-w-none";
 
 const STATUS_RANK: Record<NonNullable<CtemCaseAffectedAsset["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
 
@@ -50,8 +62,10 @@ function assetVersionText(asset: CtemCaseAffectedAsset, t: (s: string) => string
   return (asset.versions ?? []).map((v) => (v === "unknown" ? t("Unknown") : v)).join(", ");
 }
 
-export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | undefined }) {
+export function CaseAffectedAssets({ data, paired = false }: { data: CtemCaseAffectedAssets | undefined; paired?: boolean }) {
   const { t_i18n, intl } = useFormatter();
+  const assetCap = paired ? "whitespace-nowrap" : ASSET_NAME_CAP;
+  const versionCap = paired ? "whitespace-nowrap" : RUNNING_VERSION_CAP;
   if (!data || data.asset_count === 0) return null;
   const fromInventory = data.version_source === "inventory";
   const withStatus = fromInventory && data.assets.some((a) => a.status);
@@ -60,8 +74,8 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
     {
       key: "name",
       header: "Asset",
-      // Drawn whole on one line: the trailing Sources column takes only the width left over (UX r1 B2 on #2758).
-      cell: (a) => <span className="whitespace-nowrap">{a.name}</span>,
+      // Whole from a 4xl table, cut with a tooltip below it: the trailing Sources column takes only the width left over.
+      cell: (a) => <TruncatedText text={a.name} className={assetCap} />,
       sortValue: (a) => a.name.toLowerCase(),
       csv: (a) => a.name,
     },
@@ -99,7 +113,10 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             key: "version",
             header: "Running version",
             cell: (a: CtemCaseAffectedAsset) => (
-              <span className={cn("whitespace-nowrap", !a.in_inventory && "text-default-secondary")}>{assetVersionText(a, t_i18n)}</span>
+              <TruncatedText
+                text={assetVersionText(a, t_i18n)}
+                className={cn(versionCap, !a.in_inventory && "text-default-secondary")}
+              />
             ),
             sortValue: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join(",") : "~"),
             csv: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join("; ") : ""),

@@ -8,12 +8,12 @@ import { MemoryRouter } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseAffectedAssets } from "@/hooks/api/useCtemCasesApi";
-import { CaseAffectedAssets } from "./CaseAffectedAssets";
+import { ASSET_NAME_CAP, CaseAffectedAssets, RUNNING_VERSION_CAP } from "./CaseAffectedAssets";
 
-function draw(data: CtemCaseAffectedAssets | undefined) {
+function draw(data: CtemCaseAffectedAssets | undefined, paired = false) {
   return renderWithProviders(
     <MemoryRouter>
-      <CaseAffectedAssets data={data} />
+      <CaseAffectedAssets data={data} paired={paired} />
     </MemoryRouter>,
   );
 }
@@ -88,6 +88,27 @@ describe("CaseAffectedAssets (#1176 slice 3b)", () => {
     expect(screen.getByTestId("ctem-case-affected-assets-no-version").textContent).toBe("Version source: none yet");
     expect(screen.queryByRole("columnheader", { name: /Running version/ })).toBeNull();
     expect(container.textContent).not.toMatch(/tech stack/i);
+  });
+
+  it("cuts a long asset name and version with a tooltip under a 4xl table, whole from it and when paired (UX r2 B4 on #2758)", () => {
+    const longName = "lapt-fili-0001.corp.example-subsidiary.internal.net";
+    const longData: CtemCaseAffectedAssets = {
+      ...FROM_INVENTORY,
+      assets: [{ ...FROM_INVENTORY.assets[0], name: longName, versions: ["18.20.4-lts.windows-x64-msi"], status: undefined }],
+    };
+    // Stacked (not pairable): capped below the 896 px container width, whole from it, so 1080 never scrolls sideways.
+    const stacked = draw(longData);
+    const name = within(stacked.container).getByText(longName);
+    for (const cls of ASSET_NAME_CAP.split(" ")) expect(name.className).toContain(cls);
+    expect(name.className).toContain("truncate");
+    const version = within(stacked.container).getByText("18.20.4-lts.windows-x64-msi");
+    for (const cls of RUNNING_VERSION_CAP.split(" ")) expect(version.className).toContain(cls);
+    stacked.unmount();
+    // Paired: the data already fits a half, drawn whole on one line, never cut.
+    const paired = draw(longData, true);
+    const pairedName = within(paired.container).getByText(longName);
+    expect(pairedName.className).toContain("whitespace-nowrap");
+    expect(pairedName.className).not.toContain("max-w-[14rem]");
   });
 
   it("draws nothing when no visible issue names an asset", () => {

@@ -778,6 +778,8 @@ export default function CtemCaseDetail() {
 
   // The platform group owning the case as a team (#2577), shown next to its lead (#2586).
   const ownerTeam = owningTeam(kase.owner_basis, kase.owner_group_id);
+  // Decided once per case from its whole data (UX r1 B1 on #2758); it also lifts the Affected assets cap (UX r2 B4).
+  const pairable = pairVersionsAndAssets(kase);
 
   return (
     <div className="space-y-6">
@@ -879,14 +881,14 @@ export default function CtemCaseDetail() {
       </div>
 
       {/* Running versions next to Affected assets on a wide page, stacked below it or when one card stands alone (#2750). */}
-      <CaseVersionsAssetsRow pairable={pairVersionsAndAssets(kase)}>
+      <CaseVersionsAssetsRow pairable={pairable}>
         {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
         {kase.remediation_kind === "upgrade" && (
           <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
         )}
 
         {/* The assets the visible issues name, each with the version it runs from the inventory (#1176 slice 3b). */}
-        <CaseAffectedAssets data={kase.affected_assets} />
+        <CaseAffectedAssets data={kase.affected_assets} paired={pairable} />
       </CaseVersionsAssetsRow>
 
       {kase.details_unavailable.length > 0 && (
