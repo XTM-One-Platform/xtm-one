@@ -747,6 +747,15 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 before = (await store.events_of(db, [case.id])).get(case.id, [])
                 known = {e.id for e in before}
                 unchanged: list[str] = []
+                if isinstance(gate, dict) and str(gate.get("outcome") or "") in ("waited", "passed_automatically"):
+                    from app.services.ctem_gate_order import close_at_scoping_refusal
+
+                    # #2798: the end-of-loop close is never the scoping close; nothing is written.
+                    scoping = close_at_scoping_refusal(
+                        str(gate.get("key") or "").strip(), case.state, {str(e.kind) for e in before}
+                    )
+                    if scoping:
+                        raise rules.CaseRuleError(scoping)
                 if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
                     from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
                     from app.services import ctem_gate_order

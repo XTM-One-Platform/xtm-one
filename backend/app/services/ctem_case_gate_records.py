@@ -49,6 +49,8 @@ REASON_KINDS: tuple[str, ...] = (
 #: The correlation keys of the work item a waiting gate opens, by gate key, for one case id
 #: (``builtin_agents.CTEM_*_GATE_PREFIXES``: the personas and the "Gate answered" trigger use them).
 GATE_ITEM_PREFIXES: dict[str, tuple[str, ...]] = {
+    # #2798: the close at scoping of a case proven not affected, apart from the end-of-loop close.
+    "ctem.scoping.not_relevant": ("ctem:scoping-not-relevant:",),
     "ctem.analyst_review": ("ctem:review:",),
     "ctem.validation.non_readonly": ("ctem:validation:", "ctem:f2:validate:"),
     "ctem.remediation.decision": ("ctem:remediation:",),
