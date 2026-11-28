@@ -22162,7 +22162,7 @@
   "Open the notifier in {platform}": "Open the notifier in {platform}",
   "Open the triggers in {platform}": "Open the triggers in {platform}",
   "Open the playbook in {platform}": "Open the playbook in {platform}",
-  "The resync reads every source again, with the paths and sources that are on.": "The resync reads every source again, with the paths and sources that are on.",
+  "The resync reads the sources ticked below again, with the paths and sources that are on.": "The resync reads the sources ticked below again, with the paths and sources that are on.",
   "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.",
   "Value (ROI) restarts from now": "Value (ROI) restarts from now",
   "Measured since {date} (reset)": "Measured since {date} (reset)",
@@ -22178,7 +22178,7 @@
   "Resync by source": "Resync by source",
   "Stopped at the read limit": "Stopped at the read limit",
   "{read} read, {recorded} recorded": "{read} read, {recorded} recorded",
-  "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.": "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.",
+  "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.": "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.",
   "Intrusion sets": "Intrusion sets",
   "Threat actor groups": "Threat actor groups",
   "Threat actor individuals": "Threat actor individuals",
@@ -22269,5 +22269,8 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
   "The integration the pass reads.": "The integration the pass reads.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
-  "{name} (integration owner)": "{name} (integration owner)"
+  "{name} (integration owner)": "{name} (integration owner)",
+  "How far back {source} is read": "How far back {source} is read",
+  "Does not run": "Does not run",
+  "Left out of this resync": "Left out of this resync"
 }
