@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -263,7 +264,7 @@ async def test_a_row_the_drain_cannot_decide_leaves_the_selection_and_never_loop
     assert db.selects == 3
 
 
-async def test_the_drain_stops_inside_a_batch_at_its_deadline(fake_io, monkeypatch):
+async def test_the_drain_stops_inside_a_batch_at_its_deadline(fake_io: Any, monkeypatch: Any) -> None:
     # #2774: the deadline is read before every row, so a slow row never holds the pass for a whole batch.
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(store, "time", SimpleNamespace(monotonic=lambda: clock.now))
@@ -271,13 +272,13 @@ async def test_the_drain_stops_inside_a_batch_at_its_deadline(fake_io, monkeypat
     decided: list[str] = []
     real = store.evaluate
 
-    async def _slow(db, row, **kw):
+    async def _slow(db: Any, row: Any, **kw: Any) -> None:
         decided.append(row.id)
         await real(db, row, **kw)
         clock.now += 10.0  # each row takes 10 s
 
     monkeypatch.setattr(store, "evaluate", _slow)
-    db = _Backlog(rows)
+    db: Any = _Backlog(rows)  # type: ignore[no-untyped-call]
     counts = await store.drain_new(db, now=NOW, batch=10, deadline=25.0, clock=lambda: clock.now)
     assert counts == {"to_validate": 3, "deferred": 7, "batches": 1}
     assert sum(r.state == "new" for r in rows) == 7

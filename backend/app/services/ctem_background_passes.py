@@ -20,7 +20,7 @@ row by row and commit what they did; a pass still running past the deadline and
 :data:`PASS_GRACE_SECONDS` is cancelled (its open transaction rolls back) and the
 next pass runs. The rest waits for the next cycle.
 
-dev-docs/ctem-cases.md section 4.7 is the contract.
+dev-docs/ctem-cases.md section 9bis.3 is the contract.
 """
 
 from __future__ import annotations

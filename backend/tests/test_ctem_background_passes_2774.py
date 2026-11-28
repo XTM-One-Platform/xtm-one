@@ -152,7 +152,7 @@ async def test_the_tick_stays_in_its_window_with_a_slow_ctem_backlog(monkeypatch
 
 def test_the_overrun_warning_names_the_step_that_ran_long(monkeypatch: Any, caplog: Any) -> None:
     clock = {"now": 0.0}
-    monkeypatch.setattr(autonomous.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr("app.services.autonomous.time.monotonic", lambda: clock["now"])
     monkeypatch.setattr(autonomous, "_schedule_trouble", None)
     tick = autonomous._TickClock()
     monkeypatch.setattr(autonomous, "_tick_clock", tick)

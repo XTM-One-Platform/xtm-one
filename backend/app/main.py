@@ -324,7 +324,7 @@ _startup_error: str | None = None
 _startup_retrying: str | None = None
 _scheduler_task: asyncio.Task | None = None
 # The CTEM passes, off the scheduler tick (#2774, services/ctem_background_passes.py).
-_ctem_passes_task: asyncio.Task | None = None
+_ctem_passes_task: asyncio.Task[None] | None = None
 # The sweep resuming the chat turns a platform stop cut: every
 # worker, from its start, on its own short cadence.
 _cut_turn_sweep_task: asyncio.Task | None = None
