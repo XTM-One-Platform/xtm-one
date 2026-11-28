@@ -107,7 +107,8 @@ widened):
 ```
 {
   "question": str,                       # one sentence, required
-  "context"?: str,                       # 2 to 4 plain lines (#776)
+  "context"?: str,                       # 2 to 4 plain lines (#776), the card shows 800 characters
+  "context_full"?: str,                  # platform-written: the whole context when the card cut it, up to 8000
   "options"?: [{"key", "label", "effect"?, "kind"?, "keeps_waiting"?}],
   "recommendation"?: option key,
   "deadline"?: ISO-8601 UTC,
@@ -116,6 +117,13 @@ widened):
 }
 ```
 
+- `context_full` is never lost evidence: when the agent's context, or the
+  context a platform line (a CTEM version match, a control measurement, the
+  hosts in scope, a scenario that is not playable) leads, does not fit the
+  card's 800 characters, the card shows the cut text and every card surface
+  folds the whole text under "Full context"; the write result says the context
+  was cut and that the rest lives in `ask.context_full` (`decision_ask.cut_warnings`).
+  A context that fits carries no `context_full`.
 - `kind` on an option is new and optional: `approve`, `approve_always`,
   `reject`, `consent` or absent. It drives the push actions and the button
   tones; it never changes what the answer does (the source does).

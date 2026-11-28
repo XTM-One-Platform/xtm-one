@@ -58,6 +58,7 @@ function linkDecisionView(view: DecisionLinkView, t_i18n: Translate): DecisionVi
   return {
     question: ask.question?.trim() || t_i18n("An agent waits for your decision."),
     context: (ask.context ?? "").split("\n"),
+    fullContext: ask.context_full ?? null,
     // An option picked on the text link's card asks to confirm it like the work item card (#2150).
     options: askOptions(ask.options ?? [], t_i18n),
     recommendation: ask.recommendation ?? null,

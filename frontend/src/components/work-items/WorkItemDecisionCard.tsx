@@ -134,6 +134,8 @@ export function workItemDecisionView(item: WorkItem, t_i18n: Translate, { inCase
       ask?.question?.trim() ||
       (title ? t_i18n("Decision needed: {title}", { title }) : t_i18n("An agent waits for your decision on this work item.")),
     context: (ask?.context ?? "").split("\n"),
+    // The whole context when the card's cap cut it (#2800).
+    fullContext: ask?.context_full ?? null,
     options: askOptions(ask?.options ?? [], t_i18n),
     recommendation: ask?.recommendation ?? null,
     deadline: ask?.deadline ?? null,

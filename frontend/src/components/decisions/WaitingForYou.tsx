@@ -64,6 +64,7 @@ export function waitingDecisionView(row: WaitingDecision): DecisionView {
     question: ask.question?.trim() || row.question,
     questionMarkdown: row.kind === "hitl",
     context: (ask.context ?? "").split("\n"),
+    fullContext: ask.context_full ?? null,
     options: ask.options ?? [],
     recommendation: ask.recommendation ?? null,
     deadline: row.deadline ?? ask.deadline ?? null,

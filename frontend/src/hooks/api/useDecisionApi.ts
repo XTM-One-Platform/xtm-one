@@ -30,6 +30,8 @@ type DecisionSourceType = "run" | "flow_run" | "work_item";
 interface DecisionAsk {
   question?: string;
   context?: string;
+  /** The whole context when the card's cap cut `context` (#2800). */
+  context_full?: string | null;
   options?: { key: string; label: string; effect?: string | null }[];
   recommendation?: string | null;
   deadline?: string | null;
