@@ -789,7 +789,7 @@ export default function CtemCaseDetail() {
           <>
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
-            <CaseToValidateChip unverified={kase.version_unverified} />
+            <CaseToValidateChip unverified={kase.version_unverified} state={kase.state} />
             <span className="flex min-w-0 items-center gap-1">
               <CaseOwner name={ownerName} />
               <CaseOwnerTeam name={ownerTeam?.name} />

@@ -162,11 +162,11 @@ export default function CtemCases() {
       // The default sort (#1503): priority, critical first; the attention score and its band are gone.
       key: "priority",
       header: "Priority",
-      // A version-blind case keeps its priority and says the version is to validate (#2004).
+      // A version-blind open case keeps its priority and says the version is to validate (#2004, #2731).
       cell: (c) => (
         <span className="inline-flex items-center gap-1">
           <CasePriorityChip priority={c.priority} />
-          <CaseToValidateChip unverified={c.version_unverified} />
+          <CaseToValidateChip unverified={c.version_unverified} state={c.state} />
         </span>
       ),
       sortValue: (c) => CASE_PRIORITY_RANK[c.priority],
