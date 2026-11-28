@@ -1715,10 +1715,51 @@ def bound_messaging_platforms(agent: Agent) -> set[str]:
     return integrations | bots
 
 
+async def _reprompt_for_schema(
+    loop_kwargs: dict[str, Any],
+    structured_output: dict[str, Any] | None,
+    count_usage: Callable[..., None],
+    corrective: str,
+    answer: str,
+) -> str | None:
+    """The one corrective call of an answer off its output schema (#2765).
+
+    The turn's model, with no tools, sees the turn's messages, its own answer
+    and the error list, and answers again; the call is counted in the turn's
+    trace like the mandatory-transfer routing call.
+    """
+    from app.tools.agent_loop import _resolve_effective_max_tokens
+
+    llm = loop_kwargs["llm"]
+    model = loop_kwargs.get("model")
+    max_tokens = loop_kwargs.get("max_tokens") or _resolve_effective_max_tokens(llm, model)
+    extra: dict[str, Any] = {}
+    if structured_output:
+        extra["structured_output"] = structured_output
+    if loop_kwargs.get("reasoning_effort"):
+        extra["reasoning_effort"] = loop_kwargs["reasoning_effort"]
+    retry = await llm.chat(
+        messages=[
+            *loop_kwargs["messages"],
+            ChatMessage(role="assistant", content=answer),
+            ChatMessage(role="user", content=corrective),
+        ],
+        tools=None,
+        model=model,
+        temperature=loop_kwargs.get("temperature", 0.7),
+        max_tokens=max_tokens,
+        **extra,
+    )
+    if retry.usage:
+        count_usage(retry.usage, retry.model)
+    return retry.content or None
+
+
 async def _run_helper_turn(*args: Any, **kwargs: Any) -> tuple[str, str | None]:
     """Run an in-process helper agent (consult, transfer) and keep its ledger.
 
-    The helper gets its own ``loop_outcome_out``; its ledger is recorded on the
+    The helper gets its own ``loop_outcome_out`` (the caller's, when it passes
+    one to read the helper's outcome); its ledger is recorded on the
     caller's trace, current at this call, whatever the helper's outcome — a helper
     that fails part-way still made its calls. Passing the output dict changes
     nothing the helper does.
@@ -1726,7 +1767,9 @@ async def _run_helper_turn(*args: Any, **kwargs: Any) -> tuple[str, str | None]:
     from app.services.langfuse_tracing import get_current_trace_ctx
 
     caller_trace = get_current_trace_ctx()
-    outcome: dict[str, Any] = {}
+    outcome: dict[str, Any] = kwargs.pop("loop_outcome_out", None)
+    if outcome is None:
+        outcome = {}
     try:
         return await run_agent_chat(*args, loop_outcome_out=outcome, **kwargs)
     finally:
@@ -6042,6 +6085,9 @@ async def run_agent_chat(
                                 )
 
                         _consult_msgs: list = []
+                        # The consulted turn's outcome: a schema violation it
+                        # could not correct is named in the answer (#2765).
+                        _consult_outcome: dict[str, Any] = {}
                         start_ts = datetime.now(UTC)
                         # This consult's own id on its frames: two consults of
                         # one agent at once are two consults on screen too.
@@ -6116,6 +6162,7 @@ async def run_agent_chat(
                                 },
                                 parent_run_id=_consult_run_id,
                                 messages_out=_consult_msgs,
+                                loop_outcome_out=_consult_outcome,
                                 on_event=_consult_on_event,
                                 # The consulted agent holds no thread of its
                                 # own, so an investigation it starts would be
@@ -6249,8 +6296,17 @@ async def run_agent_chat(
                             _return_text = consulted_text or ""
                             if _call_schema is not None:
                                 # The caller fixed the shape: the JSON answer
-                                # comes back whole, nothing appended to it.
-                                return f"[Response from {target.name}]:\n{_return_text}"
+                                # comes back whole, nothing appended to it. An
+                                # answer still off that shape says so on the
+                                # header line, before the JSON (#2765).
+                                _violation = ""
+                                if _consult_outcome.get("schema_errors"):
+                                    from app.services.structured_output import (
+                                        schema_violation_note,
+                                    )
+
+                                    _violation = f"[{schema_violation_note(_consult_outcome['schema_errors'])}]\n"
+                                return f"[Response from {target.name}]:\n{_violation}{_return_text}"
                             # A cited answer says so, right where the model is
                             # about to write. On the first real run of the
                             # Deep Investigation Agent the consulting agent
@@ -8560,17 +8616,41 @@ async def run_agent_chat(
             # repairing it would re-serialize a partial payload as a complete one.
             if response.content and not answer_cut_by_budget(response):
                 from app.services.structured_output import (
-                    deliver_json_answer_in_thread,
+                    SCHEMA_VIOLATION_STOP_REASON,
+                    deliver_json_answer_with_contract,
                 )
 
+                # A schema is a contract (#2765): an answer still off it after
+                # the repair gets one corrective re-prompt, and an answer still
+                # off it after that is delivered marked partial, never as a
+                # clean completion. A cancelled turn is not re-prompted.
+                _schema_reprompt = None
+                if (
+                    _effective_output_format == "json"
+                    and isinstance(_effective_output_schema, dict)
+                    and _effective_output_schema
+                    and not await _turn_was_cancelled(db, parent_run_id, cancel_event)
+                ):
+                    _schema_reprompt = functools.partial(
+                        _reprompt_for_schema,
+                        loop_kwargs,
+                        _structured_output_kwarg,
+                        _count_in_trace,
+                    )
                 # In a thread: repairing a large answer is CPU-bound and would
                 # block the worker's event loop (and its health probe).
-                response.content = await deliver_json_answer_in_thread(
+                _delivery = await deliver_json_answer_with_contract(
                     response.content,
                     _effective_output_format,
                     _effective_output_schema,
                     log_context=f"agent {agent.id}",
+                    reprompt=_schema_reprompt,
                 )
+                response.content = _delivery.content
+                if _delivery.schema_errors:
+                    response.stop_reason = SCHEMA_VIOLATION_STOP_REASON
+                    if loop_outcome_out is not None:
+                        loop_outcome_out["schema_errors"] = list(_delivery.schema_errors)
 
             # ── Pipeline: FINALIZE stage ─────────────────────────────────
             # Not on a cancelled turn: this loads and runs a tool.

@@ -171,6 +171,17 @@ def _collected_summary(merged: Mapping[str, object], task_count: int, output_key
     return "\n".join(lines)
 
 
+def _schema_violation_line(result: Mapping[str, object]) -> str:
+    """The line a completed task's result carries when its answer broke the
+    caller's output_schema (#2765), ending with a newline; ``""`` otherwise."""
+    errors = result.get("schema_errors")
+    if not result.get("partial") or not isinstance(errors, list) or not errors:
+        return ""
+    from app.services.structured_output import schema_violation_note
+
+    return f"  {schema_violation_note([str(e) for e in errors])}\n"
+
+
 def build_sub_agent_tools(
     db: AsyncSession,
     user_id: str,
@@ -704,6 +715,7 @@ def build_sub_agent_tools(
                 )
                 parts.append(
                     f"{tid[:12]}: completed ({len(text):,} chars{files_note}){run_note}\n"
+                    f"{_schema_violation_line(result)}"
                     f"  Preview: {preview}...{paging_note}"
                 )
                 finished_file_ids.extend(file_ids)

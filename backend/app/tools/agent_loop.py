@@ -4716,6 +4716,9 @@ UNFINISHED_STOP_REASONS: frozenset[str] = frozenset(
         DEGENERATE_REPETITION_STOP_REASON,
         "timeout",
         "waiting_on_tasks",
+        # The answer is still off its output schema after the corrective
+        # re-prompt (structured_output.SCHEMA_VIOLATION_STOP_REASON, #2765).
+        "schema_violation",
     }
 )
 

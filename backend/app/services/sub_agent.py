@@ -1363,6 +1363,10 @@ async def get_task_result(
         "task_description": task.task_description,
         "result": task.result,
         "error": task.error,
+        # A completed answer that broke the caller's output_schema (#2765).
+        "partial": bool((task.metadata_json or {}).get("partial")),
+        "stop_reason": (task.metadata_json or {}).get("stop_reason"),
+        "schema_errors": list((task.metadata_json or {}).get("schema_errors") or []),
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         # Files the task produced: the text result only carries their
@@ -4352,6 +4356,21 @@ async def _execute_sub_agent_task(
                         "stop_reason": stop_reason,
                         "pending_task_ids": pending_ids,
                         "outcome": "wait_budget_exhausted",
+                    }
+                elif loop_outcome.get("schema_errors"):
+                    # The answer is still off the caller's output_schema after
+                    # the corrective re-prompt (#2765): delivered, but partial,
+                    # with the errors the caller reads in get_task_result.
+                    from app.services.structured_output import (
+                        SCHEMA_ERRORS_SHOWN,
+                        SCHEMA_VIOLATION_STOP_REASON,
+                    )
+
+                    task2.metadata_json = {
+                        **(task2.metadata_json or {}),
+                        "partial": True,
+                        "stop_reason": SCHEMA_VIOLATION_STOP_REASON,
+                        "schema_errors": list(loop_outcome["schema_errors"])[:SCHEMA_ERRORS_SHOWN],
                     }
 
             # Persist result + full agentic conversation on linked AssignmentRun
