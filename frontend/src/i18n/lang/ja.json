@@ -22260,9 +22260,6 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。",
-  "The integration the pass reads.": "パスが読み取る連携。",
-  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "パスが OpenCRQ を読み取る際のユーザー。既定: 連携の所有者。",
-  "{name} (integration owner)": "{name}（連携の所有者）",
   "Provisioned": "プロビジョニング済み",
   "{summary}, owned by Signals": "{summary}（所有者: Signals）",
   "Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}": "{platform} 内のその他の XTM One オブジェクト（ここでは管理対象外）: {count, plural, other {# 件}}",
@@ -22277,5 +22274,8 @@
   "Paths": "パス",
   "Turning it off stops all of them.": "オフにするとすべて停止します。",
   "Taking it off this path keeps it on for the others.": "このパスから外しても、他のパスではオンのままです。",
-  "The switch is organization-wide.": "このスイッチは組織全体に適用されます。"
+  "The switch is organization-wide.": "このスイッチは組織全体に適用されます。",
+  "The integration the pass reads.": "パスが読み取る連携。",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "パスが OpenCRQ を読み取る際のユーザー。既定: 連携の所有者。",
+  "{name} (integration owner)": "{name}（連携の所有者）"
 }
