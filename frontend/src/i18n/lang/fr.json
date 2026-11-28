@@ -22272,5 +22272,13 @@
   "{name} (integration owner)": "{name} (propriétaire de l’intégration)",
   "How far back {source} is read": "Profondeur de lecture : {source}",
   "Does not run": "Ne s'exécute pas",
-  "Left out of this resync": "Exclu de cette resynchronisation"
+  "Left out of this resync": "Exclu de cette resynchronisation",
+  "Being applied": "En cours d'application",
+  "Decision being applied": "Décision en cours d'application",
+  "Not applied": "Non appliquée",
+  "Decision recorded: {option}. The loop is applying it.": "Décision enregistrée : {option}. La boucle l'applique.",
+  "Decision recorded. The loop is applying it.": "Décision enregistrée. La boucle l'applique.",
+  "Recorded, still being applied. Refresh later.": "Enregistrée, encore en cours d'application. Actualisez plus tard.",
+  "Decision recorded, but the run applying it failed.": "Décision enregistrée, mais l'exécution qui l'applique a échoué.",
+  "Decision recorded: {gate}": "Décision enregistrée : {gate}"
 }

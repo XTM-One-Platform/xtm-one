@@ -22272,5 +22272,13 @@
   "{name} (integration owner)": "{name}（連携の所有者）",
   "How far back {source} is read": "{source} を遡って読み取る期間",
   "Does not run": "実行しない",
-  "Left out of this resync": "この再同期から除外"
+  "Left out of this resync": "この再同期から除外",
+  "Being applied": "適用中",
+  "Decision being applied": "判断を適用中",
+  "Not applied": "未適用",
+  "Decision recorded: {option}. The loop is applying it.": "判断を記録しました: {option}。ループが適用しています。",
+  "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
+  "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
+  "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
+  "Decision recorded: {gate}": "判断を記録しました: {gate}"
 }
