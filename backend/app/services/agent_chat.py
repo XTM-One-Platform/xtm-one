@@ -958,6 +958,11 @@ async def _load_pipeline_tool_unbound(
 
             defs, executor = build_fimi_analytics_composite()
             return (defs, executor) if defs else None
+        if tool_name == "ctem_relevance_score":
+            from app.services.builtin_tools.ctem_relevance import build_ctem_relevance_score_tool
+
+            defs, executor = build_ctem_relevance_score_tool()
+            return (defs, executor) if defs else None
         logger.warning("Pipeline: unsupported builtin tool '%s'", tool_name)
         return None
 
