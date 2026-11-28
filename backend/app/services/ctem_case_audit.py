@@ -96,6 +96,7 @@ KIND_PHASE: dict[str, str] = {
 
 #: The phase a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``) belongs to.
 GATE_PHASE: dict[str, str] = {
+    "ctem.scoping.not_relevant": STAGE_PRIORITIZATION,
     "ctem.analyst_review": STAGE_PRIORITIZATION,
     "ctem.validation.non_readonly": STAGE_VALIDATION,
     "ctem.close_without_retest": STAGE_VALIDATION,

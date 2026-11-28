@@ -3121,6 +3121,8 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
 # sets it back to open. These lists are THE gate keys: the personas name them
 # and the "Gate answered" trigger below takes exactly them.
 CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
+    # ctem.scoping.not_relevant, the close at scoping of a case proven not affected (#2798).
+    "ctem:scoping-not-relevant:",
     # ctem.analyst_review, read by the case page (dev-docs/ctem-loop-visibility.md).
     "ctem:review:",
     # ctem.validation.non_readonly, read by the case page (case-validation.ts).

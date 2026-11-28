@@ -200,6 +200,41 @@ def refuse_question_change(correlation_key: object, stored_ask: object, new_ask:
         )
 
 
+SCOPING_GATE = "ctem.scoping.not_relevant"
+CLOSE_WITHOUT_RETEST = "ctem.close_without_retest"
+#: Event kinds that say a case left scoping: a validation ran or was asked, or a remediation started.
+PAST_SCOPING_KINDS: frozenset[str] = frozenset(
+    {
+        "validation",
+        "scenario",
+        "retest_requested",
+        "treatment_plan",
+        "ticket",
+        "applied_change",
+    }
+)
+#: The statuses a case is still scoped in.
+SCOPING_STATES: frozenset[str] = frozenset({"new", "analyzing"})
+
+
+def close_at_scoping_refusal(gate: str, state: str | None, kinds: set[str]) -> str | None:
+    """Why ``ctem.close_without_retest`` is refused on a case still in scoping (#2798), else ``None``. Pure.
+
+    *kinds* are the event kinds of the case. ``ctem.close_without_retest`` is the end-of-loop close (a case
+    past validation or remediation); a case still ``new`` or ``analyzing`` with no validation and no
+    remediation event closes as not relevant through ``ctem.scoping.not_relevant``. An answer to a decision
+    already filed is never refused (the caller checks only ``waited`` and ``passed_automatically``).
+    """
+    if gate != CLOSE_WITHOUT_RETEST or (state or "") not in SCOPING_STATES or kinds & PAST_SCOPING_KINDS:
+        return None
+    return (
+        f"the gate {CLOSE_WITHOUT_RETEST} closes a case at the end of the loop (past validation or remediation); "
+        f"this case is still in scoping. Close it as not relevant with the gate {SCOPING_GATE} when the scoping "
+        "verdict is proven not affected (every relevance factor read); when a fact could not be read, record an "
+        "evidence request on the case instead of any close gate. Nothing was changed."
+    )
+
+
 def refuse_run_pointer(correlation_key: object, ask: object) -> None:
     """``ValueError`` when a CTEM gate card sends the person to a run instead of carrying its evidence. Pure."""
     if gate_of(correlation_key) is None or not isinstance(ask, Mapping):
@@ -215,8 +250,13 @@ def refuse_run_pointer(correlation_key: object, ask: object) -> None:
 
 
 __all__ = [
+    "CLOSE_WITHOUT_RETEST",
     "MOBILIZE",
     "MOBILIZE_PREREQUISITES",
+    "PAST_SCOPING_KINDS",
+    "SCOPING_GATE",
+    "SCOPING_STATES",
+    "close_at_scoping_refusal",
     "gate_of",
     "mobilize_before_review_warning",
     "mobilize_blocked_message",

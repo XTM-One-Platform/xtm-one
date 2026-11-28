@@ -42,6 +42,8 @@ RANK: dict[str, int] = {state: index for index, state in enumerate(OPEN_STATES)}
 #: ``builtin_fleet_docs.CTEM_GATE_KEYS``). ``None``: the gate does not move the case by itself
 #: (accepting risk and closing without a re-test are a person's state change).
 GATE_NEXT: dict[str, str | None] = {
+    # #2798: the close at scoping is the agent's own state change, recorded with its reason.
+    "ctem.scoping.not_relevant": None,
     "ctem.analyst_review": "analyzing",
     "ctem.remediation.decision": "remediating",
     "ctem.mobilize": "remediating",

@@ -43,7 +43,7 @@ false whatever is stored, and a built-in member of a built-in fleet never gets
 an in-run approval card (`hitl_whitelist.seeded_fleet_member`). A seeded gate
 that waits is one decision item between steps; the agent reads the answer and
 decides the next state itself. The CTEM loop fleets (#916,
-CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
+CTEM-34) declare one key per loop stage (`ctem.scoping.not_relevant`, #2798, `ctem.validation.non_readonly`,
 `ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
 `ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
 out of the box two gates wait per case, the OpenAEV validation (one decision
