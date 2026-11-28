@@ -20741,6 +20741,7 @@
   "The PIR playbook flags a threat in one of your PIRs": "El playbook de PIR marca una amenaza en uno de sus PIR",
   "A new issue, an SLA breach, a failed CI gate or an image scan with issues": "Un nuevo problema, un SLA incumplido, una puerta de CI fallida o un escaneo de imagen con problemas",
   "A Dependabot alert is opened or reopened on one of your repositories": "Se abre o se vuelve a abrir una alerta de Dependabot en uno de sus repositorios",
+  "A code scanning alert is opened or reopened on one of your repositories": "Se abre o se reabre una alerta de code scanning en uno de sus repositorios",
   "A finished simulation reached a high or very high criticality asset": "Una simulación terminada alcanzó un activo de criticidad alta o muy alta",
   "A reachability assertion failed: a target that should not answer answers": "Falló una aserción de alcanzabilidad: responde un objetivo que no debería",
   "The attack-surface pass sees a declared asset answer on a new port": "La pasada de superficie de ataque ve un activo declarado responder en un puerto nuevo",
@@ -22305,5 +22306,11 @@
   "Use on this source": "Usar en esta fuente",
   "OAuth default app": "Aplicación OAuth predeterminada",
   "Integration used on this source": "Integración usada en esta fuente",
-  "Integration taken off this source": "Integración retirada de esta fuente"
+  "Integration taken off this source": "Integración retirada de esta fuente",
+  "A finding is created on one of your assets": "Se crea un hallazgo en uno de sus activos",
+  "A secret scanning alert is opened or reopened on one of your repositories": "Se abre o se reabre una alerta de secret scanning en uno de sus repositorios",
+  "A security advisory is published on one of your repositories": "Se publica un aviso de seguridad en uno de sus repositorios",
+  "An OpenAEV scan finds a new asset": "Un escaneo de OpenAEV encuentra un activo nuevo",
+  "An indicator is sighted in your data": "Se avista un indicador en sus datos",
+  "The inventory evaluation finds an asset unseen past the threshold or no longer synced": "La evaluación del inventario encuentra un activo no visto más allá del umbral o que ya no se sincroniza"
 }

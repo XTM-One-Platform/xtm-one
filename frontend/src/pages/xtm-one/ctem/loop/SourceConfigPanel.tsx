@@ -79,9 +79,10 @@ function SourceIntegrationRows({
   const rows = source.integrations ?? [];
   return (
     // One grid for the whole list (UX round 1 on #2796, B2): every row shares the columns, a row without a switch included;
-    // the delivery column holds the longest dated line of en/fr/es/ja on one line (B3).
+    // the delivery column holds its dated line on one line (B3). The name keeps an 8rem floor and the other columns size to
+    // their content, so the name stays readable at 1080 in every locale (UX round 2 on #2796, B1).
     <ul
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_auto] gap-x-3 gap-y-1"
+      className="grid min-w-0 grid-cols-[minmax(8rem,1fr)_auto_auto_auto] gap-x-3 gap-y-1"
       data-testid="ctem-path-source-integration-rows"
     >
       {rows.map((i) => {
