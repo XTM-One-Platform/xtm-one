@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./ctem/case-icons";
-import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TOOLBAR_CONTROL_HEIGHT, rowLinesOf, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { ModulePivotLink } from "@/components/ui/module-pivot-link";
@@ -211,18 +211,22 @@ type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
  * the remediating Software, else the course of action, else "unknown"; a declared version OpenCTI
  * holds no Software of is named, never guessed.
  */
+function issueVersionCaption(issue: CtemCaseVisibleIssue, t: (key: string, values?: Record<string, string | number>) => string): string | null {
+  if (issue.not_affected || issue.source !== "opencti") return null;
+  const unknownDeclared = issue.declared_version_known === false ? issue.installed_version : null;
+  return issue.fixed_version && issue.fixed_by
+    ? t("Matched on Software {software}", { software: issue.fixed_by })
+    : issue.fixed_version && issue.course_of_action_name
+      ? t("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })
+      : unknownDeclared
+        ? t("Version {version} not known to OpenCTI", { version: unknownDeclared })
+        : null;
+}
+
 function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
   const { t_i18n } = useFormatter();
   if (issue.not_affected || issue.source !== "opencti") return null;
-  const unknownDeclared = issue.declared_version_known === false ? issue.installed_version : null;
-  const secondary =
-    issue.fixed_version && issue.fixed_by
-      ? t_i18n("Matched on Software {software}", { software: issue.fixed_by })
-      : issue.fixed_version && issue.course_of_action_name
-        ? t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })
-        : unknownDeclared
-          ? t_i18n("Version {version} not known to OpenCTI", { version: unknownDeclared })
-          : null;
+  const secondary = issueVersionCaption(issue, t_i18n);
   return (
     <span className="flex min-w-0 flex-col" data-testid="ctem-case-issue-version">
       <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
@@ -552,6 +556,17 @@ export default function CtemCaseDetail() {
   // The Re-test column exists only when a member carries the OpenAEV lifecycle,
   // so an older case looks the same as before (UX round 1 on #962, B1).
   const showRetest = hasRetestData(kase.issues ?? []);
+  // The table takes the two-line height only when a row draws a second line (Sam, 28 Nov 2026:
+  // CVE rows with no caption sat at 56 px next to the 40 px rows of Affected assets). A signal's
+  // path caption, a Fixed version caption, a Not affected caption or a re-test date is a second line.
+  const issueRowLines = rowLinesOf(
+    issueRows,
+    (r) =>
+      !isRestrictedIssue(r.issue) &&
+      (isSignalIssue(r.issue)
+        ? signalCaption(r.issue, t_i18n) !== null
+        : issueVersionCaption(r.issue, t_i18n) !== null || notAffectedOf(r) !== undefined || (showRetest && Boolean(r.issue.last_tested_at))),
+  );
 
   const columns: DataTableColumn<IssueRow>[] = [
     {
@@ -932,9 +947,9 @@ export default function CtemCaseDetail() {
             framed={false}
             rows={issueRows}
             columns={columns}
-            // One row height for the table (UX round 1 B1 on #1945): a signal row holds its chips
-            // and its path caption, so every row takes the two-line height.
-            rowLines={2}
+            // One row height for the table (UX round 1 B1 on #1945): two lines when any row holds
+            // a caption (a signal's path, a fixed version source, a re-test date), else one.
+            rowLines={issueRowLines}
             rowKey={(r) => r.key}
             selection={{
               selected: picked,

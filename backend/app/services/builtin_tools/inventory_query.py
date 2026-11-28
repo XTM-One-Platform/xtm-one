@@ -306,7 +306,7 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
             "through an SBOM dependency (via names what they run), with the asset filters; rows carry criticality "
             "and primary assets. Use it for 'who is affected by'.",
             {
-                "product": {"type": "string", "description": "Product (or give cpe)."},
+                "product": {"type": "string", "description": "Product name or software id (or give cpe)."},
                 "vendor": {"type": "string", "description": "Vendor."},
                 "cpe": {"type": "string", "description": "Product CPE 2.3."},
                 "version": {"type": "string", "description": "Exact version."},

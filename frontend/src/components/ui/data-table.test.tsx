@@ -15,7 +15,7 @@ import { HeldBadge } from "@/components/ui/held-badge";
 import { IconMark } from "@/components/ui/icon-mark";
 import { InfoLabel, InfoTip } from "@/components/ui/info-tip";
 import { TagList } from "@/components/ui/tag-list";
-import { DataTable, tableSkeletonRowCount, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { DataTable, rowLinesOf, tableSkeletonRowCount, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { renderWithProviders } from "@/testing/providers";
 
@@ -396,6 +396,13 @@ describe("DataTable", () => {
     expect(tableSkeletonRowCount(10, 1, 800)).toBe(10);
     expect(tableSkeletonRowCount(25, 2, 560)).toBe(10);
     expect(tableSkeletonRowCount(25, 1, 0)).toBe(25);
+  });
+
+  it("takes the two-line height only when a row draws a second line", () => {
+    const rows = [{ caption: null }, { caption: null }];
+    expect(rowLinesOf(rows, (r) => r.caption !== null)).toBe(1);
+    expect(rowLinesOf([...rows, { caption: "Matched on Software" }], (r) => r.caption !== null)).toBe(2);
+    expect(rowLinesOf([], () => true)).toBe(1);
   });
 
   it("never reads a total of 0 before a server page answered (UX r1 A1 on #11012)", () => {

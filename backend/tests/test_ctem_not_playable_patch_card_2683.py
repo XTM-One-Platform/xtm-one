@@ -72,8 +72,9 @@ def test_patch_case_keeps_the_agent_recommendation_among_closing_options() -> No
     out = _complete(ask, patch_case=True)
     by_key = {o["key"]: o["label"] for o in out["options"]}
     assert by_key[out["recommendation"]] == "Record remediation evidence"
-    assert "Wait for the next inventory sync" not in by_key.values()
-    assert sum(o["effect"].count("closes the case") for o in out["options"][:2]) == 2
+    # Every agent option is kept and says what its pass does (#2749): the wait does not close the case.
+    outcomes = [measurement.option_outcome(o) for o in out["options"][:3]]
+    assert outcomes == ["not_closing", "closes", "closes"]
 
 
 def test_patch_case_without_a_closing_option_recommends_completing_the_scenario() -> None:

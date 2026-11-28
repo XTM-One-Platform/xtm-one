@@ -60,6 +60,7 @@ import {
   passIntegrationIds,
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
+import { EvidenceHealthRunAsLine } from "./EvidenceHealthRunAsLine";
 import { PlatformSourceControls, PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
 import { isProvisioned, platformSourceFixRoute, sourceErrorLines, sourceReasonLine } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
@@ -186,6 +187,15 @@ function SourceConfig({
           <span className="text-default-secondary" data-testid="ctem-path-source-runs-on">
             {t_i18n("Runs on: {names}", { names: runsOn.length ? runsOn.join(", ") : t_i18n("None") })}
           </span>
+          {passField === "evidence_health" && (
+            <EvidenceHealthRunAsLine
+              pass={evidenceHealth}
+              integration={integrations.find((i) => i.id === evidenceRuns)}
+              isAdmin={isAdmin}
+              saving={saving}
+              onSave={onSave}
+            />
+          )}
           {(!switchable || noScope) && (
             <span className="flex items-center gap-1.5 text-default-secondary" data-testid="ctem-path-source-missing">
               <Icon name="info" size={16} aria-hidden />

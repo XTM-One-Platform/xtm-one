@@ -195,8 +195,10 @@ function SettingsFieldLabel({
   disabled,
 }: Pick<SettingsFieldProps, "id" | "label" | "info" | "required"> & { disabled?: boolean }) {
   const { t_i18n } = useFormatter();
+  // min-h-4: the row is as tall as the info icon whether or not it carries one, so fields side by side share
+  // one label baseline and one control top (UX round 1 on #2742, B2).
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-h-4 items-center gap-1.5">
       <Label
         id={settingsFieldLabelId(id)}
         htmlFor={id}

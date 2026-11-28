@@ -201,10 +201,26 @@ def fix_of(signal: CtemSignal) -> CaseFix:
             fixed_version=fixed,
         )
     if signal.subject_kind == "software" and kind == "patch":
+        legacy = _bounded_key(f"upgrade:-/{_norm(signal.subject_ref)}@latest")
+        # #2755: keyed and titled on the product the signal reports, never on a composite subject
+        # reference; an open case on the reference's key is still joined.
+        product = signal_product(signal)
+        if not product:
+            return CaseFix(key=legacy, kind="upgrade", title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX])
+        # The title keeps a plain subject's own words; a composite one is shown by the product.
+        shown = subject if _plain_name(subject) and not _evidence_values(evidence, _PRODUCT_KEYS) else product
+        if fixed:
+            key = _bounded_key(f"upgrade:-/{_norm(product)}@{_norm(fixed)}")
+            title = f"Upgrade {shown} to {fixed}"
+        else:
+            key = _bounded_key(f"upgrade:-/{_norm(product)}@latest")
+            title = f"Upgrade {shown} to a fixed version"
         return CaseFix(
-            key=_bounded_key(f"upgrade:-/{_norm(signal.subject_ref)}@latest"),
+            key=key,
             kind="upgrade",
-            title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
+            title=title[:COLUMN_MAX],
+            fixed_version=fixed or None,
+            aliases=(legacy,) if legacy != key else (),
         )
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
     if kind == "manual" and signal.subject_kind == "vulnerability":
@@ -646,6 +662,8 @@ async def open_from_signal(
             if current is None or current > due:
                 case.sla_due_at = due
         case.risk_scenario_ids = sorted(set(case.risk_scenario_ids or []) | set(scenarios))
+        if not case.product_label:  # #2755: a case opened without its product takes the one a joining signal names
+            case.product_label = _product_label(signal)
     _link(db, signal, case, vertical=vertical, events=events, now=now, created=created)
     if created and await _resolved_on_inventory(db, case, events=events, now=now):
         return case
@@ -730,11 +748,48 @@ def _link(
 
 
 def _product_label(signal: CtemSignal) -> str | None:
-    """The product a source reader's fix names (the inventory version check reads it, #1252)."""
+    """The product a case opened from *signal* is about (the inventory version check reads it, #1252).
+
+    A source reader's fix names it (``case_fix.product_label``); a signal recorded without one
+    (a tool call, #2755) gives it by its evidence's ``software`` / ``products``, else by the
+    software subject when that is a plain name, never a composite reference.
+    """
     evidence = getattr(signal, "evidence", None)
     fix = evidence.get("case_fix") if isinstance(evidence, dict) else None
     label = str(fix.get("product_label") or "").strip() if isinstance(fix, dict) else ""
-    return label[:200] or None
+    return (label or signal_product(signal))[:200] or None
+
+
+def _plain_name(value: object) -> str:
+    """*value* stripped when it is a plain product name, ``""`` for a composite reference (#2755).
+
+    A reference that joins parts with ``:`` (``host-1:thunderbird:115.10.1:CVE-...``, a CPE)
+    or names a CVE is not a product name.
+    """
+    text = " ".join(str(value or "").split()) if isinstance(value, str) else ""
+    if not text or ":" in text or _CVE_ID.search(text):
+        return ""
+    return text
+
+
+def signal_product(signal: Any) -> str:
+    """The product name a signal reports, as written, ``""`` when none (#2755, pure).
+
+    The first evidence ``software`` / ``products`` value, else the reference or label of a
+    software subject when it is a plain name.
+    """
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    for name in _PRODUCT_KEYS:
+        raw = evidence.get(name)
+        for item in raw if isinstance(raw, list) else [raw]:
+            if found := _plain_name(item):
+                return found
+    if getattr(signal, "subject_kind", None) == "software":
+        for value in (getattr(signal, "subject_ref", None), getattr(signal, "subject_label", None)):
+            if found := _plain_name(value):
+                return found
+    return ""
 
 
 async def locked_case(db: AsyncSession, case_id: uuid.UUID) -> CtemCase | None:

@@ -14,6 +14,7 @@ model call and no human gate on this path.
 |---|---|
 | `evidence_health.enabled` | Opt-in, off by default. |
 | `evidence_health.integration` | The id of the OpenCRQ integration the pass reads. |
+| `evidence_health.run_as_user_id` | The user the pass reads OpenCRQ as (#2739). Unset: the integration's owner. A save that sets or changes it, or changes the integration, is refused (422, the field named) when that user cannot use the integration (`module_run_as.integration_refusal`). |
 | `evidence_health.max_age_days` | The re-test delay: evidence older than this has expired (30 by default). |
 | `evidence_health.cadence_hours` | Hours between two passes (24 by default). |
 
@@ -55,15 +56,21 @@ the findings it used to report: it is a gap, recorded as one.
 
 ## 3. Segregation
 
-- OpenCRQ reads are system work: the credential is the one of the declared
-  integration's owner (as the attack surface pass and the CTEM ticketing sync),
-  listed in the credential gate (`tests/test_integration_credential_gate.py`).
-  The token only reads the tenant's risk scenarios and their evidence health;
-  OpenCRQ answers under its tenant RLS.
+- OpenCRQ reads are system work, as a named user: `evidence_health.run_as_user_id`
+  when an administrator picked one (Inventory > Evidence health, or "Change" on
+  the pass in a path's sources), else the declared integration's owner, listed
+  in the credential gate (`tests/test_integration_credential_gate.py`). A picked
+  user is checked at every pass with the module run-as rules
+  (`module_run_as.integration_refusal`: active, the integration resolves and is
+  connected for that user); a refusal records nothing, is the pass's reason in
+  the log, and the source reads Error with it on the paths (`bound.error_details`).
+  The pass never falls back to another user. The token only reads the tenant's
+  risk scenarios and their evidence health; OpenCRQ answers under the run-as
+  user's tenant RLS and clearance.
 - The signals carry asset ids and names, the state, dates and source origins,
   never finding content. They are recorded by `system`: only an administrator
   reads them (`ctem-signals.md`, visibility).
-- Markings fail closed (CTEM marking parity, G5): the owner's credential reads
+- Markings fail closed (CTEM marking parity, G5): the run-as credential reads
   OpenCRQ rows its clearance allows, and an administrator reading the signal may
   not hold that clearance. OpenCRQ's evidence health states the markings of the
   scenario and of each asset (`markingRefs`, OpenCRQ #60); a gap is recorded only
