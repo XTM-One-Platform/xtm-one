@@ -200,6 +200,7 @@ def test_every_runtime_stop_reason_of_the_loop_is_classified():
         agent_loop.DEGENERATE_REPETITION_STOP_REASON,
         "timeout",
         "waiting_on_tasks",
+        "schema_violation",
     } == agent_loop.UNFINISHED_STOP_REASONS
 
 

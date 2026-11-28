@@ -747,6 +747,7 @@ def _guarded_by_the_budget_cut(module) -> tuple[list[int], int]:
                 "deliver_json_answer",
                 "emit_repaired_json_in_thread",
                 "deliver_json_answer_in_thread",
+                "deliver_json_answer_with_contract",
             }
         ):
             continue

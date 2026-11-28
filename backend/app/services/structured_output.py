@@ -32,6 +32,8 @@ import json
 import logging
 import math
 import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from json_repair import repair_json
@@ -476,6 +478,10 @@ def coerce_types(data: dict, schema: dict) -> dict:
 MAX_SAP_VALIDATION_ERRORS = 50
 
 
+#: How validate_and_parse words a schema error, apart from a repair or parse one.
+_VALIDATION_ERROR_PREFIX = "Validation error at "
+
+
 def validate_and_parse(
     raw_output: str,
     schema: dict,
@@ -538,7 +544,7 @@ def validate_and_parse(
     if validation_errors:
         for err in validation_errors:
             path = ".".join(str(p) for p in err.absolute_path) or "(root)"
-            errors.append(f"Validation error at {path}: {err.message}")
+            errors.append(f"{_VALIDATION_ERROR_PREFIX}{path}: {err.message}")
 
         if not allow_partial:
             return data, errors
@@ -584,7 +590,22 @@ def emit_repaired_json(
     *,
     log_context: str,
 ) -> str | None:
-    """Run the SAP pipeline and return the re-serialized repaired JSON.
+    """The repaired JSON text of emit_repaired_json_checked, without its schema errors."""
+    return emit_repaired_json_checked(raw_output, schema, log_context=log_context)[0]
+
+
+def emit_repaired_json_checked(
+    raw_output: str,
+    schema: dict[str, Any],
+    *,
+    log_context: str,
+) -> tuple[str | None, list[str]]:
+    """Run the SAP pipeline: the re-serialized repaired JSON and its schema errors.
+
+    The errors are those of the payload emitted (a required key missing, an
+    array below its minItems); they are empty when the payload is valid and
+    when nothing is emitted (the content is then left unchanged). Syntax damage
+    the repair fixed is never one of them.
 
     As soon as the repaired output parses AND the parsed root type is
     plausible for the schema, the indent-2 re-serialization is returned —
@@ -611,13 +632,13 @@ def emit_repaired_json(
     if raw_output and _prose_fragment(
         extract_json_text(raw_output), log_context=log_context
     ):
-        return None
+        return None, []
     parsed_data, sap_errors = validate_and_parse(raw_output, schema)
     if parsed_data is None:
         # ``validate_and_parse`` overloads ``None``: it is both the
         # parse-failure sentinel and a legitimately parsed JSON ``null``.
         if not sap_errors and _matches_schema_root(None, schema):
-            return "null"
+            return "null", []
         if sap_errors:
             logger.warning(
                 "SAP yielded no emittable payload for %s "
@@ -625,7 +646,7 @@ def emit_repaired_json(
                 log_context,
                 sap_errors,
             )
-        return None
+        return None, []
     if not _matches_schema_root(parsed_data, schema):
         logger.warning(
             "SAP parsed root type %s does not match schema root for %s "
@@ -634,7 +655,7 @@ def emit_repaired_json(
             log_context,
             sap_errors,
         )
-        return None
+        return None, []
     if sap_errors:
         logger.warning(
             "SAP schema validation errors for %s "
@@ -642,7 +663,9 @@ def emit_repaired_json(
             log_context,
             sap_errors,
         )
-    return json.dumps(parsed_data, indent=2, ensure_ascii=False)
+    return json.dumps(parsed_data, indent=2, ensure_ascii=False), [
+        error for error in sap_errors if error.startswith(_VALIDATION_ERROR_PREFIX)
+    ]
 
 
 def emit_bare_json(raw_output: str, *, log_context: str) -> str | None:
@@ -711,13 +734,141 @@ def deliver_json_answer(
     A caller holding an answer the per-run budget cut short must not call this:
     repairing a partial payload would deliver it as a complete one.
     """
+    return deliver_json_answer_checked(content, output_format, output_schema, log_context=log_context).content
+
+
+#: The stop reason of a run whose final answer still violated its output
+#: schema after the one corrective re-prompt: delivered, but partial.
+SCHEMA_VIOLATION_STOP_REASON = "schema_violation"
+
+#: How many schema errors a corrective re-prompt and a caller's result name.
+SCHEMA_ERRORS_SHOWN = 10
+
+
+@dataclass(frozen=True)
+class JsonDelivery:
+    """What deliver_json_answer_checked delivers: the answer and the schema
+    errors of the payload it carries (empty when valid or schema-less)."""
+
+    content: str
+    schema_errors: list[str] = field(default_factory=list)
+
+
+def deliver_json_answer_checked(
+    content: str,
+    output_format: str,
+    output_schema: dict[str, Any] | None,
+    *,
+    log_context: str,
+) -> JsonDelivery:
+    """deliver_json_answer with the schema errors of the payload it delivers.
+
+    The repair (fences, escapes, prose around the payload) is the same; the
+    errors are kept so the run that owns the schema can re-prompt once and,
+    when the answer is still off its schema, say so to its caller instead of
+    storing a broken contract as a completed answer (#2765).
+    """
     if output_format != "json" or not content:
-        return content
+        return JsonDelivery(content)
     if output_schema:
-        repaired = emit_repaired_json(content, output_schema, log_context=log_context)
+        repaired, errors = emit_repaired_json_checked(content, output_schema, log_context=log_context)
     else:
-        repaired = emit_bare_json(content, log_context=log_context)
-    return content if repaired is None else repaired
+        repaired, errors = emit_bare_json(content, log_context=log_context), []
+    return JsonDelivery(content if repaired is None else repaired, errors)
+
+
+async def deliver_json_answer_checked_in_thread(
+    content: str,
+    output_format: str,
+    output_schema: dict[str, Any] | None,
+    *,
+    log_context: str,
+) -> JsonDelivery:
+    """deliver_json_answer_checked in a worker thread (the repair is CPU-bound)."""
+    return await asyncio.to_thread(
+        deliver_json_answer_checked, content, output_format, output_schema, log_context=log_context
+    )
+
+
+@dataclass(frozen=True)
+class SchemaContractDelivery:
+    """The answer a run with an output schema delivers, after at most one
+    corrective re-prompt: its schema errors are empty when the contract holds."""
+
+    content: str
+    schema_errors: list[str] = field(default_factory=list)
+    reprompted: bool = False
+
+
+#: The corrective call: given the re-prompt and the answer it corrects, the
+#: model's new answer (None when it gave none).
+SchemaReprompt = Callable[[str, str], Awaitable[str | None]]
+
+
+async def deliver_json_answer_with_contract(
+    content: str,
+    output_format: str,
+    output_schema: dict[str, Any] | None,
+    *,
+    log_context: str,
+    reprompt: SchemaReprompt | None,
+) -> SchemaContractDelivery:
+    """Deliver a JSON answer and hold it to its output schema (#2765).
+
+    The answer is repaired as ``deliver_json_answer`` repairs it (fences,
+    escapes). When the repaired payload is still off its schema (a required
+    key missing, an array below its minItems) and a *reprompt* is given, the
+    model is asked once, with the error list, for the full object. A valid
+    second answer is delivered clean; otherwise the payload with the fewer
+    errors is delivered with its errors, for the run to mark itself partial.
+    A valid first answer is never re-prompted.
+    """
+    first = await deliver_json_answer_checked_in_thread(content, output_format, output_schema, log_context=log_context)
+    if not first.schema_errors or reprompt is None or not output_schema:
+        return SchemaContractDelivery(first.content, first.schema_errors)
+    logger.info(
+        "Answer of %s is off its output schema (%d error(s)): one corrective re-prompt",
+        log_context,
+        len(first.schema_errors),
+    )
+    try:
+        again = await reprompt(schema_corrective_message(first.schema_errors), first.content)
+    except Exception as exc:
+        logger.warning(
+            "Corrective re-prompt of %s failed (%s): delivering the first answer",
+            log_context,
+            type(exc).__name__,
+        )
+        again = None
+    if not again:
+        return SchemaContractDelivery(first.content, first.schema_errors, reprompted=True)
+    second = await deliver_json_answer_checked_in_thread(again, output_format, output_schema, log_context=log_context)
+    best = second if len(second.schema_errors) <= len(first.schema_errors) else first
+    return SchemaContractDelivery(best.content, best.schema_errors, reprompted=True)
+
+
+def schema_violation_note(errors: list[str]) -> str:
+    """The line a caller reads with an answer still off its output schema."""
+    shown = "; ".join(errors[:3])
+    more = len(errors) - 3
+    tail = f"; and {more} more" if more > 0 else ""
+    return (
+        f"partial ({SCHEMA_VIOLATION_STOP_REASON}): the answer does not match the "
+        f"requested output_schema: {shown}{tail}"
+    )
+
+
+def schema_corrective_message(errors: list[str]) -> str:
+    """The one corrective re-prompt of an answer off its output schema."""
+    shown = "\n".join(f"- {error}" for error in errors[:SCHEMA_ERRORS_SHOWN])
+    more = len(errors) - SCHEMA_ERRORS_SHOWN
+    tail = f"\n- ... and {more} more" if more > 0 else ""
+    return (
+        "Your answer does not match the required output schema:\n"
+        f"{shown}{tail}\n"
+        "Answer again with the full JSON object only, every required key present "
+        "and every array at its required size, using what you already found."
+    )
 
 
 async def emit_repaired_json_in_thread(
