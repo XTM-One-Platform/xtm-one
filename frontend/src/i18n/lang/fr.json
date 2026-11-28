@@ -22299,5 +22299,8 @@
   "Turn off {integration}?": "Désactiver {integration} ?",
   "Turn off the outside lens?": "Désactiver la vue externe ?",
   "Turn off the evidence health pass?": "Désactiver la passe de santé des preuves ?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# chemin cesse de recevoir ses signaux :} other {# chemins cessent de recevoir ses signaux :}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# chemin cesse de recevoir ses signaux :} other {# chemins cessent de recevoir ses signaux :}}",
+  "Threat relevance minimum": "Pertinence minimale d’une menace",
+  "0 to 100. Below it, a threat case closes at scoping as not relevant. Default: 50.": "De 0 à 100. En dessous, un cas de menace est clos au cadrage comme non pertinent. Par défaut : 50.",
+  "The relevance score of a threat to your organization, from 0 to 100, read from sector, region, PIR, last activity and software exposure. Example: 50 keeps a threat scored 62 and closes one scored 16 at scoping. Read by the Threat Relevance Analyst and the threat response orchestrator. Empty: back to 50.": "Le score de pertinence d’une menace pour votre organisation, de 0 à 100, calculé à partir du secteur, de la région, des PIR, de la dernière activité et de l’exposition logicielle. Exemple : 50 garde une menace notée 62 et clôt au cadrage une menace notée 16. Lu par l’analyste de pertinence des menaces et l’orchestrateur de réponse aux menaces. Vide : retour à 50."
 }

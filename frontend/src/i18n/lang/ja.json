@@ -22299,5 +22299,8 @@
   "Turn off {integration}?": "{integration} をオフにしますか?",
   "Turn off the outside lens?": "外部ビューをオフにしますか?",
   "Turn off the evidence health pass?": "エビデンス健全性パスをオフにしますか?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}",
+  "Threat relevance minimum": "脅威の関連度の最小値",
+  "0 to 100. Below it, a threat case closes at scoping as not relevant. Default: 50.": "0〜100。これを下回る脅威ケースは、スコーピングで関連なしとしてクローズされます。既定値: 50。",
+  "The relevance score of a threat to your organization, from 0 to 100, read from sector, region, PIR, last activity and software exposure. Example: 50 keeps a threat scored 62 and closes one scored 16 at scoping. Read by the Threat Relevance Analyst and the threat response orchestrator. Empty: back to 50.": "組織に対する脅威の関連度スコア (0〜100)。業種、地域、PIR、最終活動、ソフトウェアの露出から算出されます。例: 50 の場合、スコア 62 の脅威は残り、スコア 16 の脅威はスコーピングでクローズされます。脅威関連度アナリストと脅威対応オーケストレーターが読み取ります。空欄: 50 に戻ります。"
 }
