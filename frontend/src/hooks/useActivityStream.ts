@@ -44,6 +44,14 @@ export function useActivityStream() {
       }
     });
 
+    // A pass records one frame per signal: the signal lists (the Signals page reads every page of a
+    // state) re-read at most once per window, as the cases do (#2767).
+    const signalRefresh = createCaseRefreshCoalescer((signalIds) => {
+      qc.invalidateQueries({ queryKey: ["ctem-signals", "recent"] });
+      qc.invalidateQueries({ queryKey: ["ctem-signals", "list"] });
+      for (const signalId of signalIds) qc.invalidateQueries({ queryKey: ["ctem-signals", "signal", signalId] });
+    });
+
     const es = new EventSource(`${API_BASE}/activity/stream?token=${token}`);
     eventSourceRef.current = es;
 
@@ -131,9 +139,7 @@ export function useActivityStream() {
       // pipeline does not refresh every query of the page; the re-read applies
       // the viewer's visibility.
       if (parsed?.type === "ctem_signal_update") {
-        qc.invalidateQueries({ queryKey: ["ctem-signals", "recent"] });
-        qc.invalidateQueries({ queryKey: ["ctem-signals", "list"] });
-        if (parsed.signal_id) qc.invalidateQueries({ queryKey: ["ctem-signals", "signal", parsed.signal_id] });
+        signalRefresh.push(parsed.signal_id);
         return;
       }
       // A case opened, joined, validated or past its SLA (CTEM-03-UI, #892):
@@ -224,6 +230,7 @@ export function useActivityStream() {
       disposed = true;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
       caseRefresh.dispose();
+      signalRefresh.dispose();
       es.close();
       eventSourceRef.current = null;
     };

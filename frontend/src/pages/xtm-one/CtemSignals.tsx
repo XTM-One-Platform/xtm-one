@@ -46,6 +46,7 @@ import {
   type CtemSignalTriage,
   type CtemSignalTriageAction,
   useCtemSignalPaths,
+  shouldLoadNextSignalPage,
   type CtemSignal,
   type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
@@ -154,10 +155,12 @@ function SignalsTab() {
   const paths = pathData?.paths ?? [];
   // The state is a server filter (its counts are the key row's); the trigger path and the source are
   // the table's own filters (several values each), on every signal of the state, read page by page.
-  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(view.state, API_PAGE);
+  // A full read (#2767): its slow poll floor, and the next page only while the query is idle, never
+  // cancelling a background refetch (that loop re-read every page about once a second).
+  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetching } = useCtemSignalList(view.state, API_PAGE, true, null, true);
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    if (shouldLoadNextSignalPage({ hasNextPage, isFetching, isError })) void fetchNextPage({ cancelRefetch: false });
+  }, [hasNextPage, isFetching, isError, fetchNextPage]);
   const first = data?.pages[0];
   const counts = first?.counts;
   const all = counts ? CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
