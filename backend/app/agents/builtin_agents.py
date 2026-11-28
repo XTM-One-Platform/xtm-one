@@ -85,6 +85,15 @@ How you work:
    (many customers run only one). Never guess at missing data.
 4. Ground every statement in retrieved data. Never invent numbers, CVE IDs,
    narratives or results. If a tool returns nothing or errors, say so plainly.
+5. A tool call that times out or errors is never dropped silently. When its
+   error names a narrower scope (for example "Retry narrower: inject_id."),
+   retry ONCE with that scope (resolve the inject ids first when the hint asks
+   for them). If the retry fails too, or the error names no narrower scope,
+   record the source in `coverage.unread` (product, the source you could not
+   read, the reason) and end the summary with one clause naming it. A product
+   with an unread source is partially covered, never fully covered. A finding
+   an earlier briefing reported from that source is written "not re-checked",
+   never omitted.
 
 Write for a CISO: crisp, specific, prioritized, and actionable. Severity reflects
 business risk, not raw counts. "recommended_focus" is the single most important
@@ -112,7 +121,9 @@ _EXPOSURE_BRIEFING_SCHEMA: dict = {
             "type": "string",
             "description": (
                 "2-3 sentence narrative recap for a CISO: analyze what IS connected "
-                "first; note any coverage gap only at the end, as context."
+                "first; note any coverage gap only at the end, as context. When "
+                "coverage.unread is not empty, end with one clause naming what could "
+                "not be read."
             ),
         },
         "posture_trend": {
@@ -124,6 +135,27 @@ _EXPOSURE_BRIEFING_SCHEMA: dict = {
             "properties": {
                 "opencti": {"type": "boolean"},
                 "openaev": {"type": "boolean"},
+                "unread": {
+                    "type": "array",
+                    "description": (
+                        "Optional: each source a tool call could not read, after one "
+                        "retry with the narrower scope its error named. A product listed "
+                        "here is partially covered, never fully covered. Omit when every "
+                        "call returned."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "product": {"type": "string", "enum": ["opencti", "openaev"]},
+                            "source": {
+                                "type": "string",
+                                "description": "What could not be read (a simulation, a report, a search), by name.",
+                            },
+                            "reason": {"type": "string", "description": "The error, in one short line."},
+                        },
+                        "required": ["product", "source", "reason"],
+                    },
+                },
             },
             "required": ["opencti", "openaev"],
         },
@@ -247,9 +279,19 @@ _EXPOSURE_BRIEFING_PROMPT = (
     "prioritized `next_steps` (each an `action` + `rationale` + `priority`) the "
     "team can execute. Keep `summary` a tight executive narrative (2-4 sentences) "
     "and `recommended_focus` the single most important step.\n\n"
+    "A tool call that times out or errors is never dropped silently. When its "
+    "error names a narrower scope (for example 'Retry narrower: inject_id.'), "
+    "retry it ONCE with that scope, resolving the inject ids first when the hint "
+    "asks for them. If the retry also fails, or no narrower scope is named, add "
+    "the source to `coverage.unread` ({product, source, reason}) and end the "
+    "`summary` with one clause naming what could not be read. A finding an "
+    "earlier briefing reported from an unread source is written 'not "
+    "re-checked', never omitted.\n\n"
     "Set `vertical` to the active CTEM vertical you framed the briefing for, and "
     "`coverage.opencti` / `coverage.openaev` to reflect which products actually "
-    "returned data for this user. Output only the JSON object."
+    "returned data for this user. A product with an entry in `coverage.unread` "
+    "is partially covered: never describe it as fully covered. Output only the "
+    "JSON object."
 )
 
 
