@@ -20741,6 +20741,7 @@
   "The PIR playbook flags a threat in one of your PIRs": "PIR プレイブックが自社の PIR に該当する脅威を検出した",
   "A new issue, an SLA breach, a failed CI gate or an image scan with issues": "新規の問題、SLA 違反、CI ゲートの失敗、問題を含むイメージスキャン",
   "A Dependabot alert is opened or reopened on one of your repositories": "いずれかのリポジトリで Dependabot アラートが作成または再オープンされた",
+  "A code scanning alert is opened or reopened on one of your repositories": "リポジトリのいずれかで Code scanning アラートが作成または再オープンされた",
   "A finished simulation reached a high or very high criticality asset": "完了したシミュレーションが重要度「高」または「非常に高」の資産に到達した",
   "A reachability assertion failed: a target that should not answer answers": "到達性アサーションが失敗した: 応答すべきでない対象が応答している",
   "The attack-surface pass sees a declared asset answer on a new port": "攻撃対象領域パスが申告済み資産の新しいポートでの応答を検出した",
@@ -22305,5 +22306,11 @@
   "Use on this source": "このソースで使用",
   "OAuth default app": "OAuth 既定アプリ",
   "Integration used on this source": "このソースでインテグレーションを使用します",
-  "Integration taken off this source": "このソースからインテグレーションを外しました"
+  "Integration taken off this source": "このソースからインテグレーションを外しました",
+  "A finding is created on one of your assets": "資産のいずれかで検出事項が作成された",
+  "A secret scanning alert is opened or reopened on one of your repositories": "リポジトリのいずれかで Secret scanning アラートが作成または再オープンされた",
+  "A security advisory is published on one of your repositories": "リポジトリのいずれかでセキュリティアドバイザリが公開された",
+  "An OpenAEV scan finds a new asset": "OpenAEV のスキャンが新しい資産を検出した",
+  "An indicator is sighted in your data": "データ内でインジケーターが観測された",
+  "The inventory evaluation finds an asset unseen past the threshold or no longer synced": "インベントリ評価で、しきい値を超えて未確認の資産、または同期されなくなった資産が見つかった"
 }
