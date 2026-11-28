@@ -22061,10 +22061,7 @@
   "Indicator sighting": "Observation d’indicateur",
   "Code scanning": "Analyse de code",
   "Secret scanning": "Détection de secrets",
-  "{count, plural, other {+# not used here}}": "{count, plural, one {+# non utilisée ici} other {+# non utilisées ici}}",
-  "{count, plural, other {+# more}}": "{count, plural, other {+# de plus}}",
   "No source on: nothing records this path": "Aucune source active : rien n'enregistre ce déclencheur",
-  "Open its sources": "Ouvrir ses sources",
   "Sources on": "Sources actives",
   "{enabled} of {available}": "{enabled} sur {available}",
   "Signed webhook": "Webhook signé",
@@ -22272,5 +22269,11 @@
   "{name} (integration owner)": "{name} (propriétaire de l’intégration)",
   "How far back {source} is read": "Profondeur de lecture : {source}",
   "Does not run": "Ne s'exécute pas",
-  "Left out of this resync": "Exclu de cette resynchronisation"
+  "Left out of this resync": "Exclu de cette resynchronisation",
+  "Dependabot": "Dependabot",
+  "Security advisories": "Avis de sécurité",
+  "Off, not set up or not used here": "Désactivée, non configurée ou non utilisée ici",
+  "Source states": "États des sources",
+  "{count, plural, other {# not connected: {names}}}": "{count, plural, one {# non connectée : {names}} other {# non connectées : {names}}}",
+  "Its own receiver": "Son propre récepteur"
 }
