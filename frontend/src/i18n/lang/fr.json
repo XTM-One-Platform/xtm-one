@@ -22251,7 +22251,7 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution.",
   "Dependabot": "Dependabot",
   "Security advisories": "Avis de sécurité",
-  "Off or not set up": "Désactivée ou non configurée",
+  "Off, not set up or not used here": "Désactivée, non configurée ou non utilisée ici",
   "Source states": "États des sources",
   "{count, plural, other {# not connected: {names}}}": "{count, plural, one {# non connectée : {names}} other {# non connectées : {names}}}",
   "Its own receiver": "Son propre récepteur",

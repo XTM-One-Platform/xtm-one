@@ -22251,7 +22251,7 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。",
   "Dependabot": "Dependabot",
   "Security advisories": "セキュリティアドバイザリ",
-  "Off or not set up": "オフまたは未設定",
+  "Off, not set up or not used here": "オフ、未設定、またはここでは未使用",
   "Source states": "ソースの状態",
   "{count, plural, other {# not connected: {names}}}": "{count, plural, other {未接続 # 件: {names}}}",
   "Its own receiver": "専用の受信エンドポイント",
