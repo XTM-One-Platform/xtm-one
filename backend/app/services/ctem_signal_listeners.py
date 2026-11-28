@@ -787,12 +787,17 @@ async def note_event(
     intake passes its own engine's, #2584); the web pool's by default.
     *integration_id* names the integration the delivery came on (``oauth_default`` for the
     provider-level route): an integration an administrator took off the source records
-    nothing for it (#2736). ``None``: no integration filter, as before.
+    nothing for it (#2736). ``None``: no integration filter, as before. Every verified delivery
+    of a named integration stamps its last delivery time, whatever it records (#2736).
     """
     from app.core.config import settings
 
     if not verified or settings.is_copilot_like or not isinstance(payload, Mapping):
         return False
+    if integration_id:
+        from app.services.ctem_signal_sources import note_delivery
+
+        await note_delivery(provider, integration_id, session_factory=session_factory)
     if provider == "aikido" and event_key in AIKIDO_CLOSING_EVENTS:
         await _close_at_source(provider, aikido_issue_id(payload))
         return False
