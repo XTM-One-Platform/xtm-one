@@ -157,6 +157,8 @@ def describe_windows() -> list[dict[str, Any]]:
             "label": w.label,
             "default": w.default,
             "windowed": w.windowed,
+            # Can be unticked in the dialog (#2745): every route the resync reads, and the passes.
+            "selectable": w.key not in UNLISTED,
             "note": w.note or None,
         }
         for w in WINDOWS

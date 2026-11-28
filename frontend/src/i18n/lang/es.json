@@ -22163,7 +22163,7 @@
   "Open the notifier in {platform}": "Abrir el notificador en {platform}",
   "Open the triggers in {platform}": "Abrir los disparadores en {platform}",
   "Open the playbook in {platform}": "Abrir el playbook en {platform}",
-  "The resync reads every source again, with the paths and sources that are on.": "La resincronización vuelve a leer cada fuente, con las rutas y fuentes activadas.",
+  "The resync reads the sources ticked below again, with the paths and sources that are on.": "La resincronización vuelve a leer las fuentes marcadas abajo, con las rutas y fuentes activadas.",
   "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sin resincronización, el recálculo de casos se suspende durante un intervalo: la lista queda vacía hasta que resincronice o lance un recálculo.",
   "Value (ROI) restarts from now": "El valor (ROI) se reinicia desde ahora",
   "Measured since {date} (reset)": "Medido desde el {date} (restablecimiento)",
@@ -22179,7 +22179,7 @@
   "Resync by source": "Resincronización por fuente",
   "Stopped at the read limit": "Detenido en el límite de lectura",
   "{read} read, {recorded} recorded": "{read} leídos, {recorded} registrados",
-  "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.": "Hasta cuándo lee la resincronización, en días. Deje vacío un campo de estado interno para leer todos los elementos abiertos.",
+  "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.": "Desmarque una fuente para excluirla de la resincronización. Hasta cuándo lee la resincronización, en horas o días. Deje vacío un campo de estado interno para leer todos los elementos abiertos.",
   "Intrusion sets": "Conjuntos de intrusión",
   "Threat actor groups": "Grupos de actores de amenaza",
   "Threat actor individuals": "Actores de amenaza individuales",
@@ -22267,5 +22267,8 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: sus ejecuciones cuentan solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: sus ejecuciones cuentan solo en el total de la organización.}}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objetos en {platform}, propiedad de Signals ({count, plural, one {# objeto} other {# objetos}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Otros objetos de XTM One en {platform}, propiedad de flotas, no contados aquí ({count, plural, one {# objeto} other {# objetos}}):",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} también escucha el evento «{event}» con su propio disparador} other {{owners} también escuchan el evento «{event}», cada uno con su propio disparador}}: cada propietario recibe su propia entrega e inicia su propia ejecución, con su propio usuario de ejecución."
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} también escucha el evento «{event}» con su propio disparador} other {{owners} también escuchan el evento «{event}», cada uno con su propio disparador}}: cada propietario recibe su propia entrega e inicia su propia ejecución, con su propio usuario de ejecución.",
+  "How far back {source} is read": "Hasta cuándo se lee {source}",
+  "Does not run": "No se ejecuta",
+  "Left out of this resync": "Excluido de esta resincronización"
 }
