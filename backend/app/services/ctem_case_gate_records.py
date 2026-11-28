@@ -69,6 +69,18 @@ def item_keys(case_id: str) -> dict[str, str]:
     return {prefix + case_id: gate for gate, prefixes in GATE_ITEM_PREFIXES.items() for prefix in prefixes}
 
 
+def other_key(correlation_key: str, case_id: str) -> str | None:
+    """The record key of a decision filed outside the gate catalog (#2782): its correlation key without the case id.
+
+    ``ctem:evidence:<case id>`` answers ``ctem:evidence``; a key of the catalog
+    (:func:`item_keys`), of another case or outside ``ctem:`` answers ``None``.
+    """
+    key = str(correlation_key or "")
+    if not case_id or not key.startswith("ctem:") or not key.endswith(case_id) or key in item_keys(case_id):
+        return None
+    return key[: -len(case_id)].rstrip(":") or None
+
+
 def _parse(at: Any) -> datetime | None:
     if isinstance(at, datetime):
         return at if at.tzinfo else at.replace(tzinfo=UTC)
@@ -308,6 +320,48 @@ def _record(
         if status in (ANSWERED, PASSED_AUTOMATICALLY)
         else None,
     }
+
+
+def resolve_others(
+    items: Iterable[Mapping[str, Any]],
+    decisions: Mapping[str, Mapping[str, Any]],
+    *,
+    case_id: str,
+    names: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """One record per open decision of the case keyed outside the gate catalog (#2782), oldest asked first.
+
+    *items* are the open ``needs_human`` work items the viewer may read, keyed
+    ``ctem:<x>:<case id>``; *decisions* their ``decisions`` rows by work item id
+    (the shape :func:`resolve` reads). Each record has the shape of a gate record,
+    its ``key`` the item's key without the case id, plus the item's ``title``, so
+    the page draws it with the same decision card. A catalog gate's item is never
+    listed here: :func:`resolve` already draws it.
+    """
+    names = names or {}
+    now = now or datetime.now(UTC)
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        key = other_key(str(item.get("correlation_key") or ""), case_id)
+        item_id = str(item.get("id") or "")
+        if key is None or not item_id or item_id in seen:
+            continue
+        seen.add(item_id)
+        entry = {
+            "work_item_id": item_id,
+            "created_by_agent_id": item.get("created_by_agent_id"),
+            "decision": dict(decisions.get(item_id) or {}),
+        }
+        record = _record(key, [], entry, [], names, now)
+        record["phase"] = None
+        record["title"] = item.get("title") or None
+        record["decision_filed"] = True if record["status"] == WAITING else None
+        record["deadline"] = record["deadline"] or _iso(item.get("due_at"))
+        record["asked_at"] = record["asked_at"] or _iso(item.get("created_at"))
+        records.append(record)
+    return sorted(records, key=lambda r: r.get("asked_at") or "")
 
 
 def attach(history: list[dict[str, Any]], records: Iterable[Mapping[str, Any]]) -> None:

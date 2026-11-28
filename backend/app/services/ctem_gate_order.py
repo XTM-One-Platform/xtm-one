@@ -29,17 +29,23 @@ One rule holds at the case write (#1954): a gate reaches ``waited`` only
 through its decision. :func:`waited_refusal` refuses a ``waited`` gate event
 while no open ``needs_human`` decision item keyed for that gate and case
 exists (:func:`open_gate_item_keys`), so a case never reads "waiting for a
-person" with nothing in anyone's Waiting for you list.
+person" with nothing in anyone's Waiting for you list. The same holds for an
+agent's bare state move to ``waiting_decision`` (#2782):
+:func:`waiting_state_refusal` refuses it while no open decision of the case,
+whatever its key, exists.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from collections.abc import Mapping
 from typing import Any
 
 from app.services.ctem_case_gate_records import GATE_ITEM_PREFIXES
+
+logger = logging.getLogger(__name__)
 
 MOBILIZE = "ctem.mobilize"
 #: The decisions a mobilize decision waits behind, for the same case.
@@ -105,6 +111,55 @@ def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
         "question, options and recommendation, addressed to the person or team who decides), then write the "
         "gate outcome waited"
     )
+
+
+def waiting_state_refusal(case_id: str, open_keys: set[str]) -> str | None:
+    """Why an agent may not move *case_id* to ``waiting_decision`` without a waited gate (#2782), else ``None``. Pure.
+
+    The case then waits on a decision the page can show: one open ``needs_human``
+    item keyed ``ctem:<x>:<case id>`` (*open_keys*, :func:`open_gate_item_keys`).
+    A person moving the state by hand with a reason is not bound (UX r1 B2 on #1515).
+    """
+    if any(key.startswith("ctem:") and key.endswith(case_id) for key in open_keys):
+        return None
+    return (
+        f"the case waits only on a decision, and no open decision item of this case exists: file it first with "
+        f"create_work_item (correlation_key ctem:, then what it decides, then :{case_id}, for instance "
+        f"ctem:evidence:{case_id}; needs_human true, an ask with "
+        "its question, options and recommendation, addressed to the person or team who decides), then move the "
+        "case to waiting_decision; nothing was written"
+    )
+
+
+async def pending_decisions(case_id: str, *, user_id: str) -> list[dict[str, Any]]:
+    """The open decisions *case_id* waits on that *user_id* may read (#2782), oldest first.
+
+    One ``{work_item_id, key, title, deadline}`` per open ``needs_human`` item keyed
+    ``ctem:<x>:<case id>``, read with the user's own work-item visibility. Never
+    raises: an unreadable list answers ``[]``, so a case read never fails on it.
+    """
+    from app.services import work_item as work_item_service
+
+    try:
+        found = await work_item_service.list_work_items(
+            user_id=user_id, correlation_key_prefix="ctem:", search=case_id, open_only=True, limit=50
+        )
+    except Exception:
+        logger.warning("CTEM case pending decisions unreadable; the case read answers without them", exc_info=True)
+        return []
+    pending = [
+        {
+            "work_item_id": item.get("id"),
+            "key": item.get("correlation_key"),
+            "title": item.get("title"),
+            "deadline": item.get("due_at") or ((item.get("ask") or {}).get("deadline")),
+            "_at": item.get("created_at") or "",
+        }
+        for item in found
+        if item.get("needs_human") and str(item.get("correlation_key") or "").endswith(case_id)
+    ]
+    pending.sort(key=lambda p: str(p.pop("_at")))
+    return pending
 
 
 async def open_gate_item_keys(db: Any, case_id: str) -> set[str]:
@@ -221,9 +276,11 @@ __all__ = [
     "mobilize_before_review_warning",
     "mobilize_blocked_message",
     "open_gate_item_keys",
+    "pending_decisions",
     "prerequisite_keys",
     "refuse_question_change",
     "refuse_run_pointer",
     "waited_item_keys",
     "waited_refusal",
+    "waiting_state_refusal",
 ]

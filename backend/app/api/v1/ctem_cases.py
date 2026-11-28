@@ -787,7 +787,9 @@ async def _trail_of(db: AsyncSession, case: Any, rendered: dict[str, Any], viewe
         # One resolved decision record per gate (#1518): the decision row joined with the gate events;
         # the waiting gate events of the history carry the same record in ``answer``.
         gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=viewer_id)
-    return {**audit, "gates": gate_records}
+        # The open decisions keyed outside the gate catalog (#2782): drawn with the same card, never twice.
+        others = await case_gates_view.other_decisions(db, str(case.id), viewer_id=viewer_id)
+    return {**audit, "gates": gate_records, "other_decisions": others}
 
 
 async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) -> dict[str, Any]:
