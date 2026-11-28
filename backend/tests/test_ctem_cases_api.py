@@ -136,6 +136,12 @@ def api(monkeypatch):
     from app.services import ctem_case_gate_records_view
 
     monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
+
+    async def _other_decisions(_db: object, _case_id: str, *, viewer_id: object) -> list[dict[str, object]]:
+        # The open decisions outside the gate catalog (#2782) read work items as gate_records does.
+        return []
+
+    monkeypatch.setattr(ctem_case_gate_records_view, "other_decisions", _other_decisions)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 

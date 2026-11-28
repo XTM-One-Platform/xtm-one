@@ -190,7 +190,32 @@ describe("the path panel (#2434)", () => {
     expect(screen.getByTestId("ctem-platform-source-status").textContent).toBe("Connected");
     expect(screen.queryByTestId("ctem-path-source-set-up")).toBeNull();
     fireEvent.click(screen.getByTestId("ctem-platform-source-switch"));
+    // One path fed: no dialog, the off is immediate.
+    expect(screen.queryByTestId("ctem-confirm-paths-off-list")).toBeNull();
     expect(state.disabled).toEqual(["s-1"]);
+  });
+
+  it("Provisioned off on a source feeding 5 paths names the 5 paths first; Cancel keeps it on (#2784)", () => {
+    const feeds = ["Proven exploitable", "Finding on an asset", "Exposure validated", "Control failed", "Detection gap"].map((label, i) => ({ path: `p${i}`, label }));
+    state.sources = [source({ id: "s-1", enabled: true, run_as_user_id: "u-1", status: "connected", feeds })];
+    open();
+    fireEvent.click(screen.getByTestId("ctem-platform-source-switch"));
+    expect(screen.getByText("Turn off OpenAEV test?")).toBeTruthy();
+    const list = screen.getByTestId("ctem-confirm-paths-off-list");
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(feeds.map((f) => f.label));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(state.disabled).toEqual([]);
+    fireEvent.click(screen.getByTestId("ctem-platform-source-switch"));
+    fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
+    expect(state.disabled).toEqual(["s-1"]);
+  });
+
+  it("Provisioned on never asks (#2784)", () => {
+    state.sources = [source({ feeds: [{ path: "a", label: "A" }, { path: "b", label: "B" }] })];
+    open();
+    fireEvent.click(screen.getByTestId("ctem-platform-source-switch"));
+    expect(screen.queryByTestId("ctem-confirm-paths-off-list")).toBeNull();
+    expect(screen.getByTestId("ctem-platform-source-enable")).toBeTruthy();
   });
 
   it("asks who XTM One acts as in the module, and an enabled source can change it (#2650)", () => {

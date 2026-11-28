@@ -21041,7 +21041,6 @@
   "The ATT&CK techniques per affected asset of a risk scenario, in attack order, read from OpenCRQ.": "The ATT&CK techniques per affected asset of a risk scenario, in attack order, read from OpenCRQ.",
   "The threat package an analyst reviews in OpenCTI before any validation, once the case is triaged.": "The threat package an analyst reviews in OpenCTI before any validation, once the case is triaged.",
   "Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.": "Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.",
-  "The remediation options with their cost and the one approved, once the case is validated.": "The remediation options with their cost and the one approved, once the case is validated.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.",
   "Work CTEM cases": "Work CTEM cases",
   "No asset group yet. Add a source to the inventory to fill it.": "No asset group yet. Add a source to the inventory to fill it.",
@@ -21859,7 +21858,6 @@
   "How to revert": "How to revert",
   "Applied changes": "Applied changes",
   "Applied a change through an integration": "Applied a change through an integration",
-  "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.",
   "Coordination retention": "Coordination retention",
   "How long work items, shared state, worksets and runs are kept once they are closed, and CTEM signals once they are no longer seen. 0 keeps them forever.": "How long work items, shared state, worksets and runs are kept once they are closed, and CTEM signals once they are no longer seen. 0 keeps them forever.",
   "Closed work items": "Closed work items",
@@ -22034,6 +22032,7 @@
   "everyone in the company": "everyone in the company",
   "the administrators": "the administrators",
   "Waits for {name}: {gate}": "Waits for {name}: {gate}",
+  "Waiting for: {decision}": "Waiting for: {decision}",
   "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.",
   "This gate waits for a person: the decision is in their Waiting for you list.": "This gate waits for a person: the decision is in their Waiting for you list.",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}",
@@ -22292,5 +22291,13 @@
   "Decision recorded. The loop is applying it.": "Decision recorded. The loop is applying it.",
   "Recorded, still being applied. Refresh later.": "Recorded, still being applied. Refresh later.",
   "Decision recorded, but the run applying it failed.": "Decision recorded, but the run applying it failed.",
-  "Decision recorded: {gate}": "Decision recorded: {gate}"
+  "Decision recorded: {gate}": "Decision recorded: {gate}",
+  "Open {path}": "Open {path}",
+  "Turn off the scheduled pass?": "Turn off the scheduled pass?",
+  "Turning off Provisioned stops all of them.": "Turning off Provisioned stops all of them.",
+  "Turning off the scheduled pass stops all of them.": "Turning off the scheduled pass stops all of them.",
+  "Turn off {integration}?": "Turn off {integration}?",
+  "Turn off the outside lens?": "Turn off the outside lens?",
+  "Turn off the evidence health pass?": "Turn off the evidence health pass?",
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}"
 }

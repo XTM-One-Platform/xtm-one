@@ -32,6 +32,7 @@ import {
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatList } from "@/lib/format-list";
+import { useConfirmPathsOff } from "./ConfirmPathsOffDialog";
 import { LabelledSwitch } from "./LabelledSwitch";
 import {
   PLATFORM_NAME,
@@ -214,16 +215,24 @@ function PlatformSourceLine({
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const disable = useDisableCtemPlatformSource();
+  const [confirmOff, guardOff] = useConfirmPathsOff();
   const runAs = useRunAsUserName(source.run_as_user_id);
   // The reason ended by its full stop, then its fix in the reader's language (UX round 1 on #2653, B2).
   const reason = sourceReasonLine(source, null, t_i18n);
   const toggle = (on: boolean) => {
     if (on) return onEnable(source);
-    if (!source.id) return;
-    disable.mutate(source.id, {
-      onSuccess: () => toast({ title: t_i18n("Source turned off"), variant: "success" }),
-      onError: (err) => toast({ title: t_i18n("The source could not be turned off"), description: err.message, variant: "error" }),
-    });
+    const id = source.id;
+    if (!id) return;
+    // The off removes what it provisioned and stops every path it feeds: asked first when they are several (#2784).
+    guardOff(
+      (source.feeds ?? []).map((f) => t_i18n(f.label)),
+      t_i18n("Turn off {integration}?", { integration: source.integration_name }),
+      () =>
+        disable.mutate(id, {
+          onSuccess: () => toast({ title: t_i18n("Source turned off"), variant: "success" }),
+          onError: (err) => toast({ title: t_i18n("The source could not be turned off"), description: err.message, variant: "error" }),
+        }),
+    );
   };
   // One aligned row (#2740): name and state, then the labelled switch at the row's end; under them the run-as and
   // the Open in actions as key-value lines of one grid, so no link floats in a sentence.
@@ -282,6 +291,7 @@ function PlatformSourceLine({
           {reason}
         </span>
       )}
+      {confirmOff}
     </li>
   );
 }

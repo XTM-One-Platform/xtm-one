@@ -4,7 +4,8 @@
  * "Treatment plan" on a case page (CTEM-18-UI, #1068): the OpenCRQ plan the
  * remediation decision created for the case, its name and a link to OpenCRQ.
  * A viewer who does not read OpenCRQ sees that a plan exists, not which.
- * Never blank: a case with no plan says when one appears.
+ * Left out of the page while no plan is attached (#2786), unless OpenCRQ is not
+ * connected: then it says when one appears and offers Connect.
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +14,13 @@ import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseTreatmentPlan } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
-import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseSectionReason, useHideEmptySection } from "./CaseSectionReason";
 
 export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null | undefined }) {
   const { t_i18n, intl } = useFormatter();
   const href = plan && !plan.restricted ? safeExternalUrl(plan.url ?? undefined) : undefined;
   const name = plan && !plan.restricted ? plan.name || t_i18n("Unnamed plan") : null;
+  if (useHideEmptySection(!plan, "opencrq")) return null;
 
   return (
     <Card data-testid="ctem-case-treatment-plan">

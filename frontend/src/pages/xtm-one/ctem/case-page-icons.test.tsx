@@ -55,12 +55,12 @@ describe("case page icons (#1679, point 5)", () => {
     expect(within(reason).getByText("What it holds")).toBeInTheDocument();
   });
 
-  it("gives the remediation decision empty state an icon (it has no product logo)", () => {
+  it("draws no empty remediation decision card: a case not decided yet leaves it out (#2786)", () => {
     renderWithProviders(
       <MemoryRouter>
         <CaseRemediationDecision caseId="c1" history={[]} />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("ctem-case-remediation-empty").querySelector("svg")).not.toBeNull();
+    expect(screen.queryByTestId("ctem-case-remediation")).toBeNull();
   });
 });

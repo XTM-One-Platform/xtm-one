@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
-import { canExclude, connectTarget, connectedProviders, pathStatus, sourceState, withExclusion } from "./signal-sources";
+import { canExclude, connectTarget, connectedProviders, pathStatus, profilePassPaths, sourceState, withExclusion } from "./signal-sources";
 
 const state = vi.hoisted(() => ({ admin: true, saved: [] as unknown[] }));
 
@@ -108,6 +108,14 @@ describe("per path exclusion rules (#1445)", () => {
   });
 });
 
+describe("the paths a Settings pass stops (#2784)", () => {
+  it("lists every path one of whose sources is that pass, and no other", () => {
+    const paths = [EXPOSURE, ...OTHERS, { ...EXPOSURE, id: "coverage_gap", label: "Blind spot", sources: [{ provider: "opencrq", kind: "pass" as const, event: "", bound: true }] }];
+    expect(profilePassPaths(paths, "attack_surface")).toEqual([{ path: "new_exposure", label: "New exposure" }]);
+    expect(profilePassPaths(paths, "evidence_health")).toEqual([{ path: "coverage_gap", label: "Blind spot" }]);
+  });
+});
+
 describe("the sources side panel (#1445)", () => {
   it("lists every source with its state and the control that exists for it", () => {
     open();
@@ -160,10 +168,53 @@ describe("the sources side panel (#1445)", () => {
     const pass = within(row).getByTestId("ctem-path-source-pass");
     expect(pass.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(pass);
+    // #2784: the pass feeds two paths, so the off asks first and names both.
+    expect(state.saved).toHaveLength(0);
+    const list = screen.getByTestId("ctem-confirm-paths-off-list");
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Blind spot or coverage gap", "Stale or orphaned asset"]);
+    fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
     const body = state.saved[0] as { fields: Record<string, { enabled: boolean; integration: string }> };
     // `enabled: false` with none declared is the legacy default read as on: the off names the integration.
     expect(body.fields.evidence_health).toMatchObject({ enabled: false, integration: "i-opencrq" });
     expect(Object.keys(body.fields)).toEqual(["evidence_health"]);
+  });
+
+  it("asks before the scheduled pass goes off on several paths, and Cancel keeps it on (#2784)", () => {
+    open();
+    const shodan = configOf("shodan");
+    fireEvent.click(within(shodan).getByTestId("ctem-path-source-pass"));
+    expect(screen.getByText("Turn off the scheduled pass?")).toBeTruthy();
+    const list = screen.getByTestId("ctem-confirm-paths-off-list");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(state.saved).toHaveLength(0);
+    expect(screen.queryByTestId("ctem-confirm-paths-off-list")).toBeNull();
+    // The note under the chips names its switch.
+    expect(within(shodan).getByTestId("ctem-path-source-shared").textContent).toContain("Turning off the scheduled pass stops all of them.");
+  });
+
+  it("turns a source off one path without asking: Use on this path stops one path alone (#2784)", () => {
+    open();
+    fireEvent.click(within(configOf("shodan")).getByTestId("ctem-path-source-use"));
+    expect(screen.queryByTestId("ctem-confirm-paths-off-list")).toBeNull();
+    expect(state.saved).toHaveLength(1);
+  });
+
+  it("opens another path from its chip with the same source opened; the current chip is no button (#2784)", () => {
+    const opened: string[] = [];
+    const paths = [EXPOSURE, ...OTHERS];
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={EXPOSURE} paths={paths} connected={connectedProviders(paths)} onClose={() => undefined} onOpenPath={(id) => opened.push(id)} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(rowsBy()[0]);
+    const feeds = within(configOf("shodan")).getAllByTestId("ctem-path-source-feed");
+    expect(feeds[0].tagName).toBe("SPAN");
+    expect(feeds[0].getAttribute("aria-current")).toBe("true");
+    const stale = within(configOf("shodan")).getByRole("button", { name: "Open Stale or orphaned asset" });
+    fireEvent.click(stale);
+    expect(opened).toEqual(["stale_asset"]);
   });
 
   it("shows a reader the same states without controls that write", () => {

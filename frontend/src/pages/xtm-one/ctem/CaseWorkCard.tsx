@@ -365,7 +365,9 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
         <LoopRow testId="ctem-case-work-gate">
           <span className="flex min-w-0 flex-col">
             <span className="content-compact text-default-secondary">{t_i18n("Waits for a decision")}</span>
-            <span className="font-medium content-base">{t_i18n(GATE_LABEL[wait.gate] ?? "A decision")}</span>
+            <span className="font-medium content-base">
+              {wait.title ? t_i18n("Waiting for: {decision}", { decision: wait.title }) : t_i18n(GATE_LABEL[wait.gate] ?? "A decision")}
+            </span>
           </span>
           {wait.workItemId && decisionInPage && (
             <Button

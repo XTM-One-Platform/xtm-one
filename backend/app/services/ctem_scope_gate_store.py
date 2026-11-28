@@ -989,7 +989,7 @@ def _count_lookup_attempts(record: dict[str, Any], previous: Any) -> None:
 
 
 async def recheck_lookup_failed(
-    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH
+    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH, deadline: float | None = None
 ) -> dict[str, int]:
     """#2542: the unmatched signals whose OpenCTI software read failed, decided again with the read retried.
 
@@ -1034,7 +1034,7 @@ async def recheck_lookup_failed(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=at, isolate=True)
+    return await _decide_again(db, rows, now=at, isolate=True, deadline=deadline)
 
 
 async def recheck_parked(
@@ -1043,6 +1043,7 @@ async def recheck_parked(
     now: datetime | None = None,
     batch: int = RECHECK_BATCH,
     seen_within_days: int = 0,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
@@ -1083,17 +1084,26 @@ async def recheck_parked(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=now)
+    return await _decide_again(db, rows, now=now, deadline=deadline)
 
 
 async def _decide_again(
-    db: AsyncSession, rows: list[CtemSignal], *, now: datetime | None = None, isolate: bool = False
+    db: AsyncSession,
+    rows: list[CtemSignal],
+    *,
+    now: datetime | None = None,
+    isolate: bool = False,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader.
 
     *isolate* decides each row in its own savepoint: a row the gate cannot decide
     is logged, its ``updated_at`` moved so it waits one grace before the next try
     (never starving the batch), and counted under ``failed``; the others still land. (#2516)
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is read before every row: past it
+    the batch stops, the rows decided stay for the caller's commit and the rest are
+    left as they are for the next pass, counted under ``deferred``.
     """
     counts: dict[str, int] = {}
     profiles: dict[uuid.UUID, Any] = {}
@@ -1106,7 +1116,10 @@ async def _decide_again(
             profiles[row.organization_id] = await _profile(db, row.organization_id)
             links[row.organization_id] = await _primary_assets(db, row.organization_id)
     await prepare_cve_reads(db, rows, profiles=profiles, links=links)
-    for row in rows:
+    for index, row in enumerate(rows):
+        if deadline is not None and time.monotonic() >= deadline:
+            counts["deferred"] = len(rows) - index
+            break
         reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
@@ -1153,6 +1166,7 @@ async def recheck_new(
     now: datetime | None = None,
     batch: int = RECHECK_NEW_BATCH,
     grace: timedelta = UNDECIDED_GRACE,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """The signals still ``new`` past *grace*, decided, *batch* per call, oldest first.
 
@@ -1175,7 +1189,7 @@ async def recheck_new(
             )
         ).scalars()
     )
-    return await _decide_again(db, rows, now=at, isolate=True)
+    return await _decide_again(db, rows, now=at, isolate=True, deadline=deadline)
 
 
 async def recheck_new_due() -> bool:
@@ -1197,6 +1211,7 @@ async def drain_new(
     grace: timedelta = UNDECIDED_GRACE,
     budget_seconds: float = RECHECK_NEW_BUDGET_SECONDS,
     clock: Callable[[], float] = time.monotonic,
+    deadline: float | None = None,
 ) -> dict[str, int]:
     """The signals still ``new`` past *grace*, decided by :func:`recheck_new` batch after batch (#2530).
 
@@ -1207,6 +1222,9 @@ async def drain_new(
     decide has its ``updated_at`` moved (``isolate``), so it leaves the selection
     for one grace and never loops. No case is opened here: the case sweep does
     that on its own cadence. Answers the counts by state, ``batches`` included.
+
+    *deadline* (a ``time.monotonic()`` value, #2774) is also read before every row of a
+    batch: past it the batch stops, what was decided is committed, the rest waits.
     """
     import asyncio
 
@@ -1215,14 +1233,17 @@ async def drain_new(
     totals: dict[str, int] = {}
     batches = 0
     while True:
-        counts = await recheck_new(db, now=now, batch=size, grace=grace)
+        counts = await recheck_new(db, now=now, batch=size, grace=grace, deadline=deadline)
         await db.commit()
+        deferred = counts.pop("deferred", 0)
         decided = sum(counts.values())
         if decided:
             batches += 1
             for state, count in counts.items():
                 totals[state] = totals.get(state, 0) + count
-        if decided < size or clock() - started >= budget_seconds:
+        if deferred:
+            totals["deferred"] = totals.get("deferred", 0) + deferred
+        if deferred or decided < size or clock() - started >= budget_seconds:
             break
         await asyncio.sleep(0)
     if batches:

@@ -7,6 +7,11 @@
  * said once, at the top of the page (`CaseWorkCard`), never repeated here. The
  * page provides the connection states once (`CaseLoopProvider`); a section
  * rendered without it shows its sentence alone.
+ *
+ * The case page hides a section that holds nothing yet (Sam, 28 Nov 2026,
+ * #2786): `useHideEmptySection` is the one rule every lifecycle section reads.
+ * The not-started sentence is drawn only where the product the section is
+ * written from is not connected, so the Connect action stays reachable.
  */
 import { createContext, useContext, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -34,6 +39,18 @@ const SOURCE_PRODUCT: Record<CaseSource, { name: string; logo: string }> = {
   opencti: { name: "OpenCTI", logo: "/logos/opencti.svg" },
   openaev: { name: "OpenAEV", logo: "/logos/openaev.svg" },
 };
+
+/**
+ * Whether a lifecycle section of the case page is left out (#2786): it holds
+ * nothing processed or filled (`empty`, computed by the section from the data it
+ * reads) and its source product is connected or unknown. A section whose product
+ * is not connected stays, with its "not connected" line and Connect button.
+ */
+export function useHideEmptySection(empty: boolean, source?: CaseSource): boolean {
+  const { sources } = useContext(CaseLoopContext);
+  if (!empty) return false;
+  return !(source && sources[source] === false);
+}
 
 export function CaseSectionReason({
   own,

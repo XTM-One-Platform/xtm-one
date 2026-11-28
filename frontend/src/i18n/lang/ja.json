@@ -21041,7 +21041,6 @@
   "The ATT&CK techniques per affected asset of a risk scenario, in attack order, read from OpenCRQ.": "リスクシナリオの影響を受ける資産ごとの ATT&CK テクニック (攻撃順)。OpenCRQ から読み取ります。",
   "The threat package an analyst reviews in OpenCTI before any validation, once the case is triaged.": "ケースのトリアージ後、検証の前にアナリストが OpenCTI でレビューする脅威パッケージ。",
   "Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.": "ケースの優先順位付け後、露出が実在するかを証明する OpenAEV のチェック。",
-  "The remediation options with their cost and the one approved, once the case is validated.": "ケースの検証後、コスト付きの修復オプションと承認されたもの。",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "承認された修復が OpenCRQ に書き込む対応計画 (コストと見込まれる損失削減を含む)。",
   "Work CTEM cases": "CTEM ケースを処理",
   "No asset group yet. Add a source to the inventory to fill it.": "アセットグループはまだありません。インベントリにソースを追加すると表示されます。",
@@ -21859,7 +21858,6 @@
   "How to revert": "元に戻す方法",
   "Applied changes": "適用済みの変更一覧",
   "Applied a change through an integration": "インテグレーション経由で変更を適用",
-  "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "決定後の修正の実施方法: 担当者へのチケット、本番変更ゲートの後に紐付けられたインテグレーション経由で適用する変更、またはその両方。",
   "Coordination retention": "コーディネーションの保持期間",
   "How long work items, shared state, worksets and runs are kept once they are closed, and CTEM signals once they are no longer seen. 0 keeps them forever.": "クローズ後のワークアイテム、共有状態、ワークセット、実行の保持期間と、検出されなくなった CTEM シグナルの保持期間です。0 は無期限に保持します。",
   "Closed work items": "クローズ済みワークアイテム",
@@ -22034,6 +22032,7 @@
   "everyone in the company": "社内の全員",
   "the administrators": "管理者",
   "Waits for {name}: {gate}": "{name}を待機中: {gate}",
+  "Waiting for: {decision}": "待機中: {decision}",
   "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "このゲートの判断はまだ登録されていないため、誰も回答できません。フリートが次にこのケースを処理するときに登録します。",
   "This gate waits for a person: the decision is in their Waiting for you list.": "このゲートは担当者を待っています。判断はその人の「あなたの対応待ち」リストにあります。",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, other {30日間で{shown}件のシグナル}}",
@@ -22292,5 +22291,13 @@
   "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
   "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
   "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
-  "Decision recorded: {gate}": "判断を記録しました: {gate}"
+  "Decision recorded: {gate}": "判断を記録しました: {gate}",
+  "Open {path}": "{path} を開く",
+  "Turn off the scheduled pass?": "スケジュールパスをオフにしますか?",
+  "Turning off Provisioned stops all of them.": "「プロビジョニング済み」をオフにすると、これらすべてが停止します。",
+  "Turning off the scheduled pass stops all of them.": "スケジュールパスをオフにすると、これらすべてが停止します。",
+  "Turn off {integration}?": "{integration} をオフにしますか?",
+  "Turn off the outside lens?": "外部ビューをオフにしますか?",
+  "Turn off the evidence health pass?": "エビデンス健全性パスをオフにしますか?",
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, other {# 件のパスがシグナルを受け取らなくなります:}}"
 }
