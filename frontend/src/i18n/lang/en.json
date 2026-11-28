@@ -22299,5 +22299,8 @@
   "Turn off {integration}?": "Turn off {integration}?",
   "Turn off the outside lens?": "Turn off the outside lens?",
   "Turn off the evidence health pass?": "Turn off the evidence health pass?",
-  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}"
+  "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}": "{count, plural, one {# path stops receiving its signals:} other {# paths stop receiving its signals:}}",
+  "Threat relevance minimum": "Threat relevance minimum",
+  "0 to 100. Below it, a threat case closes at scoping as not relevant. Default: 50.": "0 to 100. Below it, a threat case closes at scoping as not relevant. Default: 50.",
+  "The relevance score of a threat to your organization, from 0 to 100, read from sector, region, PIR, last activity and software exposure. Example: 50 keeps a threat scored 62 and closes one scored 16 at scoping. Read by the Threat Relevance Analyst and the threat response orchestrator. Empty: back to 50.": "The relevance score of a threat to your organization, from 0 to 100, read from sector, region, PIR, last activity and software exposure. Example: 50 keeps a threat scored 62 and closes one scored 16 at scoping. Read by the Threat Relevance Analyst and the threat response orchestrator. Empty: back to 50."
 }

@@ -172,6 +172,28 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
   });
 
+  it("reads the threat relevance minimum, 50 when the stored policy carries none, and never counts it as a set policy (#2798)", () => {
+    mockApi();
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_primary_asset_criticality: "", exclusions: [], accepted_risks: [] };
+    renderWithProviders(<Harness initial={{ ...BASE, prioritization_policy: empty } as ProfileForm} editing={false} />);
+    const card = screen.getByTestId("settings.organization.prioritization-policy");
+    expect(within(card).getByText("Threat relevance minimum")).toBeTruthy();
+    expect(within(card).getByText("50")).toBeTruthy();
+    expect(within(card).getByText(/No policy yet/)).toBeTruthy();
+  });
+
+  it("edits the threat relevance minimum as a whole number from 0 to 100 (#2798)", async () => {
+    mockApi();
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_primary_asset_criticality: "", exclusions: [], accepted_risks: [], relevance_min_score_threat: 50 };
+    renderWithProviders(<Harness initial={{ ...BASE, prioritization_policy: empty } as ProfileForm} editing />);
+    const field = screen.getByLabelText("Threat relevance minimum") as HTMLInputElement;
+    expect(field.value).toBe("50");
+    fireEvent.change(field, { target: { value: "140" } });
+    expect(await screen.findByText("Type a whole number from 0 to 100.")).toBeTruthy();
+    fireEvent.change(field, { target: { value: "40" } });
+    await waitFor(() => expect(screen.queryByText("Type a whole number from 0 to 100.")).toBeNull());
+  });
+
   it("picks an asset group among the Asset groups rows or None, never free text (UX B2, #11781)", async () => {
     mockApi();
     const initial: ProfileForm = {

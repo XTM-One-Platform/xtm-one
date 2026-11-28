@@ -104,6 +104,9 @@ export const RECOMMENDED_POLICY: PrioritizationPolicy = {
   accepted_risks: [],
 };
 
+/** The backend default of prioritization_policy.relevance_min_score_threat (#2798). */
+const DEFAULT_RELEVANCE_MIN_SCORE_THREAT = 50;
+
 const EMPTY_POLICY: PrioritizationPolicy = {
   cvss_min: null,
   epss_min: null,
@@ -199,7 +202,7 @@ export function exposureIssueFromRefusal(form: ProfileForm, detail: string): Exp
     const index = formIndex(risks, (row) => Boolean(row.subject.trim()), Number(risk[1]));
     return index === undefined ? null : { section: "risk", index, field: risk[2], message: ISSUE_MESSAGES.refused };
   }
-  const score = /^prioritization_policy\.(cvss_min|epss_min)\b/.exec(detail);
+  const score = /^prioritization_policy\.(cvss_min|epss_min|relevance_min_score_threat)\b/.exec(detail);
   return score ? { section: "score", field: score[1], message: ISSUE_MESSAGES.refused } : null;
 }
 
@@ -777,6 +780,36 @@ export function OrganizationExposureCards({
     );
   };
 
+  // #2798: the threat relevance bar always holds a number (backend default 50): an emptied field goes back to it.
+  const relevanceRefused = issueOf("score", "relevance_min_score_threat");
+  const relevanceField = (
+    <SettingsField
+      id={`${fieldId}-relevance_min_score_threat`}
+      label={t_i18n("Threat relevance minimum")}
+      helper={t_i18n("0 to 100. Below it, a threat case closes at scoping as not relevant. Default: 50.")}
+      info={t_i18n("The relevance score of a threat to your organization, from 0 to 100, read from sector, region, PIR, last activity and software exposure. Example: 50 keeps a threat scored 62 and closes one scored 16 at scoping. Read by the Threat Relevance Analyst and the threat response orchestrator. Empty: back to 50.")}
+      error={
+        invalidScores.relevance_min_score_threat
+          ? t_i18n("Type a whole number from 0 to 100.")
+          : relevanceRefused
+            ? t_i18n(relevanceRefused.message)
+            : undefined
+      }
+    >
+      <ScoreInput
+        id={`${fieldId}-relevance_min_score_threat`}
+        value={policy.relevance_min_score_threat ?? DEFAULT_RELEVANCE_MIN_SCORE_THREAT}
+        max={100}
+        integer
+        placeholder={String(DEFAULT_RELEVANCE_MIN_SCORE_THREAT)}
+        onCommit={(value) => patchPolicy({ relevance_min_score_threat: value ?? DEFAULT_RELEVANCE_MIN_SCORE_THREAT })}
+        onValidity={(invalid) =>
+          setInvalidScores((prev) => (prev.relevance_min_score_threat === invalid ? prev : { ...prev, relevance_min_score_threat: invalid }))
+        }
+      />
+    </SettingsField>
+  );
+
   // Only the fields this card edits count: keys the backend adds with their defaults (scope, SLA) and the PIR
   // minimums the Intelligence policy now holds per PIR (#2435) never make a policy "set".
   const policySet = (Object.keys(EMPTY_POLICY) as (keyof PrioritizationPolicy)[]).some(
@@ -983,6 +1016,7 @@ export function OrganizationExposureCards({
                   patchPolicy({ min_primary_asset_criticality: v === ANY_CRITICALITY ? "" : v }),
                 )}
               </SettingsField>
+              {relevanceField}
             </SettingsFieldGrid>
             <SettingsSwitchField
               id={`${fieldId}-kev_always_in`}
@@ -1020,6 +1054,11 @@ export function OrganizationExposureCards({
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Hold signals with no score")} value={(policy.missing_score ?? "hold") === "hold" ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />
+            <SettingsReadField
+              label={t_i18n("Threat relevance minimum")}
+              value={String(policy.relevance_min_score_threat ?? DEFAULT_RELEVANCE_MIN_SCORE_THREAT)}
+              mono
+            />
           </SettingsReadGrid>
         )}
         {!policyEditing && !policySet && (
