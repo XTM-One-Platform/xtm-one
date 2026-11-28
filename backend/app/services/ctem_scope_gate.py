@@ -567,6 +567,16 @@ def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def evidence_fixed_version(evidence: dict[str, Any]) -> str | None:
+    """The fixed version a signal's evidence carries (its own, else its case fix's), ``None`` when unknown (#2747)."""
+    fix = evidence.get("case_fix")
+    for value in (evidence.get("fixed_version"), fix.get("fixed_version") if isinstance(fix, dict) else None):
+        text = str(value or "").strip()
+        if text:
+            return text[:100]
+    return None
+
+
 def resolve(
     profile: OrganizationProfile, facts: SignalFacts, primary_assets: PrimaryAssetIndex | None = None
 ) -> Resolution:
@@ -637,7 +647,9 @@ def resolve(
         _resolve_repositories(profile, software, out)
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
-        out.primary_assets = primary_assets.reach(refs, keys, keys_only=narrow)
+        out.primary_assets = primary_assets.reach(
+            refs, keys, keys_only=narrow, fixed_version=evidence_fixed_version(facts.evidence)
+        )
         out.primary_asset_totals = primary_assets.totals(refs, keys, keys_only=narrow)
     if out.products and not narrow:
         names = {p.lower() for p in out.products}
