@@ -153,15 +153,34 @@ export function sourceDisplayState(
 /**
  * The integrations a source runs on, joined: a provisioned source by its own platform lines; the cases recompute,
  * which provisions nothing, by every connected integration of its provider (UX advisory A2 of #2592); a webhook none.
+ * A listener XTM One does not provision (GitHub, Aikido: a verified webhook delivery of any connected integration of
+ * its provider records it, #2736) is named by those connected integrations, never "None" beside "On".
  */
 export function sourceIntegrationNames(
   source: Pick<CtemSignalPathSource, "provider" | "kind">,
   platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
+  integrations: readonly { provider: string; name: string; status: string }[] = [],
 ): string {
-  if (source.kind === "webhook") return "";
-  const lines = platform.filter((s) => s.provider === source.provider && (source.kind === "cases_reader" || s.kind === source.kind));
-  return [...new Set(lines.map((s) => s.integration_name).filter(Boolean))].join(", ");
+  return sourceIntegrationList(source, platform, integrations).join(", ");
 }
+
+/** The integrations a source runs on, one name each, in the order of {@link sourceIntegrationNames} (UX round 1 on #2741, B4). */
+export function sourceIntegrationList(
+  source: Pick<CtemSignalPathSource, "provider" | "kind">,
+  platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
+  integrations: readonly { provider: string; name: string; status: string }[] = [],
+): string[] {
+  if (source.kind === "webhook") return [];
+  const lines = platform.filter((s) => s.provider === source.provider && (source.kind === "cases_reader" || s.kind === source.kind));
+  const names = lines.map((s) => s.integration_name).filter(Boolean) as string[];
+  if (names.length === 0 && source.kind === "listener" && !PROVISIONED_LISTENERS.has(source.provider)) {
+    names.push(...integrations.filter((i) => i.provider === source.provider && i.status === "connected").map((i) => i.name));
+  }
+  return [...new Set(names)];
+}
+
+/** The providers whose listener XTM One provisions as a platform source: named by its platform lines alone. */
+const PROVISIONED_LISTENERS: ReadonlySet<string> = new Set(["opencti", "openaev"]);
 
 /** The signed request a tool sends to a webhook source (#2506), the secret left as $SECRET: never the real one in a copied command. */
 export function signedRequestExample(url: string, header: string): string {
@@ -170,26 +189,6 @@ export function signedRequestExample(url: string, header: string): string {
     `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')`,
     `curl -X POST '${url}' -H 'Content-Type: application/json' -H "${header}: sha256=$SIG" -d "$BODY"`,
   ].join("\n");
-}
-
-/** The display name of a source: a webhook source by its own name, any other by its provider (#2506). */
-export function sourceDisplayName(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">, providerName: (provider: string) => string): string {
-  return source.kind === "webhook" && source.name ? source.name : providerName(source.provider);
-}
-
-/**
- * A path's sources split by what feeds it on this platform (Sam, 23 Nov 2026, #1401): `live` are the
- * sources of a connected provider (bound, a pass turned off, or not set up yet), each saying its own
- * state; `possible` are the sources whose provider has no integration here. A possible source is never
- * listed with the weight of a live one: the Sources tab folds them into one muted "+N possible".
- */
-export function splitSources(
-  path: Pick<CtemSignalPath, "sources">,
-  connected: ReadonlySet<string>,
-): { live: CtemSignalPathSource[]; possible: CtemSignalPathSource[] } {
-  const sources = path.sources ?? [];
-  const possible = (s: CtemSignalPathSource) => sourceState(s, connected) === "not_connected";
-  return { live: sources.filter((s) => !possible(s)), possible: sources.filter(possible) };
 }
 
 /** Whether a path records from at least one of its sources: enabled or partly enabled. */
@@ -249,14 +248,32 @@ const SOURCE_STATE_ICON = {
   bound: { icon: "circle-check", className: "text-feedback-success-primary", label: "On" },
   off: { icon: "circle-x", className: "text-default-secondary", label: "Off" },
   excluded: { icon: "circle-x", className: "text-default-secondary", label: "Not used here" },
-  not_set_up: { icon: "circle-alert", className: "text-default-secondary", label: "Not set up" },
-  not_configured: { icon: "circle-alert", className: "text-default-secondary", label: "Not configured" },
+  // Not set up and Not configured read the same muted circle-x as Off (UX round 1 on #2741, B3): circle-alert is the
+  // shape of Error alone, so a grey "!" never reads as a red one.
+  not_set_up: { icon: "circle-x", className: "text-default-secondary", label: "Not set up" },
+  not_configured: { icon: "circle-x", className: "text-default-secondary", label: "Not configured" },
   error: { icon: "circle-alert", className: "text-feedback-error-primary", label: "Error" },
-} as const satisfies Record<Exclude<SourceState, "not_connected">, { icon: IconName; className: string; label: string }>;
+  // A provider with no integration here: the same icon on the list chip and in the drawer (UX advisory A3 on #2741).
+  not_connected: { icon: "circle-plus", className: "text-default-secondary", label: "Not connected" },
+} as const satisfies Record<SourceState, { icon: IconName; className: string; label: string }>;
 
-export function sourceStateIcon(state: SourceState): (typeof SOURCE_STATE_ICON)[keyof typeof SOURCE_STATE_ICON] | null {
-  return state === "not_connected" ? null : SOURCE_STATE_ICON[state];
+export function sourceStateIcon(state: SourceState): (typeof SOURCE_STATE_ICON)[keyof typeof SOURCE_STATE_ICON] {
+  return SOURCE_STATE_ICON[state];
 }
+
+/** The legend words of the source chips. @i18n-keys */
+const LEGEND_LABEL = { on: "On", quiet: "Off, not set up or not used here", error: "Error", missing: "Not connected" } as const;
+
+/**
+ * The legend of the source chips (UX round 1 on #2741, B3): one icon per entry, and every state a chip can show is
+ * named by exactly one entry, with that state's own icon.
+ */
+export const SOURCE_STATE_LEGEND = [
+  { states: ["bound"], label: LEGEND_LABEL.on },
+  { states: ["off", "not_set_up", "not_configured", "excluded"], label: LEGEND_LABEL.quiet },
+  { states: ["error"], label: LEGEND_LABEL.error },
+  { states: ["not_connected"], label: LEGEND_LABEL.missing },
+] as const satisfies readonly { states: readonly SourceState[]; label: string }[];
 
 /** The key of one source in the profile's `signal_sources` (#1445): `provider:kind`, `provider:kind:name` when named (#2436). */
 export function sourceKey(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name" | "key">): string {
@@ -390,6 +407,42 @@ export const SOURCE_NAME_LABEL = {
   finding_created: "Finding created",
   asset_created: "Asset created",
 } as const;
+
+/**
+ * What an unnamed listener of a provider listens to on one path, where the provider name alone does not say it (#2736).
+ * @i18n-keys
+ */
+const UNNAMED_LISTENER_LABEL = {
+  "github:code_flaw": "Dependabot",
+  "github:new_vulnerability": "Security advisories",
+} as const;
+
+/**
+ * The short word of a kind on a source chip: a listener and a scheduled pass say none (UX round 1 on #2741, B1: the
+ * kind is in the tooltip), their provider and name say what it is. @i18n-keys
+ */
+const SHORT_KIND_LABEL = { pir_playbook: "PIR playbook", cases_reader: "Cases recompute" } as const;
+
+/**
+ * The short name of a source on its chip (#2736, Sam 28 Nov 2026): the provider, then what tells it apart on the path,
+ * "GitHub Dependabot", "GitHub Code scanning", "OpenCTI PIR playbook", "Shodan"; a webhook by its own name. A chip name
+ * is never cut, so it stays short: the kind and the state travel in the tooltip (UX round 1 on #2741, B1, B2).
+ */
+export function sourceShortName(
+  source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">,
+  pathId: string,
+  providerName: (provider: string) => string,
+  t: (key: string) => string,
+): string {
+  if (source.kind === "webhook") return source.name || providerName(source.provider);
+  const provider = providerName(source.provider);
+  const named = source.name ? (SOURCE_NAME_LABEL as Record<string, string>)[source.name] : undefined;
+  if (named) return `${provider} ${t(named)}`;
+  if (source.kind === "pir_playbook" || source.kind === "cases_reader") return `${provider} ${t(SHORT_KIND_LABEL[source.kind])}`;
+  if (source.kind !== "listener") return provider;
+  const unnamed = (UNNAMED_LISTENER_LABEL as Record<string, string>)[`${source.provider}:${pathId}`];
+  return unnamed ? `${provider} ${t(unnamed)}` : provider;
+}
 
 /** The kind of a source in words, its name after it when it has one: "Live listener · Code scanning". */
 export function sourceKindText(t: (key: string) => string, source: Pick<CtemSignalPathSource, "kind" | "name">): string {

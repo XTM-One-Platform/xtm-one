@@ -22058,10 +22058,7 @@
   "Indicator sighting": "Indicator sighting",
   "Code scanning": "Code scanning",
   "Secret scanning": "Secret scanning",
-  "{count, plural, other {+# not used here}}": "{count, plural, other {+# not used here}}",
-  "{count, plural, other {+# more}}": "{count, plural, other {+# more}}",
   "No source on: nothing records this path": "No source on: nothing records this path",
-  "Open its sources": "Open its sources",
   "Sources on": "Sources on",
   "{enabled} of {available}": "{enabled} of {available}",
   "Signed webhook": "Signed webhook",
@@ -22280,5 +22277,11 @@
   "{name} (integration owner)": "{name} (integration owner)",
   "How far back {source} is read": "How far back {source} is read",
   "Does not run": "Does not run",
-  "Left out of this resync": "Left out of this resync"
+  "Left out of this resync": "Left out of this resync",
+  "Dependabot": "Dependabot",
+  "Security advisories": "Security advisories",
+  "Off, not set up or not used here": "Off, not set up or not used here",
+  "Source states": "Source states",
+  "{count, plural, other {# not connected: {names}}}": "{count, plural, other {# not connected: {names}}}",
+  "Its own receiver": "Its own receiver"
 }
