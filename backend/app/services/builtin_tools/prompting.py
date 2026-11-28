@@ -32,6 +32,14 @@ if TYPE_CHECKING:
 
 # ── Prompt helpers ────────────────────────────────────────────────────────────
 
+#: The line under the clock (issue #2764): the clock is the only time the model
+#: holds, so a time it writes is one it was given, never an estimate. It sits
+#: after the volatile-tail marker, so the cached system prefix is unchanged.
+TIME_QUOTING_RULE = (
+    "State a time only when a tool result, the wait answer or this clock gave it; "
+    "never estimate one. For a freshness time, write 'as of' and the time above."
+)
+
 
 def format_datetime_prompt(user_timezone: str | None = None) -> str:
     """Return a prompt fragment with the current date/time.
@@ -60,11 +68,11 @@ def format_datetime_prompt(user_timezone: str | None = None) -> str:
 
             local_now = now.astimezone(ZoneInfo(user_timezone))
             local_line = f"User's local time ({user_timezone}): {local_now.strftime('%A, %B %d, %Y at %H:%M')}"
-            return f"\n{utc_line}\n{local_line}"
+            return f"\n{utc_line}\n{local_line}\n{TIME_QUOTING_RULE}"
         except (ValueError, KeyError):
             pass  # invalid timezone — fall back to UTC only
 
-    return f"\n{utc_line}"
+    return f"\n{utc_line}\n{TIME_QUOTING_RULE}"
 
 
 class _UserLike(Protocol):
