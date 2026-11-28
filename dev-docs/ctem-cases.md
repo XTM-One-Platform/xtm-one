@@ -170,8 +170,10 @@ With it:
   answers `version_unverified` true and `version_unverified_reason`
   (`ctem_version_match.unverified_reason`: the versions OpenCTI does not know,
   or "no running version reported"), shown as one neutral "To validate" chip
-  on the Cases list and the case page; the marker clears on the next read once
-  OpenCTI places every running version. Validating comes first through the
+  on the Cases list and the case page while the case is open (never on a
+  closed case: mitigated and watching, resolved, accepted risk, #2731, while
+  the API flag stays the fact about the version); the marker clears on the
+  next read once OpenCTI places every running version. Validating comes first through the
   existing gate card wording (`BLIND_ACTION`, "Verify the running version,
   then upgrade") and the existing validation record; nothing is discarded or
   derived from versions;
