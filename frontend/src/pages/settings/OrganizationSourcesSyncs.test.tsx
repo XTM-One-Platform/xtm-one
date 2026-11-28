@@ -326,6 +326,19 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(text).toContain("Failed");
   });
 
+  it("shows a warning state, never a plain green, when a post-step of the run failed (#2781)", async () => {
+    serve(
+      [sync({ last_result: { added: 0, updated: 2, removed: 0, version: null, error: null, warning: "Held signals not decided again: closed transaction" } })],
+      [source()],
+    );
+    render();
+    const all = await rows();
+    const text = all.map((row) => row.textContent ?? "").join(" | ");
+    expect(text).toContain("Warning");
+    expect(text).not.toContain("Failed");
+    expect(await screen.findByTestId("organization-sources.last-warning")).toBeInTheDocument();
+  });
+
   it("names an agent or partner row by its source, its agent on the subline (lab retest of #1294, D2)", async () => {
     serve(
       [],

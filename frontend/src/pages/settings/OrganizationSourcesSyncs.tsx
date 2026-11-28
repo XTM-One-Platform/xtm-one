@@ -79,7 +79,7 @@ const SOURCE_KIND_NAMES = {
 } as const satisfies Record<OrganizationSource["kind"], string>;
 
 /** The state of a row: a sync's own state, or "source" for a source with no sync. */
-type RowState = SyncState | "failed" | "source";
+type RowState = SyncState | "failed" | "warning" | "source";
 
 /** What each kind of source with no sync waits for, in its own words (UX r1 B4). @i18n-keys */
 const SOURCE_SCHEDULE_LABELS = {
@@ -125,6 +125,7 @@ const ROW_STATE_LABELS = {
   paused: "Paused",
   disabled: "Disabled",
   failed: "Failed",
+  warning: "Warning",
   source: "No schedule",
 } as const satisfies Record<RowState, string>;
 
@@ -144,6 +145,8 @@ type Row = { id: string; sync: OrganizationSync; source: OrganizationSource | un
 const rowStateOf = (row: Row): RowState => {
   if (!row.sync) return "source";
   if (row.sync.enabled && !row.sync.paused_reason && row.sync.last_result?.error) return "failed";
+  // #2781: the sync landed but a post-step failed (the held-signal recheck): a warning, never a plain green.
+  if (row.sync.enabled && !row.sync.paused_reason && row.sync.last_result?.warning) return "warning";
   return stateOf(row.sync);
 };
 
@@ -507,6 +510,16 @@ export function OrganizationSourcesSyncs({
               {lastRunLine(sync)}
             </span>
           </Tip>
+        ) : sync.last_result?.warning ? (
+          <Tip content={sync.last_result.warning}>
+            <span
+              className="block w-max max-w-[12rem] line-clamp-2 text-feedback-warning-primary light:text-feedback-warning-tertiary"
+              tabIndex={0}
+              data-testid="organization-sources.last-warning"
+            >
+              {lastRunLine(sync)}
+            </span>
+          </Tip>
         ) : (
           <TruncatedText text={lastRunLine(sync)} lines={2} className="w-max max-w-[12rem] text-default-secondary" />
         );
@@ -528,7 +541,7 @@ export function OrganizationSourcesSyncs({
       header: "State",
       cell: (row) => {
         const state = rowStateOf(row);
-        const variant = state === "failed" ? "destructive" : state === "paused" ? "warning" : "outline";
+        const variant = state === "failed" ? "destructive" : state === "paused" || state === "warning" ? "warning" : "outline";
         return (
           <Badge variant={variant} className="whitespace-nowrap">
             {t_i18n(ROW_STATE_LABELS[state])}

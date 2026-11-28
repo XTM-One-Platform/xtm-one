@@ -354,6 +354,16 @@ def _links_changed(links: Any) -> bool:
     return isinstance(links, dict) and any(int(links.get(k) or 0) for k in ("added", "updated", "removed"))
 
 
+def recheck_warning(rechecked: Any) -> str | None:
+    """#2781: the run's warning when the held-signal recheck failed, else ``None``.
+
+    The sync itself landed, so its ``error`` stays empty; a failed post-step is a
+    warning on the run (the Syncs page shows it), never a plain green.
+    """
+    error = rechecked.get("error") if isinstance(rechecked, dict) else None
+    return f"Held signals not decided again: {error}"[:500] if error else None
+
+
 async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, str]:
     """#1591 S3: decide again the watchlist signals held for scope; never fails the sync.
 
@@ -361,6 +371,10 @@ async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, 
     statement fits the database's statement timeout; a batch that times out is rolled back
     alone and taken again at half the size, down to :data:`RECHECK_MIN_BATCH`. The recheck is
     idempotent (a decided signal moves past *since*), so what one run leaves the next one takes.
+
+    #2781: the OpenCTI reads of a batch are taken before its savepoint opens
+    (:func:`ctem_scope_gate_store.prefetch_held`), never inside it: they release the
+    connection with a commit, which would close the transaction the savepoint runs in.
     """
     from app.core.utils import is_statement_timeout
     from app.services import ctem_scope_gate_store
@@ -379,9 +393,10 @@ async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, 
     batch = RECHECK_SYNC_BATCH
     for _ in range(RECHECK_MAX_ROUNDS):
         try:
+            await ctem_scope_gate_store.prefetch_held(db, organization_id=primary.id, since=since, batch=batch)
             async with db.begin_nested():
                 decided = await ctem_scope_gate_store.recheck_held(
-                    db, organization_id=primary.id, since=since, batch=batch
+                    db, organization_id=primary.id, since=since, batch=batch, prefetched=True
                 )
         except Exception as exc:
             if is_statement_timeout(exc) and batch > RECHECK_MIN_BATCH:
@@ -475,6 +490,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
         if not plan.error and (_links_changed(result.get("links")) or result.get("software_changed")):
             # #1591 S3: a link or a device's software changed: the watchlist signals held for scope are decided again.
             result["ctem_rechecked"] = await _recheck_held_signals(db)
+            warning = recheck_warning(result["ctem_rechecked"])
+            if warning:
+                result["warning"] = warning
         if plan.software_rows:
             result["software_rows"] = plan.software_rows
         if plan.software_error:
