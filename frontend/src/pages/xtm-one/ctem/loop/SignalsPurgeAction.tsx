@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -32,7 +33,16 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { initialWindowText, parseWindow, routeOutcome, windowsToSend } from "./purge-resync-windows";
+import {
+  initialChoices,
+  isSelectable,
+  maxFor,
+  parseWindow,
+  type ResyncChoice,
+  routeOutcome,
+  sourcesToSend,
+  type WindowUnit,
+} from "./purge-resync-windows";
 
 const GROUP_HEADING: Record<CtemSignalResyncRoute["group"], string> = {
   world: "Outside world (OpenCTI)",
@@ -61,7 +71,7 @@ export function SignalsPurgeAction() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [resync, setResync] = useState(false);
-  const [windowText, setWindowText] = useState<Record<string, string>>({});
+  const [choiceEdits, setChoiceEdits] = useState<Record<string, ResyncChoice>>({});
   const info = useCtemSignalPurge(isAdmin && (confirmOpen || progressOpen));
   const start = useStartCtemSignalPurge();
 
@@ -72,7 +82,8 @@ export function SignalsPurgeAction() {
   const counts = info.data?.counts;
   const routes = info.data?.resync_routes ?? [];
   const maxDays = info.data?.resync_max_days ?? 365;
-  const windows = resync ? windowsToSend(routes, { ...initialWindowText(routes), ...windowText }, maxDays) : null;
+  const choices = { ...initialChoices(routes), ...choiceEdits };
+  const sources = resync ? sourcesToSend(routes, choices, maxDays) : null;
 
   const ask = () => {
     if (running) {
@@ -80,14 +91,14 @@ export function SignalsPurgeAction() {
       return;
     }
     setResync(false);
-    setWindowText({});
+    setChoiceEdits({});
     setConfirmOpen(true);
     void info.refetch();
   };
 
   const confirm = () =>
     start.mutate(
-      { confirm: info.data?.confirm_word ?? "", resync, ...(resync && windows ? { resync_windows: windows } : {}) },
+      { confirm: info.data?.confirm_word ?? "", resync, ...(resync && sources ? { resync_sources: sources } : {}) },
       {
         onSuccess: () => setProgressOpen(true),
         // The server's reason (a job already running, the word refused), never a silent failure.
@@ -141,7 +152,7 @@ export function SignalsPurgeAction() {
         confirmLabel={t_i18n("Purge")}
         challenge
         size={resync ? "wide" : "sm"}
-        confirmDisabled={!counts || start.isPending || (resync && !windows)}
+        confirmDisabled={!counts || start.isPending || (resync && !sources)}
         onConfirm={confirm}
       >
         <div className="space-y-3 content-compact" aria-busy={!counts && !info.isError} data-testid="ctem-signals-purge-preview">
@@ -169,15 +180,15 @@ export function SignalsPurgeAction() {
           {/* What refills the list after the purge (#2583 note): the recompute is held without a resync. */}
           <p className="text-default-secondary" data-testid="ctem-signals-purge-recompute">
             {resync
-              ? t_i18n("The resync reads every source again, with the paths and sources that are on.")
+              ? t_i18n("The resync reads the sources ticked below again, with the paths and sources that are on.")
               : t_i18n("Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.")}
           </p>
           {resync && routes.length > 0 && (
             <ResyncWindows
               routes={routes}
               maxDays={maxDays}
-              texts={{ ...initialWindowText(routes), ...windowText }}
-              onChange={(key, text) => setWindowText((prev) => ({ ...prev, [key]: text }))}
+              choices={choices}
+              onChange={(key, patch) => setChoiceEdits((prev) => ({ ...prev, [key]: { ...choices[key], ...patch } }))}
             />
           )}
         </div>
@@ -229,17 +240,20 @@ export function SignalsPurgeAction() {
   );
 }
 
-/** One window field per route, grouped; a pass says it reads the current state (#2578). */
+/**
+ * One row per route, grouped (#2578): a box to tick the source or pass (#2745), and for a
+ * windowed route its window with a unit, hours or days. An info row keeps its reason.
+ */
 function ResyncWindows({
   routes,
   maxDays,
-  texts,
+  choices,
   onChange,
 }: {
   routes: CtemSignalResyncRoute[];
   maxDays: number;
-  texts: Record<string, string>;
-  onChange: (key: string, text: string) => void;
+  choices: Record<string, ResyncChoice>;
+  onChange: (key: string, patch: Partial<ResyncChoice>) => void;
 }) {
   const { t_i18n } = useFormatter();
   const groups = (Object.keys(GROUP_HEADING) as CtemSignalResyncRoute["group"][]).filter((g) => routes.some((r) => r.group === g));
@@ -247,7 +261,9 @@ function ResyncWindows({
   return (
     <div className="space-y-3 content-base" data-testid="ctem-signals-purge-windows">
       <p className="text-default-secondary">
-        {t_i18n("How far back the resync reads, in days. Leave an inside-state field empty to read every open item.")}
+        {t_i18n(
+          "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.",
+        )}
       </p>
       {groups.map((group) => (
         <fieldset key={group} className="space-y-1.5">
@@ -258,8 +274,8 @@ function ResyncWindows({
               .filter((r) => r.group === group)
               .map((route) => {
                 const id = `ctem-signals-purge-window-${route.key}`;
-                if (!route.windowed) {
-                  // A pass, or a route the resync does not read: a read-only line with its reason, never a field (B3).
+                if (!isSelectable(route)) {
+                  // A route the resync does not read: a read-only line with its reason, never a field (B3).
                   return (
                     <div key={route.key} className="min-w-0" data-testid={id}>
                       <span className="block">{t_i18n(route.label)}</span>
@@ -267,29 +283,65 @@ function ResyncWindows({
                     </div>
                   );
                 }
-                const invalid = parseWindow(texts[route.key] ?? "", route, maxDays) === "invalid";
+                const choice = choices[route.key] ?? { enabled: true, text: "", unit: "days" as const };
+                const toggle = (
+                  <Checkbox
+                    id={`${id}-enabled`}
+                    label={t_i18n(route.label)}
+                    checked={choice.enabled}
+                    onCheckedChange={(checked) => onChange(route.key, { enabled: checked === true })}
+                    data-testid={`${id}-enabled`}
+                  />
+                );
+                if (!route.windowed) {
+                  // A pass reads the current state: its box, and that it runs once (#2745).
+                  return (
+                    <div key={route.key} className="min-w-0" data-testid={id}>
+                      {toggle}
+                      <span className="mt-0.5 block pl-6 text-default-secondary">
+                        {choice.enabled ? t_i18n(route.note ?? "Runs once") : t_i18n("Does not run")}
+                      </span>
+                    </div>
+                  );
+                }
+                const invalid = choice.enabled && parseWindow(choice.text, route, maxDays, choice.unit) === "invalid";
                 return (
-                  <div key={route.key} className="min-w-0">
-                    <label id={`${id}-label`} htmlFor={id} className="block">
-                      {t_i18n(route.label)}
-                    </label>
-                    <span className="mt-1 flex items-center gap-1.5">
+                  <div key={route.key} className="min-w-0" data-testid={id}>
+                    {toggle}
+                    <span className="mt-1 flex items-center gap-1.5 pl-6">
                       <Input
                         id={id}
                         inputMode="numeric"
                         className="w-20 shrink-0 [&_input]:text-right [&_input]:tabular-nums"
-                        value={texts[route.key] ?? ""}
+                        value={choice.text}
+                        disabled={!choice.enabled}
                         placeholder={route.group === "inside" ? t_i18n("All") : undefined}
                         aria-invalid={invalid}
-                        aria-labelledby={`${id}-label`}
+                        aria-label={t_i18n("How far back {source} is read", { source: t_i18n(route.label) })}
                         aria-describedby={invalid ? `${id}-error` : undefined}
-                        onChange={(e) => onChange(route.key, e.target.value)}
+                        onChange={(e) => onChange(route.key, { text: e.target.value })}
                       />
-                      <span className="shrink-0 whitespace-nowrap text-default-secondary">{t_i18n("days")}</span>
+                      <Select
+                        value={choice.unit}
+                        disabled={!choice.enabled}
+                        onValueChange={(unit) => onChange(route.key, { unit: unit as WindowUnit })}
+                      >
+                        <SelectTrigger
+                          className="w-28 shrink-0"
+                          aria-label={t_i18n("Unit")}
+                          data-testid={`${id}-unit`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hours">{t_i18n("hours")}</SelectItem>
+                          <SelectItem value="days">{t_i18n("days")}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </span>
                     {invalid && (
-                      <p id={`${id}-error`} className="mt-1 text-feedback-error-primary" role="alert">
-                        {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxDays })}
+                      <p id={`${id}-error`} className="mt-1 pl-6 text-feedback-error-primary" role="alert">
+                        {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxFor(choice.unit, maxDays) })}
                       </p>
                     )}
                   </div>
@@ -320,7 +372,7 @@ function ResyncResult({ job, routes }: { job: CtemSignalPurgeJob; routes: CtemSi
                 <span className={cn(outcome.kind === "skipped" && "text-default-secondary")}>{t_i18n(labels.get(key) ?? key)}</span>
                 {outcome.kind !== "done" && (
                   <span className={cn("block", outcome.kind === "error" ? "text-feedback-error-primary" : "text-default-secondary")}>
-                    {outcome.reason}
+                    {outcome.kind === "skipped" && outcome.unselected ? t_i18n("Left out of this resync") : outcome.reason}
                   </span>
                 )}
                 {outcome.kind === "done" && outcome.capped && (

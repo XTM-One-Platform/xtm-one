@@ -616,7 +616,13 @@ order:
    (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
    windows live in `WINDOWS`; the dialog sends the chosen ones as
    `resync_windows`, validated by `validate_windows` (1 to 365 days; an
-   inside-state route also takes null, no age limit; a pass takes none):
+   inside-state route also takes null, no age limit; a pass takes none). The
+   dialog sends `resync_sources` `{route: {enabled, window, unit}}` instead,
+   validated by `plan`: an unticked route is never queried and an unticked pass
+   never runs (reported skipped, `not selected in the purge dialog`), a window is
+   in `days` (default) or `hours` (1 hour to 365 days), and the job carries the
+   windows in hours as `spans` and the unticked ones as `skip`; without
+   `resync_sources` every route reads its days window, as before:
    - one route per OpenCTI type the live listener reads (paths 1, 2, 10;
      vulnerabilities 7 days by default, the others 30), from every enabled
      OpenCTI source as its run-as, each fed to `note_event` as an `update`
@@ -653,8 +659,9 @@ holds the actor, the resync choice and the counts per step.
 
 `GET /api/v1/ctem-signals/purge` (administrators): the live counts
 (`{signals, cases}`), the confirmation word, the resync routes with their
-default windows (`resync_routes`, `resync_max_days`) and the running or last job.
-`POST /api/v1/ctem-signals/purge` `{confirm, resync, resync_windows?}`
+default windows (`resync_routes`, each with `selectable`; `resync_max_days`,
+`resync_units`) and the running or last job.
+`POST /api/v1/ctem-signals/purge` `{confirm, resync, resync_windows?, resync_sources?}`
 (administrators): 422 without the word `PURGE` or on a window it refuses, 409
 while a job runs, else 202 with the job's first status (its `windows` filled
 in with the defaults). A non-administrator gets 403 on both.
