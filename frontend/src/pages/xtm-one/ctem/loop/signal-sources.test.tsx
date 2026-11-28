@@ -284,8 +284,11 @@ describe("SignalSourcesPanel", () => {
     expect(chips("new_exposure")).toEqual(["Shodan:bound", "Google Threat Intelligence:not_connected"]);
     expect(chips("new_vulnerability")).toEqual(["OpenCTI:bound", "OpenCTI PIR playbook:not_set_up"]);
     expect(chips("control_decay")).toEqual(["OpenCRQ:off"]);
-    // The legend, once above the table.
+    // The legend, once above the table (drawn from 8xl only, where the Sources column is: UX round 2 on #2741, A2).
     expect(screen.getAllByTestId("ctem-signal-sources-legend")).toHaveLength(1);
+    // The Sources column holds the widest path (four chips) on two lines at 1728: 420 px, from 8xl (UX round 2 on #2741, B1).
+    const sourcesHeader = screen.getAllByRole("columnheader").find((th) => th.textContent?.trim().startsWith("Sources") && !th.textContent?.includes("on"));
+    expect(sourcesHeader?.style.width).toBe("420px");
     // A chip's icon is one a legend entry shows (UX round 1 on #2741, B3).
     const legendIcons = screen.getAllByTestId("ctem-signal-sources-legend-item").map((li) => li.getAttribute("data-icon"));
     expect(new Set(legendIcons).size).toBe(legendIcons.length);

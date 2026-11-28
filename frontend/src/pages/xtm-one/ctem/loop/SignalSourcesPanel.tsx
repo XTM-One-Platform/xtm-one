@@ -180,7 +180,7 @@ function SourceChip({
 function ChipLegend() {
   const { t_i18n } = useFormatter();
   return (
-    <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 content-caption text-default-secondary" aria-label={t_i18n("Source states")} data-testid="ctem-signal-sources-legend">
+    <ul className="mb-2 hidden flex-wrap items-center gap-x-4 gap-y-1 content-caption text-default-secondary @min-[88rem]:flex" aria-label={t_i18n("Source states")} data-testid="ctem-signal-sources-legend">
       {SOURCE_STATE_LEGEND.map(({ states, label }) => {
         const state: SourceState = states[0];
         const icon = sourceStateIcon(state);
@@ -265,6 +265,12 @@ const CHIP_ORDER: Record<SourceState, number> = {
   excluded: 5,
   not_connected: 6,
 };
+
+/**
+ * The Sources column, drawn from the 8xl container width (UX round 2 on #2741, B1): the widest seeded path, four
+ * chips ("OpenCTI Cases recompute", "GitHub Security advisories", "OpenCTI", "OpenCTI PIR playbook"), on two lines.
+ */
+const SOURCES_COLUMN_WIDTH = 420;
 
 /**
  * The sources of a path (#2736, Sam 28 Nov 2026): every source as a chip, a provider with no integration here
@@ -369,13 +375,13 @@ export function SignalSourcesPanel() {
           </span>
           <span className="min-w-0">
             <span className="block truncate font-medium" data-testid="ctem-signal-sources-path-name">{t_i18n(path.label)}</span>
-            {/* Line 2: the description; below 4xl the sources and last signal step in here instead. */}
+            {/* Line 2: the description; below 8xl the sources (and below 4xl the last signal) step in here instead. */}
             {path.description && (
-              <span className="hidden truncate content-caption text-default-secondary @4xl:block">{t_i18n(path.description)}</span>
+              <span className="hidden truncate content-caption text-default-secondary @min-[88rem]:block">{t_i18n(path.description)}</span>
             )}
-            <span className="flex min-w-0 items-center gap-3 whitespace-nowrap content-caption text-default-secondary @4xl:hidden">
+            <span className="flex min-w-0 items-center gap-3 whitespace-nowrap content-caption text-default-secondary @min-[88rem]:hidden">
               <SourceList path={path} connected={connected} platform={platformSources} integrations={integrations} compact />
-              {path.last_signal_at && <span className="shrink-0">{lastSignal(path)}</span>}
+              {path.last_signal_at && <span className="shrink-0 @4xl:hidden">{lastSignal(path)}</span>}
             </span>
           </span>
         </span>
@@ -384,7 +390,10 @@ export function SignalSourcesPanel() {
     {
       key: "sources",
       header: "Sources",
-      hideBelow: "4xl",
+      // Wide enough for the widest path (four chips) on two lines, a vertical scrollbar included; below the 8xl
+      // container width that would starve the Signal type, so the sources step into its line 2 (UX round 2 on #2741, B1).
+      hideBelow: "8xl",
+      width: SOURCES_COLUMN_WIDTH,
       hideable: true,
       // Not interactive (#2736): a click anywhere on the chips opens the path's sources like the rest of the row.
       cell: (path) => <SourceList path={path} connected={connected} platform={platformSources} integrations={integrations} />,
@@ -519,7 +528,7 @@ export function SignalSourcesPanel() {
   ];
 
   return (
-    <div data-testid="ctem-signal-sources">
+    <div className="@container" data-testid="ctem-signal-sources">
       <ChipLegend />
       <DataTable
         rows={paths}
