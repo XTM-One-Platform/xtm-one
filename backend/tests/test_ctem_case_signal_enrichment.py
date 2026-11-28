@@ -193,6 +193,36 @@ def test_two_signals_naming_the_same_kev_cve_count_it_once() -> None:
     assert _summary(enriched)["kev_count"] == 1
 
 
+def test_a_signal_row_carries_the_facts_its_case_counts_so_the_tables_agree_with_the_cards() -> None:
+    """Sam, 28 Nov 2026: KEV 1 and Max CVSS 9.8 on the cards, the Issues row and Affected assets empty.
+
+    The signal member's OpenCTI facts are counted by the case aggregates; its rendered row and the
+    Affected assets rows built from it carry the same CVE, CVSS, EPSS and KEV.
+    """
+    from app.services.ctem_case_versions import affected_assets
+
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-28434"]}, KEV_VULNS)
+    member = CtemCaseIssue(case_id=uuid.uuid4(), source="signal", external_id="s1", open=True)
+    row = view_of._visible_issue(member, issue, {"name": "minio", "assets": []})
+    assert (row["cve"], row["cvss"], row["epss"], row["kev"]) == ("CVE-2023-28434", 8.8, 0.9, True)
+    assert row["assets"] == ["s3-1"]
+    card = _summary([issue])
+    assert card["kev_count"] == 1 and card["max_cvss"] == row["cvss"]
+    (asset,) = affected_assets([row])["assets"]
+    assert asset["kev"] is True and asset["max_cvss"] == 8.8
+
+
+def test_a_signal_row_whose_facts_were_not_read_leaves_them_unknown() -> None:
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-28432"]}, [])
+    member = CtemCaseIssue(case_id=uuid.uuid4(), source="signal", external_id="s1", open=True)
+    row = view_of._visible_issue(member, issue, {"name": "minio"})
+    # Unknown, never "not KEV" (#2225): the page draws an empty cell.
+    assert row["kev"] is None and row["cvss"] is None and row["cve"] == "CVE-2023-28432"
+    # A signal naming no CVE carries no fact at all.
+    bare = view_of._visible_issue(member, _signal("s1"), {"name": "minio"})
+    assert "kev" not in bare and "cvss" not in bare
+
+
 def test_opencti_issue_path_is_unchanged() -> None:
     octi = rules.SourceIssue(
         source="opencti", external_id="v1", name="CVE-2016-1", cve="CVE-2016-1", version_outcomes=(("17.1", "unknown"),)

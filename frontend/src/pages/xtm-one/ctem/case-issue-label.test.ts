@@ -44,6 +44,10 @@ describe("case issue labels", () => {
     expect(memberAssetCount(signal())).toBeNull();
     expect(memberAssetCount(signal({ subject_kind: "asset", assets: ["portal-edge-01"] }))).toBe(1);
     expect(memberKev({ source: "opencti", external_id: "x", open: true })).toBe(false);
+    // A signal naming a CVE OpenCTI was read for carries its KEV, as the case's KEV card counts it.
+    expect(memberKev(signal({ cve: "CVE-2026-76519", kev: true }))).toBe(true);
+    expect(memberKev(signal({ cve: "CVE-2026-76519", kev: false }))).toBe(false);
+    expect(memberKev(signal({ cve: "CVE-2026-76519", kev: null }))).toBeNull();
     expect(memberAssetCount({ source: "opencti", external_id: "x", open: true })).toBe(0);
   });
 

@@ -75,9 +75,13 @@ export function memberAssetCount(issue: CtemCaseVisibleIssue): number | null {
   return isSignalIssue(issue) && count === 0 ? null : count;
 }
 
-/** The KEV cell of a member: a signal has no KEV, so it reads nothing, never "No". */
+/**
+ * The KEV cell of a member. A signal carries the KEV of the CVE it names once OpenCTI was read for
+ * it (the fact the case's KEV card counts); with no CVE or an unread fact it reads nothing, never "No".
+ */
 export function memberKev(issue: CtemCaseVisibleIssue): boolean | null {
-  return isSignalIssue(issue) ? null : !!issue.kev;
+  if (isSignalIssue(issue)) return typeof issue.kev === "boolean" ? issue.kev : null;
+  return !!issue.kev;
 }
 
 /**

@@ -49,7 +49,7 @@ function assetVersionText(asset: CtemCaseAffectedAsset, t: (s: string) => string
   return (asset.versions ?? []).map((v) => (v === "unknown" ? t("Unknown") : v)).join(", ");
 }
 
-export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | undefined }) {
+export function CaseAffectedAssets({ data, className }: { data: CtemCaseAffectedAssets | undefined; className?: string }) {
   const { t_i18n, intl } = useFormatter();
   if (!data || data.asset_count === 0) return null;
   const fromInventory = data.version_source === "inventory";
@@ -160,7 +160,7 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
   ];
 
   return (
-    <Card data-testid="ctem-case-affected-assets">
+    <Card className={className} data-testid="ctem-case-affected-assets">
       <CardHeader>
         <CardTitle>
           <CaseCardTitleText icon={CASE_SECTION_ICON.affected_assets}>{t_i18n("Affected assets")}</CaseCardTitleText>

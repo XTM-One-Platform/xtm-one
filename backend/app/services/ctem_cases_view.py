@@ -984,6 +984,14 @@ def _visible_issue(
             # #2635: the inventory assets its gate decision matched, so the case lists and counts them.
             if issue.assets:
                 out["assets"] = list(issue.assets)
+            # The OpenCTI facts of the CVEs it names (#2041), which the case's KEV and Max CVSS
+            # already count: the row and the Affected assets card carry them too, so the tables
+            # agree with the stat cards. A fact not read stays null (``kev`` None: unknown, #2225).
+            if issue.cve:
+                out["cve"] = issue.cve
+                out["cvss"] = issue.cvss
+                out["epss"] = issue.epss
+                out["kev"] = issue.kev
         return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}

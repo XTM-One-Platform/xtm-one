@@ -79,6 +79,13 @@ function page() {
   );
 }
 
+/** Fixed version sits under Columns beside the assets (Sam, 28 Nov 2026): bring it back first. */
+function showFixedVersion() {
+  const issues = screen.getByTestId("ctem-case-issues");
+  fireEvent.click(within(issues).getByRole("button", { name: /Columns/ }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Shown columns" })).getByRole("button", { name: "Fixed version" }));
+}
+
 function rowOf(cve: string) {
   return screen.getAllByTestId("ctem-case-issue-row").find((r) => within(r).queryByText(cve))!;
 }
@@ -96,6 +103,7 @@ describe("CtemCaseDetail target version (#928)", () => {
   it("names the fixed version with the OpenCTI Software that remediates it", () => {
     state.fixedVersion = "1.25.5";
     page();
+    showFixedVersion();
     const cell = within(rowOf("CVE-2025-0001")).getByTestId("ctem-case-issue-version");
     expect(cell.textContent).toBe("1.25.5Matched on Software nginx 1.25.5");
   });
@@ -103,6 +111,7 @@ describe("CtemCaseDetail target version (#928)", () => {
   it("names the course of action when no remediating Software gave the fix", () => {
     state.fixedVersion = "1.25.5";
     page();
+    showFixedVersion();
     const cell = within(rowOf("CVE-2025-0004")).getByTestId("ctem-case-issue-version");
     expect(cell.textContent).toBe("1.25.4Named by Upgrade to 1.25.4");
   });

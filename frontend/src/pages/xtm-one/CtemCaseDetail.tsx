@@ -563,7 +563,7 @@ export default function CtemCaseDetail() {
         ) : isSignalIssue(r.issue) ? (
           // A signal reads its name, its lens and source as chips and its trigger path as the
           // caption, as the "Opened by" card does (#1936): never its id.
-          <span className="flex min-w-0 max-w-[26rem] flex-col" data-testid="ctem-case-issue-signal">
+          <span className="flex min-w-0 max-w-[18rem] flex-col" data-testid="ctem-case-issue-signal">
             <span className="flex min-w-0 items-center gap-1.5">
               <TruncatedText text={issueLabel(r.issue, t_i18n)} className="font-medium" />
               {r.issue.lens && <ToneBadge tone="neutral" className="shrink-0">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
@@ -590,10 +590,9 @@ export default function CtemCaseDetail() {
         ) : (
           // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
           // vulnerability by its id, an OpenAEV finding by its id; a signal row pivots above.
-          <span className="flex min-w-0 max-w-[26rem] items-center gap-1.5">
-            <span className="truncate font-medium" title={issueLabel(r.issue, t_i18n)}>
-              {issueLabel(r.issue, t_i18n)}
-            </span>
+          // The CVE is never cut (Sam, 28 Nov 2026): it holds its width, the pivot icon follows it.
+          <span className="flex min-w-0 max-w-[18rem] items-center gap-1.5">
+            <span className="whitespace-nowrap font-medium">{issueLabel(r.issue, t_i18n)}</span>
             <ModulePivotLink
               module={pivotModuleOf(r.issue.source)}
               baseUrl={moduleUrls[pivotModuleOf(r.issue.source) ?? "opencti"]}
@@ -625,6 +624,9 @@ export default function CtemCaseDetail() {
         ),
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : r.issue.source),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.source),
+      // Half width beside the assets (Sam, 28 Nov 2026): the context columns first, the rest under Columns.
+      hideable: true,
+      defaultHidden: true,
     },
     {
       key: "cvss",
@@ -643,6 +645,8 @@ export default function CtemCaseDetail() {
       sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (r.issue.epss ?? -1)),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.epss ?? "")),
       firstSort: "desc",
+      hideable: true,
+      defaultHidden: true,
     },
     {
       key: "kev",
@@ -651,7 +655,6 @@ export default function CtemCaseDetail() {
       cell: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? null : memberKev(r.issue) ? t_i18n("Yes") : t_i18n("No")),
       sortValue: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? -1 : memberKev(r.issue) ? 1 : 0),
       csv: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? "" : memberKev(r.issue) ? "yes" : "no"),
-      hideBelow: "3xl",
       hideable: true,
     },
     {
@@ -666,7 +669,6 @@ export default function CtemCaseDetail() {
       },
       sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (memberAssetCount(r.issue) ?? -1)),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.assets ?? []).join("; ")),
-      hideBelow: "4xl",
       hideable: true,
     },
     ...(showRetest
@@ -688,6 +690,7 @@ export default function CtemCaseDetail() {
             sortValue: (r: IssueRow) => (isRestrictedIssue(r.issue) ? 99 : retestRank(r.issue)),
             csv: (r: IssueRow) => (isRestrictedIssue(r.issue) ? "" : (r.issue.retest_status ?? (r.issue.retest_pending ? "queued" : ""))),
             hideable: true,
+            defaultHidden: true,
           } satisfies DataTableColumn<IssueRow>,
         ]
       : []),
@@ -697,8 +700,8 @@ export default function CtemCaseDetail() {
       cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
-      hideBelow: "xl",
       hideable: true,
+      defaultHidden: true,
     },
     {
       key: "state",
@@ -777,6 +780,65 @@ export default function CtemCaseDetail() {
 
   // The platform group owning the case as a team (#2577), shown next to its lead (#2586).
   const ownerTeam = owningTeam(kase.owner_basis, kase.owner_group_id);
+
+  const hasAffectedAssets = (kase.affected_assets?.asset_count ?? 0) > 0;
+  const issuesCard = (
+    <Card className="h-full min-w-0" data-testid="ctem-case-issues">
+      <CardHeader>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.issues}>{t_i18n("Issues")}</CaseCardTitleText>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          framed={false}
+          rows={issueRows}
+          columns={columns}
+          // One row height for the table (UX round 1 B1 on #1945): a signal row holds its chips
+          // and its path caption, so every row takes the two-line height.
+          rowLines={2}
+          rowKey={(r) => r.key}
+          selection={{
+            selected: picked,
+            onChange: setPicked,
+            // Only an open issue the caller sees can leave the case (#11613).
+            disabledReason: (key) => {
+              const row = issueRows.find((r) => r.key === key);
+              if (!row || isRestrictedIssue(row.issue)) return t_i18n("Restricted");
+              return row.issue.open ? undefined : t_i18n("A closed issue stays with its case");
+            },
+            actions: (
+              <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("split")} data-testid="ctem-case-split">
+                {t_i18n("Split into a new case")}
+              </Button>
+            ),
+          }}
+          defaultSort={{ key: "cvss", direction: "desc" }}
+          // Paginated inside its card, as the assets beside it, so a long case never pushes the decision down.
+          defaultPageSize={10}
+          searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, issueLabel(r.issue, t_i18n)])}
+          searchPlaceholder={t_i18n("Search CVE")}
+          filtersInPill
+          filters={[
+            {
+              key: "source",
+              label: "Source",
+              values: (r) => [isRestrictedIssue(r.issue) ? "restricted" : r.issue.source],
+              options: [
+                { value: "opencti", label: "OpenCTI" },
+                { value: "openaev", label: "OpenAEV" },
+                { value: "restricted", label: t_i18n("Restricted") },
+              ],
+            },
+          ]}
+          exportName="ctem-case-issues"
+          urlKey="i_"
+          emptyLabel={t_i18n("No issue in this case")}
+          rowTestId="ctem-case-issue-row"
+        />
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
@@ -882,8 +944,12 @@ export default function CtemCaseDetail() {
         <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
 
-      {/* The assets the visible issues name, each with the version it runs from the inventory (#1176 slice 3b). */}
-      <CaseAffectedAssets data={kase.affected_assets} />
+      {/* What the case is about, first (Sam, 28 Nov 2026): the assets the visible issues name (WHERE, #1176
+          slice 3b) and the issues themselves (WHAT) side by side from xl, one height, each paginated inside. */}
+      <div className={hasAffectedAssets ? "grid items-stretch gap-4 xl:grid-cols-2" : undefined} data-testid="ctem-case-context">
+        {hasAffectedAssets && <CaseAffectedAssets data={kase.affected_assets} className="h-full min-w-0" />}
+        {issuesCard}
+      </div>
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
@@ -920,61 +986,6 @@ export default function CtemCaseDetail() {
 
         <CaseMobilization history={kase.history} tickets={kase.tickets} gates={kase.gates} personName={personName} />
       </CaseLoopProvider>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <CaseCardTitleText icon={CASE_SECTION_ICON.issues}>{t_i18n("Issues")}</CaseCardTitleText>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            framed={false}
-            rows={issueRows}
-            columns={columns}
-            // One row height for the table (UX round 1 B1 on #1945): a signal row holds its chips
-            // and its path caption, so every row takes the two-line height.
-            rowLines={2}
-            rowKey={(r) => r.key}
-            selection={{
-              selected: picked,
-              onChange: setPicked,
-              // Only an open issue the caller sees can leave the case (#11613).
-              disabledReason: (key) => {
-                const row = issueRows.find((r) => r.key === key);
-                if (!row || isRestrictedIssue(row.issue)) return t_i18n("Restricted");
-                return row.issue.open ? undefined : t_i18n("A closed issue stays with its case");
-              },
-              actions: (
-                <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("split")} data-testid="ctem-case-split">
-                  {t_i18n("Split into a new case")}
-                </Button>
-              ),
-            }}
-            defaultSort={{ key: "cvss", direction: "desc" }}
-            defaultPageSize={10}
-            searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, issueLabel(r.issue, t_i18n)])}
-            searchPlaceholder={t_i18n("Search CVE")}
-            filtersInPill
-            filters={[
-              {
-                key: "source",
-                label: "Source",
-                values: (r) => [isRestrictedIssue(r.issue) ? "restricted" : r.issue.source],
-                options: [
-                  { value: "opencti", label: "OpenCTI" },
-                  { value: "openaev", label: "OpenAEV" },
-                  { value: "restricted", label: t_i18n("Restricted") },
-                ],
-              },
-            ]}
-            exportName="ctem-case-issues"
-            urlKey="i_"
-            emptyLabel={t_i18n("No issue in this case")}
-            rowTestId="ctem-case-issue-row"
-          />
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>

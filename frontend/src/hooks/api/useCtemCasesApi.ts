@@ -197,7 +197,8 @@ export interface CtemCaseVisibleIssue {
   cve?: string | null;
   cvss?: number | null;
   epss?: number | null;
-  kev?: boolean;
+  /** A signal member whose CVE fact was not read answers null: unknown, never "No". */
+  kev?: boolean | null;
   assets?: string[];
   primary_assets?: string[];
   first_seen_at?: string | null;

@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   closed: false,
   closedState: "resolved",
   resolutionKind: "closed_by_decision" as string | null,
+  withAssets: false,
 }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
@@ -102,6 +103,19 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
               : { restricted_count: 1, asset_count: 2, primary_asset_count: 1, kev_count: 1, max_cvss: state.noCvss ? null : 9.8, max_epss: 0.94, members_facts_unread: state.factsUnread }),
             first_seen_at: null,
             details_unavailable: [],
+            ...(state.withAssets
+              ? {
+                  affected_assets: {
+                    version_source: null,
+                    asset_count: 2,
+                    more_assets: 0,
+                    assets: [
+                      { name: "a", issue_count: 1, open_issue_count: 1, kev: true, max_cvss: 9.8 },
+                      { name: "b", issue_count: 1, open_issue_count: 1, kev: false, max_cvss: 7.5 },
+                    ],
+                  },
+                }
+              : {}),
             keys: [],
             issues: [
               { source: "opencti", external_id: "v1", open: true, name: "CVE-2024-0001", cve: "CVE-2024-0001", cvss: state.issuesCvss ? 9.8 : null, epss: 0.94, kev: true, assets: ["a"] },
@@ -144,6 +158,38 @@ describe("CtemCaseDetail first paint (#1986)", () => {
     page();
     expect(screen.queryByTestId("ctem-case-listed-header")).not.toBeInTheDocument();
     state.loading = false;
+  });
+});
+
+describe("CtemCaseDetail context row (Sam, 28 Nov 2026)", () => {
+  it("puts Affected assets and Issues side by side right after the stat cards, Issues drawn once", () => {
+    state.withAssets = true;
+    page();
+    const context = screen.getByTestId("ctem-case-context");
+    expect(within(context).getByTestId("ctem-case-affected-assets")).toBeInTheDocument();
+    expect(within(context).getByTestId("ctem-case-issues")).toBeInTheDocument();
+    expect(screen.getAllByTestId("ctem-case-issues")).toHaveLength(1);
+    // The context comes before the History card in the page order.
+    const history = screen.getByTestId("ctem-audit-trail");
+    expect(context.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    state.withAssets = false;
+  });
+
+  it("opens the Issues table on its context columns, the rest one click away under Columns", () => {
+    page();
+    const issues = screen.getByTestId("ctem-case-issues");
+    for (const name of ["Issue", "CVSS", "KEV", "Assets", "State"]) {
+      expect(within(issues).getByRole("columnheader", { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    for (const name of ["Source", "EPSS", "Fixed version"]) {
+      expect(within(issues).queryByRole("columnheader", { name: new RegExp(name) })).toBeNull();
+    }
+  });
+
+  it("draws the Issues card alone, full width, when no asset is named", () => {
+    page();
+    expect(screen.queryByTestId("ctem-case-affected-assets")).toBeNull();
+    expect(within(screen.getByTestId("ctem-case-context")).getByTestId("ctem-case-issues")).toBeInTheDocument();
   });
 });
 

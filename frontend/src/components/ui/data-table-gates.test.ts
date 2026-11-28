@@ -241,7 +241,6 @@ const PENDING_TITLED_CUTS: string[] = [
   "pages/Traces.tsx",
   "pages/TraceSessions.tsx",
   "pages/Value.tsx",
-  "pages/xtm-one/CtemCaseDetail.tsx",
 ];
 
 /** Classes that give a row or a cell its own height, padding or a wrap past the second line. */
