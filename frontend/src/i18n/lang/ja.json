@@ -21989,7 +21989,6 @@
   "The source could not be turned on.": "ソースをオンにできませんでした。",
   "The source could not be turned off": "ソースをオフにできませんでした",
   "The integration is not connected.": "インテグレーションが接続されていません。",
-  "Runs as: {user}": "実行ユーザー: {user}",
   "Turn on {source}": "{source} をオンにする",
   "XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.": "XTM One は、選択したユーザーとして、このソースを配信するオブジェクトを {integration} に作成します。ソースをオフにするまで残ります。",
   "Pick a user with a connected integration to this platform and the rights to create its triggers.": "このプラットフォームへの接続済みインテグレーションと、トリガーを作成する権限を持つユーザーを選択してください。",
