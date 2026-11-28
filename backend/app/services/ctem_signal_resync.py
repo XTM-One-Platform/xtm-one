@@ -8,9 +8,10 @@ goes through the same recording point as live intake, so the same exclusions,
 dedupe keys and scope gate apply, with the current threshold, and the
 case-opening switch stays as the administrator left it.
 
-Every route has its own read window in days, chosen in the purge dialog
-(:data:`WINDOWS`, defaults in one place, validated by :func:`validate_windows`),
-and its own cap, so no type starves another (#2578: one query over every type
+Every route has its own read window, in days or hours, chosen in the purge dialog
+(:data:`WINDOWS`, defaults in one place, validated by :func:`validate_windows` for the
+days-only payload and :func:`plan` for the per-source one, #2745), can be unticked
+there so it is not read at all, and has its own cap, so no type starves another (#2578: one query over every type
 with one shared cap let vulnerabilities, enriched daily, fill it before any
 threat actor was read):
 
@@ -44,7 +45,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -59,6 +60,10 @@ PAGE = 200
 MAX_PER_ROUTE = 5000
 #: The longest window an administrator may set, in days.
 MAX_WINDOW_DAYS = 365
+#: The units a window may be given in (#2745), with their length in hours.
+UNITS: dict[str, int] = {"days": 24, "hours": 1}
+#: Why a route or a pass the administrator unticked was not read (#2745).
+NOT_SELECTED = "not selected in the purge dialog"
 #: Told of each entity a route reads (#2652): the purge job's live progress; set by :func:`resync`.
 _ON_READ: ContextVar[Callable[[], Awaitable[None]] | None] = ContextVar("ctem_resync_on_read", default=None)
 
@@ -182,8 +187,70 @@ def validate_windows(raw: dict[str, Any] | None) -> dict[str, int | None]:
     return out
 
 
-def _since(now: datetime, days: int | None) -> datetime | None:
-    return None if days is None else now - timedelta(days=days)
+def default_spans() -> dict[str, int | None]:
+    """Every windowed route with its default window in hours (``None``: no age limit)."""
+    return spans_from_days(default_windows())
+
+
+def spans_from_days(windows: dict[str, int | None]) -> dict[str, int | None]:
+    """Windows in days (:func:`validate_windows`) as the spans in hours the routes read."""
+    return {key: None if days is None else days * 24 for key, days in windows.items()}
+
+
+def plan(windows: dict[str, Any] | None = None, sources: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The resync plan of a purge (#2745): ``{windows, spans, skip}``; :class:`WindowError` on a bad entry.
+
+    *windows* is the days-only payload (``resync_windows``, #2578), validated as before.
+    *sources* is the per-source one (``resync_sources``): ``{route: {enabled, window, unit}}``,
+    every field optional. ``enabled`` false leaves a windowed route or a pass out of the
+    resync entirely (``skip``); ``window`` with ``unit`` (``days``, the default, or ``hours``)
+    replaces the route's window; ``None`` is no age limit, for an inside route only. A route
+    no listing exists for (:data:`UNLISTED`) takes no entry. ``spans`` holds every enabled
+    windowed route in hours; ``windows`` keeps the days view for the routes set in days.
+    """
+    days = validate_windows(windows)
+    spans = spans_from_days(days)
+    skip: list[str] = []
+    for key, raw in (sources or {}).items():
+        window = _BY_KEY.get(key)
+        if window is None or key in UNLISTED:
+            raise WindowError(f"unknown resync route: {key}")
+        if not isinstance(raw, dict) or set(raw) - {"enabled", "window", "unit"}:
+            raise WindowError(f"{key}: expected {{enabled, window, unit}}")
+        enabled = raw.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise WindowError(f"{key}: enabled is true or false")
+        if not enabled:
+            skip.append(key)
+            spans.pop(key, None)
+            days.pop(key, None)
+            continue
+        if "window" not in raw and "unit" not in raw:
+            continue
+        if not window.windowed:
+            raise WindowError(f"{key} reads the current state and takes no window")
+        unit = raw.get("unit", "days")
+        if unit not in UNITS:
+            raise WindowError(f"{key}: the unit is days or hours")
+        value = raw.get("window", days.get(key))
+        if value is None:
+            if window.group != "inside":
+                raise WindowError(f"{key} needs a window")
+            spans[key] = days[key] = None
+            continue
+        top = MAX_WINDOW_DAYS * 24 // UNITS[unit]
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= top:
+            raise WindowError(f"{key}: a whole number of {unit} from 1 to {top}")
+        spans[key] = value * UNITS[unit]
+        if unit == "days":
+            days[key] = value
+        else:
+            days.pop(key, None)
+    return {"windows": days, "spans": spans, "skip": skip}
+
+
+def _since(now: datetime, hours: int | None) -> datetime | None:
+    return None if hours is None else now - timedelta(hours=hours)
 
 
 _QUERY = """
@@ -271,7 +338,10 @@ def delivery(node: dict[str, Any], *, pir_id: str = "") -> dict[str, Any] | None
 
 
 def _route(key: str, windows: dict[str, int | None]) -> dict[str, Any]:
-    return {"window_days": windows.get(key), "read": 0, "recorded": 0, "errors": []}
+    """A route's counts, with the window it read: *windows* are spans in hours (#2745)."""
+    hours = windows.get(key)
+    days = None if hours is None or hours % 24 else hours // 24
+    return {"window_days": days, "window_hours": hours, "read": 0, "recorded": 0, "errors": []}
 
 
 async def _enabled_sources(db: Any, provider: str, kind: str = "") -> list[Any]:
@@ -392,7 +462,7 @@ async def resync_world(
     from app.services.ctem_signal_listeners import note_event
 
     notify = note or note_event
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     at = now or datetime.now(UTC)
     off_paths = await _excluded_listener_paths(sessions)
     connections, errors = await _opencti_connections(sessions)
@@ -402,6 +472,10 @@ async def resync_world(
         if not window.entity_type:
             continue
         out = routes[window.key] = _route(window.key, windows)
+        if window.key not in windows:
+            # Unticked in the purge dialog (#2745): not queried at all.
+            out["skipped"] = NOT_SELECTED
+            continue
         if listener_path(window.entity_type) in off_paths:
             out["skipped"] = LISTENER_OFF
             continue
@@ -470,7 +544,7 @@ async def resync_pir(
     from app.services.ctem_signal_sources import PIR_PATHS
 
     notify = note or note_event
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     out = _route("pir", windows)
     out["below_minimum"] = 0
     try:
@@ -522,7 +596,7 @@ async def resync_third_party(
     from app.services.organizations import list_organizations
 
     notify = note or note_tracked_organizations
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     out = _route("third_party", windows)
     since = _since(now or datetime.now(UTC), windows.get("third_party"))
     async with sessions() as db:
@@ -611,7 +685,7 @@ async def resync_aikido(
     from app.services.ctem_signal_listeners import note_event
 
     notify = note or note_event
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     out = _route("aikido", windows)
     since = _since(now or datetime.now(UTC), windows.get("aikido"))
     integrations = await _integrations(sessions, "aikido", actor_id)
@@ -683,7 +757,7 @@ async def resync_github(
     from app.services.ctem_signal_listeners import note_event
 
     notify = note or note_event
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     out = _route("github", windows)
     since = _since(now or datetime.now(UTC), windows.get("github"))
     integrations = await _integrations(sessions, "github", actor_id)
@@ -800,7 +874,7 @@ async def resync_openaev_findings(
     notify = note or note_event
     open_connection = connect or owner_connection
     request = api or _api
-    windows = windows or default_windows()
+    windows = windows or default_spans()
     out = _route("openaev_findings", windows)
     if await _openaev_findings_excluded(sessions):
         out["skipped"] = OPENAEV_FINDINGS_OFF
@@ -868,8 +942,11 @@ def pass_outcome(result: Any) -> dict[str, Any]:
     return out
 
 
-async def resync_passes(sessions: Any) -> dict[str, Any]:
-    """The attack surface (paths 5, 6, 7), evidence health (9, 12) and inventory (6, #2642) passes, once each, now."""
+async def resync_passes(sessions: Any, *, skip: Collection[str] = ()) -> dict[str, Any]:
+    """The attack surface (paths 5, 6, 7), evidence health (9, 12) and inventory (6, #2642) passes, once each, now.
+
+    A pass named in *skip* (unticked in the purge dialog, #2745) does not run.
+    """
     from app.services import ctem_attack_surface, ctem_evidence_health, ctem_inventory_staleness
 
     out: dict[str, Any] = {}
@@ -878,6 +955,9 @@ async def resync_passes(sessions: Any) -> dict[str, Any]:
         ("evidence_health", ctem_evidence_health),
         ("inventory_staleness", ctem_inventory_staleness),
     ):
+        if name in skip:
+            out[name] = {"recorded": 0, "skipped": NOT_SELECTED}
+            continue
         await module.release_pass_slot()
         async with sessions() as db:
             try:
@@ -934,15 +1014,24 @@ async def resync(
     progress: Callable[[str, int], Awaitable[None]],
     windows: dict[str, int | None] | None = None,
     on_read: Callable[[], Awaitable[None]] | None = None,
+    spans: dict[str, int | None] | None = None,
+    skip: Collection[str] | None = None,
 ) -> dict[str, Any]:
     """Step 3: every route with its window, then the passes; counts per route and per trigger path.
 
     *on_read* is awaited for each entity a route reads (the job's live progress, #2652).
+    *spans* and *skip* are the job's :func:`plan` (#2745): a route or pass in *skip* is not
+    read; without them, the days-only *windows* apply to every route, as before.
     """
     windows = validate_windows(windows)
+    skipped = set(skip or ())
+    if spans is None:
+        spans = {k: v for k, v in spans_from_days(windows).items() if k not in skipped}
     token = _ON_READ.set(on_read)
     try:
-        return await _resync(sessions=sessions, actor_id=actor_id, progress=progress, windows=windows)
+        return await _resync(
+            sessions=sessions, actor_id=actor_id, progress=progress, windows=windows, spans=spans, skip=skipped
+        )
     finally:
         _ON_READ.reset(token)
 
@@ -957,6 +1046,8 @@ async def _resync(
     actor_id: uuid.UUID,
     progress: Callable[[str, int], Awaitable[None]],
     windows: dict[str, int | None],
+    spans: dict[str, int | None],
+    skip: set[str],
 ) -> dict[str, Any]:
     routes: dict[str, Any] = {}
     steps: tuple[tuple[str, Callable[..., Awaitable[Any]]], ...] = (
@@ -970,21 +1061,33 @@ async def _resync(
     # The inside-state routes read with the administrator's own access to each integration
     # (the OpenAEV findings read as each source's integration owner, as live intake does).
     as_actor = {"aikido", "github"}
+    world_keys = [w.key for w in WINDOWS if w.entity_type]
     for name, step in steps:
-        try:
-            extra = {"actor_id": actor_id} if name in as_actor else {}
-            answer = await step(sessions, windows=windows, **extra)
-            found = answer if name == "world" else {name: answer}
-        except Exception as exc:
-            logger.warning("CTEM resync: the %s route failed", name, exc_info=True)
-            found = {name: {**_route(name, windows), "errors": [f"{type(exc).__name__}: {exc}"[:300]]}}
+        if name in skip or (name == "world" and all(k in skip for k in world_keys)):
+            # Unticked in the purge dialog (#2745): the source is not queried at all.
+            keys = world_keys if name == "world" else [name]
+            found = {key: {**_route(key, spans), "skipped": NOT_SELECTED} for key in keys}
+        else:
+            try:
+                extra = {"actor_id": actor_id} if name in as_actor else {}
+                answer = await step(sessions, windows=spans, **extra)
+                found = answer if name == "world" else {name: answer}
+            except Exception as exc:
+                logger.warning("CTEM resync: the %s route failed", name, exc_info=True)
+                found = {name: {**_route(name, spans), "errors": [f"{type(exc).__name__}: {exc}"[:300]]}}
         for key, counts in found.items():
             routes[key] = counts
             await progress(key, int(counts.get("recorded") or 0))
     for key, reason in UNLISTED.items():
-        routes[key] = {**_route(key, windows), "skipped": reason}
-    passes = await resync_passes(sessions)
+        routes[key] = {**_route(key, spans), "skipped": reason}
+    passes = await resync_passes(sessions, skip=skip)
     for name, counts in passes.items():
         routes[name] = {"window_days": None, **counts}
         await progress(name, int(counts.get("recorded") or 0))
-    return {"windows": windows, "routes": routes, "by_path": await by_trigger_path(sessions)}
+    return {
+        "windows": windows,
+        "spans": spans,
+        "skip": sorted(skip),
+        "routes": routes,
+        "by_path": await by_trigger_path(sessions),
+    }

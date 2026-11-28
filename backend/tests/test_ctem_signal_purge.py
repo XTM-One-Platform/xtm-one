@@ -295,11 +295,13 @@ def client(redis: _Redis, monkeypatch: pytest.MonkeyPatch) -> httpx.AsyncClient:
 
     started: list[bool] = []
 
-    async def _start(actor: Any, *, resync: bool, windows: Any = None) -> dict[str, Any]:
+    async def _start(
+        actor: Any, *, resync: bool, windows: Any = None, spans: Any = None, skip: Any = None
+    ) -> dict[str, Any]:
         if started:
             raise purge.PurgeBusyError(purge.BUSY_DETAIL)
         started.append(resync)
-        return purge.new_status("job", actor, resync=resync, windows=windows)
+        return purge.new_status("job", actor, resync=resync, windows=windows, spans=spans, skip=skip)
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_current_user] = _user
@@ -366,3 +368,30 @@ async def test_the_resync_windows_are_validated_and_carried_by_the_job(client: h
     windows = good.json()["job"]["windows"]
     assert windows["vulnerability"] == 3 and windows["aikido"] == 90
     assert windows["malware"] == 30 and windows["github"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_resync_sources_are_validated_and_carried_by_the_job(client: httpx.AsyncClient) -> None:
+    """#2745: per-source ticks and hour windows land on the job as spans and skip; a bad one is a 422."""
+    async with client as http:
+        bad = await http.post(
+            "/api/v1/ctem-signals/purge",
+            json={"confirm": "PURGE", "resync": True, "resync_sources": {"vulnerability": {"unit": "weeks"}}},
+        )
+        good = await http.post(
+            "/api/v1/ctem-signals/purge",
+            json={
+                "confirm": "PURGE",
+                "resync": True,
+                "resync_sources": {
+                    "vulnerability": {"enabled": True, "window": 1, "unit": "hours"},
+                    "malware": {"enabled": False},
+                    "evidence_health": {"enabled": False},
+                },
+            },
+        )
+    assert bad.status_code == 422
+    job = good.json()["job"]
+    assert job["spans"]["vulnerability"] == 1 and "malware" not in job["spans"]
+    assert job["skip"] == ["malware", "evidence_health"]
+    assert job["windows"]["intrusion_set"] == 30
