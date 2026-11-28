@@ -22272,5 +22272,13 @@
   "{name} (integration owner)": "{name} (propietario de la integración)",
   "How far back {source} is read": "Hasta cuándo se lee {source}",
   "Does not run": "No se ejecuta",
-  "Left out of this resync": "Excluido de esta resincronización"
+  "Left out of this resync": "Excluido de esta resincronización",
+  "Being applied": "Aplicándose",
+  "Decision being applied": "Decisión aplicándose",
+  "Not applied": "No aplicada",
+  "Decision recorded: {option}. The loop is applying it.": "Decisión registrada: {option}. El bucle la está aplicando.",
+  "Decision recorded. The loop is applying it.": "Decisión registrada. El bucle la está aplicando.",
+  "Recorded, still being applied. Refresh later.": "Registrada, todavía aplicándose. Actualice más tarde.",
+  "Decision recorded, but the run applying it failed.": "Decisión registrada, pero la ejecución que la aplica ha fallado.",
+  "Decision recorded: {gate}": "Decisión registrada: {gate}"
 }
