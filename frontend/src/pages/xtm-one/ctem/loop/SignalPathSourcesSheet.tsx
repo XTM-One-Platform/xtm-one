@@ -60,6 +60,7 @@ import {
   passIntegrationIds,
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
+import { EvidenceHealthRunAsLine } from "./EvidenceHealthRunAsLine";
 import { PlatformSourceControls, PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
 import { isProvisioned, platformSourceFixRoute, sourceErrorLines, sourceReasonLine } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
@@ -76,8 +77,7 @@ import {
   pathStatusLabel,
   profilePassField,
   type SourceState,
-  sourceShortName,
-  sourceIntegrationList,
+  sourceDisplayName,
   sourceDisplayState,
   sourceIntegrationNames,
   sourceKey,
@@ -187,6 +187,15 @@ function SourceConfig({
           <span className="text-default-secondary" data-testid="ctem-path-source-runs-on">
             {t_i18n("Runs on: {names}", { names: runsOn.length ? runsOn.join(", ") : t_i18n("None") })}
           </span>
+          {passField === "evidence_health" && (
+            <EvidenceHealthRunAsLine
+              pass={evidenceHealth}
+              integration={integrations.find((i) => i.id === evidenceRuns)}
+              isAdmin={isAdmin}
+              saving={saving}
+              onSave={onSave}
+            />
+          )}
           {(!switchable || noScope) && (
             <span className="flex items-center gap-1.5 text-default-secondary" data-testid="ctem-path-source-missing">
               <Icon name="info" size={16} aria-hidden />
@@ -255,8 +264,6 @@ interface SourceTableRow {
   name: string;
   /** The integrations it runs on, by name (a source XTM One provisions), joined. */
   integration: string;
-  /** The same integrations, one name each: the cell shows the first and +N (UX round 1 on #2741, B4). */
-  integrations: string[];
   /** The run-as user ids of its enabled platform lines, joined (a source XTM One provisions). */
   runAs: string;
 }
@@ -381,8 +388,6 @@ export function SignalPathSourcesSheet({
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const { count: formatCount } = useNumberFormat();
   const { intl } = useFormatter();
-  // The integrations a listener XTM One does not provision runs on (GitHub, Aikido), named on its row (#2736).
-  const { data: integrations = [] } = useIntegrations();
 
   const onSave = (next: Partial<OrganizationProfile>, done: string) => {
     if (!profile || !isAdmin) return;
@@ -415,10 +420,8 @@ export function SignalPathSourcesSheet({
     key: sourceKey(source),
     source,
     state: sourceDisplayState(source, connected, platformSources),
-    // The name the list chip shows, so both say the same (UX advisory A1 on #2741); the kind word is its own column.
-    name: sourceShortName(source, path?.id ?? "", providerName, t_i18n),
-    integration: sourceIntegrationNames(source, platformSources, integrations),
-    integrations: sourceIntegrationList(source, platformSources, integrations),
+    name: sourceDisplayName(source, providerName),
+    integration: sourceIntegrationNames(source, platformSources),
     runAs: runAsUsers(source, platformSources),
   }));
   const columns: DataTableColumn<SourceTableRow>[] = [
@@ -445,14 +448,9 @@ export function SignalPathSourcesSheet({
       hideable: true,
       // Fixed widths on every column but Source, which takes the free width (UX round 1 on #2509, B2).
       width: 128,
-      // The kind word alone, whole (UX round 1 on #2741, B4): what tells two rows apart is in the Source name.
-      sortValue: (row) => t_i18n(SOURCE_KIND_LABEL[row.source.kind]),
+      sortValue: (row) => sourceKindText(t_i18n, row.source),
       csv: (row) => sourceKindText(t_i18n, row.source),
-      cell: (row) => (
-        <span className="break-words text-default-secondary" data-testid="ctem-path-source-kind">
-          {t_i18n(SOURCE_KIND_LABEL[row.source.kind])}
-        </span>
-      ),
+      cell: (row) => <span className="truncate text-default-secondary">{sourceKindText(t_i18n, row.source)}</span>,
     },
     {
       key: "integration",
@@ -462,26 +460,7 @@ export function SignalPathSourcesSheet({
       width: 144,
       sortValue: (row) => row.integration,
       csv: (row) => row.integration,
-      // "No integration" in words, never "None" beside a status (#2736).
-      // A list in a narrow cell: the first name and +N, the whole list in the DS tooltip, never a comma run cut
-      // (UX round 1 on #2741, B4).
-      cell: (row) =>
-        row.integrations.length > 0 ? (
-          <Tip content={row.integration}>
-            <span className="flex min-w-0 items-center gap-1" data-testid="ctem-path-source-integration">
-              <span className="min-w-0 truncate" data-testid="ctem-path-source-integration-first">{row.integrations[0]}</span>
-              {row.integrations.length > 1 && (
-                <span className="shrink-0 tabular-nums text-default-secondary" data-testid="ctem-path-source-integration-more">
-                  {t_i18n("+{count}", { count: row.integrations.length - 1 })}
-                </span>
-              )}
-            </span>
-          </Tip>
-        ) : (
-          <span className="truncate text-default-secondary" data-testid="ctem-path-source-integration">
-            {row.source.kind === "webhook" ? t_i18n("Its own receiver") : t_i18n("No integration")}
-          </span>
-        ),
+      cell: (row) => <span className="truncate">{row.integration || t_i18n("None")}</span>,
     },
     {
       key: "run_as",
@@ -560,13 +539,12 @@ export function SignalPathSourcesSheet({
         {hook && isAdmin && (
           <Tip content={t_i18n("Configure and test")}>
             <Button variant="ghost" size="sm" onClick={() => setHookDialog({ source: hook })} data-testid="ctem-path-source-webhook-configure">
-              <Icon name="chevron-right" size={16} aria-hidden />
+              <Icon name="settings" size={16} aria-hidden />
               <span className="sr-only">{t_i18n("Configure and test")}</span>
             </Button>
           </Tip>
         )}
-        {!(hook && isAdmin) && (
-          // A chevron says the row expands (#2736, Sam 28 Nov 2026): never a gear; the whole row toggles it too.
+        {!hook && (
           <Tip content={opened.has(row.key) ? t_i18n("Close its settings") : t_i18n("Configure")}>
             <Button
               variant="ghost"
@@ -575,7 +553,7 @@ export function SignalPathSourcesSheet({
               onClick={() => setOpened((prev) => toggleSet(prev, row.key))}
               data-testid="ctem-path-source-configure"
             >
-              <Icon name="chevron-down" size={16} className={cn("transition-transform", opened.has(row.key) && "rotate-180")} aria-hidden />
+              <Icon name={opened.has(row.key) ? "chevron-up" : "settings"} size={16} aria-hidden />
               <span className="sr-only">{t_i18n("Configure")}</span>
             </Button>
           </Tip>
@@ -637,12 +615,8 @@ export function SignalPathSourcesSheet({
                 rowDataAttributes={(row) => ({ "data-state": row.state, "data-provider": row.source.provider, "data-kind": row.source.kind })}
                 rowActions={rowActions}
                 rowActionsWidth={isAdmin ? 104 : 56}
-                // Every row opens on a click anywhere (#2736): a webhook row its configure view, any other its settings in place.
-                onRowClick={(row) => {
-                  const hook = row.source.webhook_id ? webhookById.get(row.source.webhook_id) : undefined;
-                  if (hook && isAdmin) setHookDialog({ source: hook });
-                  else setOpened((prev) => toggleSet(prev, row.key));
-                }}
+                onRowClick={(row) => !row.source.webhook_id && setOpened((prev) => toggleSet(prev, row.key))}
+                rowOpens={(row) => !row.source.webhook_id}
                 toggleInCell
                 expandedRow={(row) =>
                   opened.has(row.key) ? (
