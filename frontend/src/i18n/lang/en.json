@@ -10868,6 +10868,7 @@
   "Open the integration": "Open the integration",
   "Edit the rules": "Edit the rules",
   "Technical details": "Technical details",
+  "Full context": "Full context",
   "Every channel of a team": "Every channel of a team",
   "The rule names this channel without its team: pick it again in the rule.": "The rule names this channel without its team: pick it again in the rule.",
   "A rule answering in every channel follows the first {limit} channels of the account: name this channel in a rule to hear it.": "A rule answering in every channel follows the first {limit} channels of the account: name this channel in a rule to hear it.",

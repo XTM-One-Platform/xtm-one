@@ -105,6 +105,24 @@ describe("decision view helpers", () => {
     expect(view.technical).toBeTruthy();
   });
 
+  it("folds the whole context under Full context when the card's cap cut it, and offers none otherwise (#2800)", () => {
+    const cut = {
+      id: "w4",
+      title: "T",
+      ask: { question: "Close it?", options: [], context: "Host 1 runs nginx \u2026", context_full: "Host 1 runs nginx 1.24.\nHost 2 runs nginx 1.22." },
+    } as unknown as WorkItem;
+    const view = workItemDecisionView(cut, t);
+    expect(view.fullContext).toBe("Host 1 runs nginx 1.24.\nHost 2 runs nginx 1.22.");
+    renderWithProviders(<DecisionCard view={view} canAnswer onAnswer={vi.fn()} testId="fc" />);
+    const full = screen.getByTestId("fc-full-context");
+    expect(within(full).getByText("Full context")).toBeTruthy();
+    expect(full.textContent).toContain("Host 2 runs nginx 1.22.");
+    cleanup();
+    const whole = { ...cut, ask: { question: "Close it?", options: [], context: "Short." } } as unknown as WorkItem;
+    renderWithProviders(<DecisionCard view={workItemDecisionView(whole, t)} canAnswer onAnswer={vi.fn()} testId="fs" />);
+    expect(screen.queryByTestId("fs-full-context")).toBeNull();
+  });
+
   it("leads with Open the case on an item about a case, never when the card is shown inside that case (#2370)", () => {
     const item = {
       id: "w3",

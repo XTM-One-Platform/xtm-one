@@ -65,6 +65,8 @@ export interface DecisionView {
   questionMarkdown?: boolean;
   /** Plain lines for the reader, one paragraph each (Markdown). */
   context?: readonly string[];
+  /** The whole context when the card's cap cut it (`ask.context_full`, #2800): folded under "Full context". */
+  fullContext?: string | null;
   options: readonly DecisionOption[];
   /** The key of the recommended option. */
   recommendation?: string | null;
@@ -260,6 +262,7 @@ export function DecisionCard({
   const freeTextMode = view.freeText ?? "auto";
   const textLabel = view.freeTextLabel ?? (options.length > 0 ? t_i18n("Or answer in your own words") : t_i18n("Your answer"));
   const context = (view.context ?? []).map((line) => line.trim()).filter(Boolean);
+  const fullContext = (view.fullContext ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   const links = view.links ?? [];
 
   const pick = (option: DecisionOption) => {
@@ -427,6 +430,15 @@ export function DecisionCard({
         <div data-testid={`${testId}-context`}>
           <ChatMarkdown content={context.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
         </div>
+      )}
+      {fullContext.length > 0 && (
+        // The card's cap cut the context: the whole text is one click away, never lost (#2800).
+        <details data-testid={`${testId}-full-context`}>
+          <DisclosureSummary>{t_i18n("Full context")}</DisclosureSummary>
+          <div className="pt-2">
+            <ChatMarkdown content={fullContext.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
+          </div>
+        </details>
       )}
       {view.notice}
 
