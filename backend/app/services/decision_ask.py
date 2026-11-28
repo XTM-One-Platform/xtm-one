@@ -343,12 +343,41 @@ def cut_warnings(value: object) -> list[str]:
     return [warning for warning in found if warning]
 
 
-# The card marks the recommended option itself (dev-docs/human-gates.md, J.1):
-# an effect that opens with the word repeats it beside the pill.
-_RECOMMENDED_LEAD = re.compile(r"^\W*recommended\b", re.IGNORECASE)
-RECOMMENDED_EFFECT_MESSAGE = (
-    "the card marks the recommended option itself: drop the leading 'Recommended' from ask.options[].effect"
+# The card marks the recommended option itself (dev-docs/human-gates.md, J.1),
+# from ask.recommendation: a label or an effect that carries the mark too shows
+# a second recommendation beside the pill (#2799). A mark is the word as a
+# marker: in parentheses or brackets, opening the text, or closing it after a
+# separator. The word used in a sentence ("the vendor's recommended patch") is
+# not a mark.
+_MARK_WORD = r"(?:recommended|recommand[ée]e?s?)"
+_RECOMMENDED_MARK = re.compile(
+    rf"[(\[]\s*{_MARK_WORD}\s*[)\]]"
+    rf"|^\W*{_MARK_WORD}\b\W*"
+    rf"|[-\u2013\u2014:,;|/]\s*{_MARK_WORD}\W*$",
+    re.IGNORECASE,
 )
+RECOMMENDED_EFFECT_MESSAGE = (
+    "the card marks the recommended option itself: drop 'recommended' from ask.options[].label/effect "
+    "and set ask.recommendation"
+)
+
+
+def has_recommended_mark(text: object) -> bool:
+    """Whether *text* carries a 'recommended' marker the card would repeat (#2799)."""
+    return bool(text) and _RECOMMENDED_MARK.search(str(text)) is not None
+
+
+def without_recommended_mark(text: object) -> str:
+    """*text* without its 'recommended' markers, for an ask stored before the guard (#2799).
+
+    The renderers mark the recommended option from ask.recommendation alone; a
+    text that is nothing but the mark is kept as written.
+    """
+    raw = "" if text is None else str(text)
+    if not has_recommended_mark(raw):
+        return raw
+    cleaned = " ".join(_RECOMMENDED_MARK.sub(" ", raw).split())
+    return cleaned or raw
 
 
 def keeps_waiting(option: object) -> bool:
@@ -372,13 +401,15 @@ def _options(value: object) -> list[dict[str, Any]]:
         label = _text(raw.get("label"), MAX_LABEL_CHARS) or key
         if not key:
             raise ValueError("every ask option needs a key")
+        if has_recommended_mark(label):
+            raise ValueError(f"ask.options[{key}].label carries a 'recommended' mark: {RECOMMENDED_EFFECT_MESSAGE}")
         if key.casefold() in seen:
             raise ValueError(f"ask option key {key!r} is given twice")
         seen.add(key.casefold())
         option: dict[str, Any] = {"key": key, "label": label}
         effect = _text(raw.get("effect"), MAX_EFFECT_CHARS)
-        if _RECOMMENDED_LEAD.match(effect):
-            raise ValueError(RECOMMENDED_EFFECT_MESSAGE)
+        if has_recommended_mark(effect):
+            raise ValueError(f"ask.options[{key}].effect carries a 'recommended' mark: {RECOMMENDED_EFFECT_MESSAGE}")
         if effect:
             option["effect"] = effect
         keeps = raw.get("keeps_waiting")
@@ -801,8 +832,8 @@ def run_question_text(ask: dict[str, Any]) -> str:
         lines = []
         for option in options:
             mark = " (recommended)" if option.get("key") == recommended else ""
-            effect = f": {option['effect']}" if option.get("effect") else ""
-            lines.append(f"- {option['key']}. {option['label']}{mark}{effect}")
+            effect = f": {without_recommended_mark(option['effect'])}" if option.get("effect") else ""
+            lines.append(f"- {option['key']}. {without_recommended_mark(option['label'])}{mark}{effect}")
         parts.append("Options:\n" + "\n".join(lines))
     return "\n\n".join(parts)
 
@@ -866,9 +897,10 @@ def ask_lines(ask: object) -> list[str]:
     recommended = ask.get("recommendation")
     for option in ask.get("options") or []:
         mark = " (recommended)" if option.get("key") == recommended else ""
-        effect = f": {option['effect']}" if option.get("effect") else ""
+        effect = f": {without_recommended_mark(option['effect'])}" if option.get("effect") else ""
         stays = " (keeps it waiting)" if keeps_waiting(option) else ""
-        lines.append(f"    - [{option.get('key')}] {option.get('label')}{mark}{stays}{effect}")
+        label = without_recommended_mark(option.get("label"))
+        lines.append(f"    - [{option.get('key')}] {label}{mark}{stays}{effect}")
     if ask.get("deadline"):
         lines.append(f"    - answer needed by {ask['deadline']}")
     for link in ask.get("links") or []:
