@@ -234,8 +234,10 @@ def _cve_rollups(rendered: dict[str, Any], issues: list[dict[str, Any]]) -> dict
     lower bounds of the case that ``rows_facts`` names as such.
     """
     open_rows = [r for r in issues if r.get("open") and r.get("cve")]
-    cves = sorted({str(r["cve"]) for r in open_rows})
-    kev = sorted({str(r["cve"]) for r in open_rows if r.get("kev")})
+    # A signal row names every KEV CVE of its signal in ``kev_cves`` (#2755), not only its first.
+    named_kev = {str(c) for r in open_rows for c in (r.get("kev_cves") or ())}
+    cves = sorted({str(r["cve"]) for r in open_rows} | named_kev)
+    kev = sorted({str(r["cve"]) for r in open_rows if r.get("kev") and not r.get("kev_cves")} | named_kev)
     lead = max(
         open_rows,
         key=lambda r: (bool(r.get("kev")), float(r.get("cvss") or 0), float(r.get("epss") or 0)),
