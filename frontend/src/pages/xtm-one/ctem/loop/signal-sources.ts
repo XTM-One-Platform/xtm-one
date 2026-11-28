@@ -126,7 +126,7 @@ export function isWebhookListener(source: Pick<CtemSignalPathSource, "provider" 
 }
 
 /** The connected integrations a source reads, in the API's order (#2736): an integration not connected feeds nothing. */
-export function connectedIntegrations(source: Pick<CtemSignalPathSource, "integrations">): CtemSourceIntegration[] {
+function connectedIntegrations(source: Pick<CtemSignalPathSource, "integrations">): CtemSourceIntegration[] {
   return (source.integrations ?? []).filter((i) => i.status === "connected");
 }
 
