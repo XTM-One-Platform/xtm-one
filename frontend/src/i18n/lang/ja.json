@@ -21163,7 +21163,6 @@
   "Re-test delay (days)": "再テスト期限 (日)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "期限切れのエビデンスと死角を見つける OpenCRQ パス。",
   "Record decayed evidence and blind spots of the risk scenarios as signals.": "リスクシナリオの期限切れエビデンスと死角をシグナルとして記録します。",
-  "The integration the pass reads, with its owner's credential.": "パスが所有者の認証情報で読み取る連携。",
   "No connected OpenCRQ integration. Connect one in Integrations first.": "接続済みの OpenCRQ 連携はありません。先に連携で接続してください。",
   "Several OpenCRQ integrations are connected: pick the one the pass reads.": "複数の OpenCRQ 連携が接続されています。パスが読み取る連携を選択してください。",
   "Evidence older than this has expired, 1 to 3650. Default 30.": "これより古いエビデンスは期限切れです。1 から 3650。既定値は 30。",
@@ -22268,12 +22267,7 @@
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。",
-  "Being applied": "適用中",
-  "Decision being applied": "判断を適用中",
-  "Not applied": "未適用",
-  "Decision recorded: {option}. The loop is applying it.": "判断を記録しました: {option}。ループが適用しています。",
-  "Decision recorded. The loop is applying it.": "判断を記録しました。ループが適用しています。",
-  "Recorded, still being applied. Refresh later.": "記録済みですが、まだ適用中です。後で更新してください。",
-  "Decision recorded, but the run applying it failed.": "判断は記録されましたが、適用する実行が失敗しました。",
-  "Decision recorded: {gate}": "判断を記録しました: {gate}"
+  "The integration the pass reads.": "パスが読み取る連携。",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "パスが OpenCRQ を読み取る際のユーザー。既定: 連携の所有者。",
+  "{name} (integration owner)": "{name}（連携の所有者）"
 }
