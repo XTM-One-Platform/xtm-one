@@ -22269,5 +22269,13 @@
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} también escucha el evento «{event}» con su propio disparador} other {{owners} también escuchan el evento «{event}», cada uno con su propio disparador}}: cada propietario recibe su propia entrega e inicia su propia ejecución, con su propio usuario de ejecución.",
   "The integration the pass reads.": "La integración que lee la pasada.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "El usuario con el que la pasada lee OpenCRQ. Por defecto: el propietario de la integración.",
-  "{name} (integration owner)": "{name} (propietario de la integración)"
+  "{name} (integration owner)": "{name} (propietario de la integración)",
+  "Being applied": "Aplicándose",
+  "Decision being applied": "Decisión aplicándose",
+  "Not applied": "No aplicada",
+  "Decision recorded: {option}. The loop is applying it.": "Decisión registrada: {option}. El bucle la está aplicando.",
+  "Decision recorded. The loop is applying it.": "Decisión registrada. El bucle la está aplicando.",
+  "Recorded, still being applied. Refresh later.": "Registrada, todavía aplicándose. Actualice más tarde.",
+  "Decision recorded, but the run applying it failed.": "Decisión registrada, pero la ejecución que la aplica ha fallado.",
+  "Decision recorded: {gate}": "Decisión registrada: {gate}"
 }
