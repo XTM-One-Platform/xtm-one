@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -188,13 +188,65 @@ def fit(text: str, limit: int) -> str:
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)|\n")
 
 
-def lead_then_fit(head: str, rest: str, limit: int) -> str:
+def _sentences(text: str) -> list[tuple[str, str]]:
+    """*text* as ``(sentence, separator after it)`` pairs, split at sentence and line ends (pure)."""
+    parts: list[tuple[str, str]] = []
+    start = 0
+    for found in _SENTENCE_END.finditer(text):
+        piece = text[start : found.end()]
+        start = found.end()
+        if piece.strip():
+            parts.append((piece.strip(), "\n" if piece.endswith("\n") else " "))
+    tail = text[start:].strip()
+    if tail:
+        parts.append((tail, " "))
+    return parts
+
+
+def _joined(parts: list[tuple[str, str]]) -> str:
+    out = ""
+    for index, (sentence, _) in enumerate(parts):
+        out = sentence if index == 0 else f"{out}{parts[index - 1][1]}{sentence}"
+    return out
+
+
+def fit_sentences(text: str, limit: int, keep: Callable[[str], bool]) -> str:
+    """*text* within *limit* in whole sentences: those *keep* names first, then the opening ones (#2749).
+
+    A text that fits is returned as is. Otherwise the sentences *keep* accepts
+    (a figure, a request to the reader) are taken from the last one back while
+    they fit, then the text's first sentences in order until one does not fit;
+    the result keeps the text's order. Nothing fits whole: an empty text.
+    """
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    parts = _sentences(text)
+    chosen: set[int] = set()
+
+    def fits(extra: int) -> bool:
+        return len(_joined([parts[i] for i in sorted(chosen | {extra})])) <= limit
+
+    for index in reversed(range(len(parts))):
+        if keep(parts[index][0]) and fits(index):
+            chosen.add(index)
+    for index in range(len(parts)):
+        if index in chosen:
+            continue
+        if not fits(index):
+            break
+        chosen.add(index)
+    return _joined([parts[i] for i in sorted(chosen)])
+
+
+def lead_then_fit(head: str, rest: str, limit: int, *, keep: Callable[[str], bool] | None = None) -> str:
     """*head* whole, then as much of *rest* as fits in *limit*, cut at a sentence end or dropped (#2683).
 
     A platform-written line that leads a card is never cut by the text it
     leads; the agent's text after it keeps its whole sentences and lines in the
     room left, so the reader never gets a sentence that stops mid-way. A head
-    longer than *limit* alone is cut by :func:`fit`.
+    longer than *limit* alone is cut by :func:`fit`. With *keep*, the sentences
+    it accepts are kept before the opening ones (:func:`fit_sentences`, #2749).
     """
     head = fit(str(head or "").strip(), limit)
     rest = str(rest or "").strip()
@@ -206,6 +258,9 @@ def lead_then_fit(head: str, rest: str, limit: int) -> str:
     room = limit - len(head) - 1
     if room <= 0:
         return head
+    if keep is not None:
+        kept_sentences = fit_sentences(rest, room, keep)
+        return f"{head}\n{kept_sentences}" if kept_sentences else head
     window = rest[: room + 1]
     ends = [found.end() for found in _SENTENCE_END.finditer(window) if found.end() <= room]
     kept = rest[: ends[-1]].rstrip() if ends else ""
