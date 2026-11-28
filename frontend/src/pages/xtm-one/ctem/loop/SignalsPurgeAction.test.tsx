@@ -116,7 +116,7 @@ describe("SignalsPurgeAction", () => {
     const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
     fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
-    expect(state.started.at(-1)).toEqual({
+    expect(state.started[state.started.length - 1]).toEqual({
       confirm: "PURGE",
       resync: true,
       resync_sources: {
