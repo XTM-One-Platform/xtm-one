@@ -263,6 +263,7 @@ export function DecisionCard({
   const textLabel = view.freeTextLabel ?? (options.length > 0 ? t_i18n("Or answer in your own words") : t_i18n("Your answer"));
   const context = (view.context ?? []).map((line) => line.trim()).filter(Boolean);
   const fullContext = (view.fullContext ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  const [fullContextOpen, setFullContextOpen] = useState(false);
   const links = view.links ?? [];
 
   const pick = (option: DecisionOption) => {
@@ -426,14 +427,19 @@ export function DecisionCard({
           ))}
         </ul>
       )}
-      {context.length > 0 && (
+      {context.length > 0 && !(fullContext.length > 0 && fullContextOpen) && (
+        // The open fold holds the whole text: the capped copy steps aside so nothing shows twice (#2800).
         <div data-testid={`${testId}-context`}>
           <ChatMarkdown content={context.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
         </div>
       )}
       {fullContext.length > 0 && (
         // The card's cap cut the context: the whole text is one click away, never lost (#2800).
-        <details data-testid={`${testId}-full-context`}>
+        <details
+          data-testid={`${testId}-full-context`}
+          open={fullContextOpen}
+          onToggle={(e) => setFullContextOpen(e.currentTarget.open)}
+        >
           <DisclosureSummary>{t_i18n("Full context")}</DisclosureSummary>
           <div className="pt-2">
             <ChatMarkdown content={fullContext.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />

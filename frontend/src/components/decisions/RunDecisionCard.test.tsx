@@ -117,6 +117,17 @@ describe("decision view helpers", () => {
     const full = screen.getByTestId("fc-full-context");
     expect(within(full).getByText("Full context")).toBeTruthy();
     expect(full.textContent).toContain("Host 2 runs nginx 1.22.");
+    expect(screen.getByTestId("fc-context").textContent).toContain("Host 1 runs nginx");
+    // Opened, the fold holds the whole text alone: the capped copy is gone, nothing shows twice.
+    (full as HTMLDetailsElement).open = true;
+    fireEvent(full, new Event("toggle"));
+    expect(screen.queryByTestId("fc-context")).toBeNull();
+    expect(screen.getByTestId("fc-full-context").textContent).toContain("Host 1 runs nginx 1.24.");
+    expect(screen.getByTestId("fc-full-context").textContent).toContain("Host 2 runs nginx 1.22.");
+    // Closed again, the capped context comes back.
+    (full as HTMLDetailsElement).open = false;
+    fireEvent(full, new Event("toggle"));
+    expect(screen.getByTestId("fc-context")).toBeTruthy();
     cleanup();
     const whole = { ...cut, ask: { question: "Close it?", options: [], context: "Short." } } as unknown as WorkItem;
     renderWithProviders(<DecisionCard view={workItemDecisionView(whole, t)} canAnswer onAnswer={vi.fn()} testId="fs" />);
