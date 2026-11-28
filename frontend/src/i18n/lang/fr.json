@@ -22162,7 +22162,7 @@
   "Open the notifier in {platform}": "Ouvrir le notificateur dans {platform}",
   "Open the triggers in {platform}": "Ouvrir les déclencheurs dans {platform}",
   "Open the playbook in {platform}": "Ouvrir le playbook dans {platform}",
-  "The resync reads every source again, with the paths and sources that are on.": "La resynchronisation relit chaque source, avec les chemins et les sources activés.",
+  "The resync reads the sources ticked below again, with the paths and sources that are on.": "La resynchronisation relit les sources cochées ci-dessous, avec les chemins et les sources activés.",
   "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sans resynchronisation, le recalcul des cas est suspendu pendant un intervalle : la liste reste vide jusqu'à une resynchronisation ou un recalcul lancé à la main.",
   "Value (ROI) restarts from now": "La valeur (ROI) repart de maintenant",
   "Measured since {date} (reset)": "Mesurée depuis le {date} (réinitialisation)",
@@ -22178,7 +22178,7 @@
   "Resync by source": "Resynchronisation par source",
   "Stopped at the read limit": "Arrêté à la limite de lecture",
   "{read} read, {recorded} recorded": "{read} lus, {recorded} enregistrés",
-  "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.": "Profondeur de lecture de la resynchronisation, en jours. Laissez un champ d'état interne vide pour lire tous les éléments ouverts.",
+  "Untick a source to leave it out of the resync. How far back the resync reads, in hours or days. Leave an inside-state field empty to read every open item.": "Décochez une source pour l'exclure de la resynchronisation. Profondeur de lecture de la resynchronisation, en heures ou en jours. Laissez un champ d'état interne vide pour lire tous les éléments ouverts.",
   "Intrusion sets": "Modes opératoires",
   "Threat actor groups": "Groupes d'acteurs de menace",
   "Threat actor individuals": "Acteurs de menace individuels",
@@ -22270,12 +22270,7 @@
   "The integration the pass reads.": "L’intégration que lit la passe.",
   "The user the pass reads OpenCRQ as. Default: the integration's owner.": "L’utilisateur avec lequel la passe lit OpenCRQ. Par défaut : le propriétaire de l’intégration.",
   "{name} (integration owner)": "{name} (propriétaire de l’intégration)",
-  "Being applied": "En cours d'application",
-  "Decision being applied": "Décision en cours d'application",
-  "Not applied": "Non appliquée",
-  "Decision recorded: {option}. The loop is applying it.": "Décision enregistrée : {option}. La boucle l'applique.",
-  "Decision recorded. The loop is applying it.": "Décision enregistrée. La boucle l'applique.",
-  "Recorded, still being applied. Refresh later.": "Enregistrée, encore en cours d'application. Actualisez plus tard.",
-  "Decision recorded, but the run applying it failed.": "Décision enregistrée, mais l'exécution qui l'applique a échoué.",
-  "Decision recorded: {gate}": "Décision enregistrée : {gate}"
+  "How far back {source} is read": "Profondeur de lecture : {source}",
+  "Does not run": "Ne s'exécute pas",
+  "Left out of this resync": "Exclu de cette resynchronisation"
 }
