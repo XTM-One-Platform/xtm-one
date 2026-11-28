@@ -26,6 +26,7 @@ from app.agents.builtin_fleet_docs import (
     BUILTIN_FLEET_STRUCTURED,
     CTEM_GATE_KEYS,
     CTEM_MOBILIZE_GATE,
+    CTEM_SCOPING_GATE,
     CTEM_VALIDATION_GATE,
 )
 from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL, _seed_approval_gates
@@ -55,6 +56,37 @@ def test_out_of_the_box_every_gate_waits(slug: str) -> None:
     catalog = gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug))
     assert [e["key"] for e in catalog if e["gated"]] == list(CTEM_GATE_KEYS)
     assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug)) == []
+
+
+@pytest.mark.parametrize("slug", _LOOP_FLEETS)
+def test_the_scoping_close_is_first_and_waits_at_full_human_gates_only(slug: str) -> None:
+    """#2798: Close at scoping as not relevant, impact low, its own risk apart from the end-of-loop close."""
+    first = _gates(slug)[0]
+    assert (first["key"], first["action"], first["module"], first["impact"]) == (
+        CTEM_SCOPING_GATE,
+        "Close at scoping as not relevant",
+        "platform",
+        "low",
+    )
+    close = next(g for g in _gates(slug) if g["key"] == "ctem.close_without_retest")
+    assert close["impact"] == "high"
+    waits = {level: {e["key"]: e["gated"] for e in gate_catalog(level, _gates(slug))} for level in AUTONOMY_LEVELS}
+    assert {level: waits[level][CTEM_SCOPING_GATE] for level in AUTONOMY_LEVELS} == {
+        "full_gates": True,
+        "medium": False,
+        "low": False,
+        "autonomous": False,
+    }
+    assert waits["medium"]["ctem.close_without_retest"] is True
+
+
+def test_an_existing_fleet_gets_the_scoping_row_and_keeps_its_pins() -> None:
+    """#2798: the stored catalog of an existing fleet gains the row at boot; pins of the other rows stay."""
+    old = [g for g in _gates("ctem-loop") if g["key"] != CTEM_SCOPING_GATE]
+    fleet: Any = SimpleNamespace(approval_gates=old, approval_pins={"ctem.close_without_retest": "run"})
+    _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-loop"])
+    assert [g["key"] for g in fleet.approval_gates] == list(CTEM_GATE_KEYS)
+    assert fleet.approval_pins == {"ctem.close_without_retest": "run"}
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)

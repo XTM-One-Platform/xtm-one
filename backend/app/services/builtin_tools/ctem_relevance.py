@@ -24,6 +24,9 @@ and the ``relevant`` it decided, and logs the correction. An answer already righ
 one it cannot read (another shape, a caller's own schema), is returned unchanged,
 byte for byte.
 
+The bar is the prioritization policy's ``relevance_min_score_threat`` (#2798), read live
+at each finalize, ``CTEM_RELEVANCE_MIN_SCORE`` when the profile cannot be read.
+
 The PIR half of the relevance rule (a PIR score at or above the policy's
 ``pir_min_score_threat``) is not in the answer: a threat the analyst called relevant
 while its own score was under the bar was called relevant by that rule, and keeps it.
@@ -93,11 +96,28 @@ def _correct_threat(threat: dict[str, Any], weights: dict[str, int], bar: int) -
     return changes or None
 
 
-def correct_relevance_answer(content: str) -> str:
+async def live_relevance_bar() -> int:
+    """The policy's ``relevance_min_score_threat`` (#2798), ``CTEM_RELEVANCE_MIN_SCORE`` when unreadable."""
+    from app.core.database import async_session
+    from app.services import organization_context as org_context
+
+    default = _weights()[1]
+    try:
+        async with async_session() as db:
+            _row, profile = await org_context.current_profile(db)
+    except Exception:
+        logger.warning("CTEM relevance bar: the organization profile was not read", exc_info=True)
+        return default
+    value = getattr(getattr(profile, "prioritization_policy", None), "relevance_min_score_threat", None)
+    return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def correct_relevance_answer(content: str, bar: int | None = None) -> str:
     """*content* with every readable threat's ``score`` and ``relevant`` recomputed.
 
-    Returned unchanged (the same string) when nothing needed a correction or the
-    answer is not a JSON object with a ``threats`` list.
+    *bar* is the live relevance bar of the policy (:func:`live_relevance_bar`), the
+    default when ``None``. Returned unchanged (the same string) when nothing needed a
+    correction or the answer is not a JSON object with a ``threats`` list.
     """
     from app.services.structured_output import extract_json_text
 
@@ -107,7 +127,8 @@ def correct_relevance_answer(content: str) -> str:
         return content
     if not isinstance(payload, dict) or not isinstance(payload.get("threats"), list):
         return content
-    weights, bar = _weights()
+    weights, default = _weights()
+    bar = default if bar is None else bar
     corrected = False
     for threat in payload["threats"]:
         if not isinstance(threat, dict):
@@ -127,7 +148,7 @@ def build_ctem_relevance_score_tool() -> tuple[list[ToolDefinition], CallableToo
     """The analyst's finalize tool: one ``response`` string in, the corrected answer out."""
 
     async def _score(response: str = "") -> ToolResult:
-        return ToolResult(tool_call_id="", content=correct_relevance_answer(response))
+        return ToolResult(tool_call_id="", content=correct_relevance_answer(response, await live_relevance_bar()))
 
     executor = CallableToolExecutor()
     executor.register(TOOL_NAME, _score)

@@ -425,6 +425,8 @@ export interface PrioritizationPolicy {
   pir_min_score_vulnerability?: number;
   /** CTEM-08: the same for threat activity (intrusion set, campaign, malware...). Backend default 75. */
   pir_min_score_threat?: number;
+  /** #2798: the relevance score (0 to 100) from which a threat is relevant; below it the case closes at scoping. Backend default 50. */
+  relevance_min_score_threat?: number;
 }
 
 /** A case ticket status, as the backend stores it on `case.tickets` (ctem_case_loop.TICKET_STATUSES). */

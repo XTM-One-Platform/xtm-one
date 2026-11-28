@@ -701,6 +701,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         threat_package: dict[str, Any] | None = None,
         applied_change: dict[str, Any] | None = None,
         scenario: dict[str, Any] | None = None,
+        evidence_request: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -747,6 +748,26 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 before = (await store.events_of(db, [case.id])).get(case.id, [])
                 known = {e.id for e in before}
                 unchanged: list[str] = []
+                if isinstance(gate, dict) and str(gate.get("outcome") or "") in ("waited", "passed_automatically"):
+                    from app.services.ctem_gate_order import (
+                        close_at_scoping_refusal,
+                        evidence_pending_refusal,
+                        open_evidence_requests,
+                    )
+
+                    # #2798: the end-of-loop close is never the scoping close, and a case waiting on an
+                    # evidence request goes to no close gate; nothing is written.
+                    gate_key = str(gate.get("key") or "").strip()
+                    scoping = close_at_scoping_refusal(gate_key, case.state, {str(e.kind) for e in before})
+                    if not scoping:
+                        pending = open_evidence_requests(before)
+                        if isinstance(evidence_request, dict) and str(evidence_request.get("status") or "") == "answered":
+                            # The request this same call answers no longer holds the close.
+                            answered = " ".join(str(evidence_request.get("what") or "").lower().split())
+                            pending = [p for p in pending if " ".join(p.lower().split()) != answered]
+                        scoping = evidence_pending_refusal(gate_key, case.state, pending)
+                    if scoping:
+                        raise rules.CaseRuleError(scoping)
                 if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
                     from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
                     from app.services import ctem_gate_order
@@ -818,6 +839,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     )
                 if applied_change is not None:
                     case_loop.record_applied_change(db, case, applied_change, actor=agent_id)
+                if evidence_request is not None:
+                    case_loop.record_evidence_request(db, case, evidence_request, actor=agent_id)
                 if treatment_plan is not None:
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
                     case_loop.record_treatment_plan(
@@ -875,6 +898,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                     ("threat_package", threat_package),
                                     ("applied_change", applied_change),
                                     ("scenario", scenario),
+                                    ("evidence_request", evidence_request),
                                 )
                                 if value not in (None, "") and name not in unchanged
                             ),
@@ -1759,6 +1783,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "rollback": {"type": "string"},
                         },
                         "required": ["integration", "kind", "pushed", "rollback"],
+                    },
+                    "evidence_request": {
+                        "type": "object",
+                        "description": "A fact scoping could not read: what to confirm, on which assets; answered once read.",
+                        "properties": {
+                            "what": {"type": "string"},
+                            "assets": {"type": "string"},
+                            "status": {"type": "string", "enum": ["open", "answered"]},
+                        },
+                        "required": ["what"],
                     },
                 },
                 "required": ["case_id"],

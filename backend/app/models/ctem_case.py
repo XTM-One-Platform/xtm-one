@@ -239,6 +239,8 @@ class CtemCaseEvent(Base):
     #: | stalled (the case waited on nobody past the stall window: to ``nobody``, reason since when, #1736)
     #: | applied_change (a fix applied through an integration under ctem.production_change: from the
     #:   integration, to the kind, reason what was pushed, evidence ``{ids, rollback}`` as JSON, #2061)
+    #: | evidence_request (a fact scoping could not read: to ``open`` or ``answered``, reason what to
+    #:   confirm, evidence the assets, #2798)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

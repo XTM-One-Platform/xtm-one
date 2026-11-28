@@ -521,7 +521,12 @@ GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply
 #: through a bound integration (indicators pushed to the EDR in prevention mode, a rule
 #: deployed, a configuration changed, #2061) to ``ctem.production_change``, the OpenCRQ
 #: treatment plan writes to ``ctem.remediation.decision``, by the persona alone.
+#: ``ctem.scoping.not_relevant`` (#2798) closes a case at scoping when every relevance factor was read and
+#: the case is proven not affected; impact low, so it waits at Full human gates only.
+#: ``ctem.close_without_retest`` stays the end-of-loop close (a case past validation or remediation).
+CTEM_SCOPING_GATE = "ctem.scoping.not_relevant"
 CTEM_GATE_KEYS: tuple[str, ...] = (
+    CTEM_SCOPING_GATE,
     "ctem.validation.non_readonly",
     "ctem.analyst_review",
     "ctem.remediation.decision",
@@ -545,6 +550,7 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
         return {"key": key, "action": action, "module": module, "approver": "Fleet manager", "impact": impact}
 
     return [
+        gate(CTEM_SCOPING_GATE, "Close at scoping as not relevant", "platform", "low"),
         gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
         gate(
             "ctem.analyst_review",

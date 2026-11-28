@@ -483,6 +483,7 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
         ("ctem.accept_risk", "ctem:accept-risk:"),
         ("ctem.production_change", "ctem:production-change:"),
         ("ctem.close_without_retest", "ctem:close-without-retest:"),
+        ("ctem.scoping.not_relevant", "ctem:scoping-not-relevant:"),
     ],
 )
 async def test_a_waited_gate_needs_its_open_decision_item(
@@ -498,6 +499,9 @@ async def test_a_waited_gate_needs_its_open_decision_item(
         return set(open_keys)
 
     monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    if gate == "ctem.close_without_retest":
+        # #2798: the end-of-loop close is refused on a case still in scoping.
+        env.case.state = "validating"
     commits = env.db.commits
     refused = await env.call(
         "update_ctem_case", case_id=str(env.case.id), state="analyzing", gate={"key": gate, "outcome": "waited"}
@@ -516,6 +520,27 @@ async def test_a_waited_gate_needs_its_open_decision_item(
     assert "updated" in body
     written = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [(g.from_value, g.to_value) for g in written] == [(gate, "waited")]
+
+
+@pytest.mark.parametrize("outcome", ["waited", "passed_automatically"])
+async def test_close_without_retest_is_refused_on_a_case_still_in_scoping(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """#2798: a case in scoping closes through ctem.scoping.not_relevant; nothing is written."""
+    from app.services import ctem_gate_order
+
+    async def _open(_db: object, case_id: str) -> set[str]:
+        return {f"ctem:close-without-retest:{case_id}"}
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case",
+        case_id=str(env.case.id),
+        gate={"key": "ctem.close_without_retest", "outcome": outcome},
+    )
+    assert refused.startswith("Refused:") and "ctem.scoping.not_relevant" in refused
+    assert env.db.commits == commits and env.db.added == []
 
 
 async def test_a_pass_or_an_answer_needs_no_decision_item(

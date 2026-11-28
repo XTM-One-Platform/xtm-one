@@ -3121,6 +3121,8 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
 # sets it back to open. These lists are THE gate keys: the personas name them
 # and the "Gate answered" trigger below takes exactly them.
 CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
+    # ctem.scoping.not_relevant, the close at scoping of a case proven not affected (#2798).
+    "ctem:scoping-not-relevant:",
     # ctem.analyst_review, read by the case page (dev-docs/ctem-loop-visibility.md).
     "ctem:review:",
     # ctem.validation.non_readonly, read by the case page (case-validation.ts).
@@ -3459,7 +3461,8 @@ CTEM_F1_THREAT_SIGNAL = "Threat signal recorded"
 CTEM_F1_THREAT_SIGNAL_VERDICTS: tuple[str, ...] = ("to_validate",)
 #: Threat signals assessed at once (one run per signal, ordered by the signal id).
 CTEM_F1_THREAT_SIGNAL_CONCURRENCY = 5
-#: The relevance score from which a threat is relevant (#1678).
+#: The default relevance score from which a threat is relevant (#1678); the live bar is the
+#: prioritization policy's ``relevance_min_score_threat`` (#2798), this value when it is unset.
 CTEM_RELEVANCE_MIN_SCORE = 50
 #: The six factors of the Threat Relevance Analyst and their fixed weights (#2431), in hundredths
 #: so the weighted total is exact. The persona states them and the finalize step
@@ -3476,7 +3479,8 @@ CTEM_RELEVANCE_WEIGHTS: dict[str, int] = {
 #: orchestrator persona and the prompts below read it word for word. Its PIR half is the floor of
 #: the threat signal run (event field pir_floor_met, services/ctem_trigger_rules.pir_floor_met).
 CTEM_RELEVANCE_RULE = (
-    f"A threat is relevant when its relevance score reaches {CTEM_RELEVANCE_MIN_SCORE} of 100, or when an "
+    "A threat is relevant when its relevance score reaches the prioritization policy's "
+    "relevance_min_score_threat (read live in the organization context, never a remembered value), or when an "
     "organization PIR flags it with a PIR score at or above the prioritization policy's "
     "pir_min_score_threat; a PIR flag below that threshold is one factor of the score, never "
     "relevance by itself."

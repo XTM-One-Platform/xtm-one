@@ -2138,13 +2138,20 @@ risk) declare one gate per loop stage, from
 
 | Key | Stage | Impact |
 |---|---|---|
+| `ctem.scoping.not_relevant` | Close at scoping as not relevant: the scoping verdict is proven not affected, every relevance factor read (#2798). A fact that could not be read is an evidence request on the case, never this gate | low |
 | `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) |
 | `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
 | `ctem.production_change` | A change applied on production through an integration: indicators blocked in the EDR in prevention mode, a rule deployed, a configuration changed (#2061) | high |
 | `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
-| `ctem.close_without_retest` | A case closed with no passing re-test | high |
+| `ctem.close_without_retest` | A case past validation or remediation closed with no passing re-test (end of the loop only: refused on a case still in scoping, #2798) | high |
+
+The scoping close (#2798) waits at Full human gates only and runs alone at
+Medium, Low and Full autonomous; its decision is keyed
+`ctem:scoping-not-relevant:<case>`. Existing fleets gain the row at the next
+boot (the catalog is rewritten from code, pins of the other rows kept); a
+decision already waiting under `ctem:close-without-retest:` keeps working.
 
 Mobilize is not only a ticket (#2061, Sam, 25 Nov 2026): each action of the
 Remediation Coordinator declares its `mode`, `ticket`, `applied_change` or

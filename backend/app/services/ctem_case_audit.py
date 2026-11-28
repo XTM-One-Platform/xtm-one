@@ -81,6 +81,8 @@ KIND_PHASE: dict[str, str] = {
     "exploitation": STAGE_PRIORITIZATION,
     "attack_path": STAGE_PRIORITIZATION,
     "threat_package": STAGE_PRIORITIZATION,
+    # A fact scoping could not read, asked on the case instead of a close (#2798).
+    "evidence_request": STAGE_PRIORITIZATION,
     "validation": STAGE_VALIDATION,
     # The OpenAEV scenario of the validation and its playability (#2468).
     "scenario": STAGE_VALIDATION,
@@ -96,6 +98,7 @@ KIND_PHASE: dict[str, str] = {
 
 #: The phase a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``) belongs to.
 GATE_PHASE: dict[str, str] = {
+    "ctem.scoping.not_relevant": STAGE_PRIORITIZATION,
     "ctem.analyst_review": STAGE_PRIORITIZATION,
     "ctem.validation.non_readonly": STAGE_VALIDATION,
     "ctem.close_without_retest": STAGE_VALIDATION,
