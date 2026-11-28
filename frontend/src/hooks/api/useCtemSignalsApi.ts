@@ -485,6 +485,8 @@ export interface CtemSignalResyncRoute {
   default: number | null;
   /** False for a pass (it reads the current state) and for a route the resync does not read. */
   windowed: boolean;
+  /** True for a route or pass the dialog may untick (#2745); false for an info row. */
+  selectable?: boolean;
   /** Why the resync does not read this route (English, translated by the dialog); null otherwise. */
   note?: string | null;
 }
@@ -492,6 +494,8 @@ export interface CtemSignalResyncRoute {
 /** The resync's outcome on one route (#2578), from `steps.resync.counts.routes`. */
 export interface CtemSignalResyncRouteResult {
   window_days: number | null;
+  /** The window in hours (#2745); null: no age limit. */
+  window_hours?: number | null;
   read?: number;
   recorded?: number;
   errors?: string[];
@@ -525,7 +529,13 @@ export function useStartCtemSignalPurge() {
   return useMutation<
     { job: CtemSignalPurgeJob },
     Error,
-    { confirm: string; resync: boolean; resync_windows?: Record<string, number | null> }
+    {
+      confirm: string;
+      resync: boolean;
+      resync_windows?: Record<string, number | null>;
+      /** Per route or pass (#2745): ticked or not, the window and its unit. */
+      resync_sources?: Record<string, { enabled: boolean; window?: number | null; unit?: "days" | "hours" }>;
+    }
   >({
     mutationFn: (body) => api.post("/ctem-signals/purge", body),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
