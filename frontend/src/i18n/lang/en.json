@@ -22260,9 +22260,6 @@
   "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
   "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}",
   "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
-  "The integration the pass reads.": "The integration the pass reads.",
-  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
-  "{name} (integration owner)": "{name} (integration owner)",
   "Provisioned": "Provisioned",
   "{summary}, owned by Signals": "{summary}, owned by Signals",
   "Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}": "Other XTM One objects in {platform}, not managed here: {count, plural, one {# object} other {# objects}}",
@@ -22277,5 +22274,8 @@
   "Paths": "Paths",
   "Turning it off stops all of them.": "Turning it off stops all of them.",
   "Taking it off this path keeps it on for the others.": "Taking it off this path keeps it on for the others.",
-  "The switch is organization-wide.": "The switch is organization-wide."
+  "The switch is organization-wide.": "The switch is organization-wide.",
+  "The integration the pass reads.": "The integration the pass reads.",
+  "The user the pass reads OpenCRQ as. Default: the integration's owner.": "The user the pass reads OpenCRQ as. Default: the integration's owner.",
+  "{name} (integration owner)": "{name} (integration owner)"
 }
