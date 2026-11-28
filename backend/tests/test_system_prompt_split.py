@@ -19,7 +19,7 @@ from app.llm.base import ChatMessage
 from app.llm.system_prompt_split import SYSTEM_VOLATILE_TAIL_MARKER, split_system_prompt
 from app.models.agent import Agent
 from app.models.assignment import Assignment
-from app.services.builtin_tools.prompting import format_datetime_prompt
+from app.services.builtin_tools.prompting import TIME_QUOTING_RULE, format_datetime_prompt
 
 _CACHE = {"type": "ephemeral"}
 
@@ -47,6 +47,16 @@ class TestSplit:
     def test_the_clock_writer_uses_the_marker(self):
         assert format_datetime_prompt().startswith(f"\n{SYSTEM_VOLATILE_TAIL_MARKER}")
         assert format_datetime_prompt("Europe/Paris").startswith(f"\n{SYSTEM_VOLATILE_TAIL_MARKER}")
+
+    def test_the_clock_block_carries_the_time_quoting_rule_inside_the_tail(self) -> None:
+        # Issue #2764: the rule sits after the marker, so the cached prefix is unchanged.
+        for block in (format_datetime_prompt(), format_datetime_prompt("Europe/Paris")):
+            assert block.rstrip("\n").endswith(f"\n{TIME_QUOTING_RULE}")
+            assert block.index(SYSTEM_VOLATILE_TAIL_MARKER) < block.index(TIME_QUOTING_RULE)
+            stable, volatile = split_system_prompt(f"persona{block}\nPolicy.")
+            assert stable == "persona"
+            assert TIME_QUOTING_RULE in volatile
+        assert "never estimate one" in TIME_QUOTING_RULE
 
 
 class TestApplyPromptCaching:

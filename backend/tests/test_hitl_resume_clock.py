@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from app.services import hitl_resume_clock as clock
-from app.services.builtin_tools.prompting import format_datetime_prompt
+from app.services.builtin_tools.prompting import TIME_QUOTING_RULE, format_datetime_prompt
 from app.services.schedule_overlap import wall_time_refusal
 
 T0 = datetime(2026, 11, 24, 4, 0, tzinfo=UTC)
@@ -85,3 +85,11 @@ def test_a_utc_only_clock_is_restamped() -> None:
     fresh = clock.restamp_prompt_clock(stale)
     assert "at 01:00 UTC" not in fresh
     assert fresh.startswith("x\nCurrent date and time (UTC): ") and fresh.endswith("\ny")
+
+
+def test_the_time_quoting_rule_is_restamped_once() -> None:
+    # Issue #2764: the rule line under the clock is replaced with it, never doubled.
+    stale = f"x{format_datetime_prompt('Europe/Paris')}\ny".replace("2026", "2025")
+    fresh = clock.restamp_prompt_clock(stale)
+    assert fresh.count(TIME_QUOTING_RULE) == 1
+    assert fresh.startswith("x\nCurrent date and time (UTC): ") and fresh.endswith(f"\n{TIME_QUOTING_RULE}\ny")

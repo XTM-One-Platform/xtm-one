@@ -99,7 +99,10 @@ def restamp_prompt_clock(text: str) -> str:
     answered unchanged.
     """
     from app.llm.system_prompt_split import SYSTEM_VOLATILE_TAIL_MARKER
-    from app.services.builtin_tools.prompting import format_datetime_prompt
+    from app.services.builtin_tools.prompting import (
+        TIME_QUOTING_RULE,
+        format_datetime_prompt,
+    )
 
     lines = text.split("\n")
     for index, line in enumerate(lines):
@@ -112,6 +115,9 @@ def restamp_prompt_clock(text: str) -> str:
             if local:
                 timezone = local.group(1)
                 span = 2
+        # The rule line under the clock is written again with it, never twice.
+        if index + span < len(lines) and lines[index + span] == TIME_QUOTING_RULE:
+            span += 1
         # An unreadable zone answers the UTC line alone: the stale local
         # line is replaced by nothing, never kept.
         fresh = format_datetime_prompt(timezone).lstrip("\n").split("\n")
