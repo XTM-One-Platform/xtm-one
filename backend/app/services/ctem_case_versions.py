@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import uuid
 from collections.abc import Iterable, Mapping
@@ -111,6 +112,75 @@ def publisher_key(value: str | None) -> str:
     while len(words) > 1 and words[-1] in PUBLISHER_SUFFIXES:
         words.pop()
     return " ".join(words)
+
+
+#: Architecture words a device inventory appends to a product name (``Mozilla Firefox (x64 en-US)``, #2748).
+_ARCH_WORDS: frozenset[str] = frozenset(
+    {
+        "x64",
+        "x86",
+        "x86_64",
+        "x86-64",
+        "amd64",
+        "arm64",
+        "aarch64",
+        "ia64",
+        "win32",
+        "win64",
+        "32-bit",
+        "64-bit",
+        "32bit",
+        "64bit",
+    }
+)
+#: A dotted version (``7.2.6``), never a bare integer: ``Windows 11`` or ``Office 2019`` name a product (#2748).
+_DOTTED_VERSION = re.compile(r"^v?\d+(?:\.\d+){1,3}$")
+#: A language tag with its region or script (``en-us``, ``zh-hant``), stripped inside a qualifier group only:
+#: a bare trailing ``wi-fi`` is a product word.
+_REGION_LOCALE = re.compile(r"^[a-z]{2,3}-(?:[a-z]{2}|[a-z]{4}|\d{3})$")
+#: A bare language tag (``fr``), stripped only inside a qualifier group that also names an architecture,
+#: a region tag or a version.
+_LOCALE = re.compile(r"^[a-z]{2,3}$")
+_TRAILING_GROUP = re.compile(r"^(.*\S)\s*\(([^()]*)\)$")
+
+
+def _trailing_qualifier(word: str) -> bool:
+    """A last word dropped outside a group: an architecture or a dotted version."""
+    return word in _ARCH_WORDS or bool(_DOTTED_VERSION.match(word))
+
+
+def _qualifier_group(content: str) -> bool:
+    words = [w for w in re.split(r"[\s,;/]+", content) if w]
+    strong = [w for w in words if _trailing_qualifier(w) or _REGION_LOCALE.match(w)]
+    if not strong:
+        return False
+    return all(w in strong or _LOCALE.match(w) for w in words)
+
+
+def product_match_key(product: str | None) -> str:
+    """A product folded without its trailing architecture, locale and version qualifiers (pure, #2748).
+
+    Device inventories put them in the product name, one product per variant:
+    ``Mozilla Thunderbird (x64 fr)``, ``Mozilla Firefox (x64 en-US)``, ``Notepad++ (64-bit x64)``,
+    ``Oracle VirtualBox 7.2.6 (x64)`` all fold to the product (``mozilla thunderbird``,
+    ``oracle virtualbox``). Only qualifiers at the END are dropped: a parenthesised group made of
+    architecture words, language tags and dotted versions (with at least one architecture,
+    region tag or version), a bare architecture word or a dotted version. A bare integer stays (``Windows 11``, ``Office 2019``, ``Python 3``), an edition
+    word stays (``Mozilla Thunderbird ESR`` is its own product), a word inside the name is never
+    touched (``Windows Defender``), and the fold never empties a name.
+    """
+    key = _key(product)
+    while key:
+        group = _TRAILING_GROUP.match(key)
+        if group and _qualifier_group(group.group(2)):
+            key = group.group(1).rstrip(" -")
+            continue
+        head, _, last = key.rpartition(" ")
+        if head and (_trailing_qualifier(last) or last == "-"):
+            key = head.rstrip(" -") or head
+            continue
+        break
+    return key
 
 
 def product_keys(product_label: str | None) -> tuple[str, ...]:
@@ -241,17 +311,17 @@ def matches_case(product_label: str | None, vendor: str | None, product: str | N
 
     The publisher is compared without its company form (``Google LLC`` + ``Chrome``
     is ``Google Chrome``), and a product string that starts with its publisher
-    (``Google LLC Google Chrome``) is read without it (#1736).
+    (``Google LLC Google Chrome``) is read without it (#1736). The stored product is also read
+    without its trailing architecture, locale and version qualifiers (:func:`product_match_key`):
+    ``Mozilla Thunderbird (x64 fr)`` and ``Oracle VirtualBox 7.2.6`` are the products
+    ``Mozilla Thunderbird`` and ``Oracle VirtualBox`` (#2748). An edition word is not a qualifier:
+    ``Mozilla Thunderbird ESR`` stays its own product. The label is never folded: a label that
+    names a version (``Python 3.12``) never widens to every row of the product.
     """
     label = _key(product_label)
     if not label:
         return False
-    vendor_key, product_key = publisher_key(vendor), _key(product)
-    if product_key == label:
-        return True
-    if vendor_key and f"{vendor_key} {product_key}" == label:
-        return True
-    return _publisher_prefixed(label, vendor_key, product_key)
+    return keys_match(label, publisher_key(vendor), _key(product))
 
 
 def _publisher_prefixed(label: str, vendor_key: str, product_key: str) -> bool:
@@ -272,10 +342,17 @@ def _like_escape(text: str) -> str:
 def product_filter(column: Any, keys: tuple[str, ...]) -> ColumnElement[bool]:
     """The product rows a case's *keys* stand for: an exact key, or the label behind a publisher.
 
-    One bound pattern beside the key list, so the read stays bounded; :func:`matches_case`
-    then keeps only the rows whose prefix is a publisher (#1736).
+    Bound patterns beside the key list, so the read stays bounded; :func:`matches_case`
+    then keeps only the rows whose prefix is a publisher (#1736) and whose trailing words are
+    qualifiers (``mozilla thunderbird (x64 fr)``, ``oracle virtualbox 7.2.6``, #2748).
     """
-    return or_(column.in_(keys), column.like("% " + _like_escape(keys[0]), escape="\\"))
+    label = _like_escape(keys[0])
+    return or_(
+        column.in_(keys),
+        column.like("% " + label, escape="\\"),
+        column.like(label + " %", escape="\\"),
+        column.like("% " + label + " %", escape="\\"),
+    )
 
 
 def running_versions(
@@ -548,25 +625,38 @@ def _row_index(rows: list[Any]) -> tuple[list[tuple[str, str]], dict[str, list[i
     for i, (vendor, product, _version, _asset_ids) in enumerate(rows):
         vendor_key, product_key = publisher_key(vendor), _key(product)
         keys.append((vendor_key, product_key))
-        candidates = {product_key}
-        if vendor_key:
-            candidates.add(f"{vendor_key} {product_key}")
-        words = product_key.split(" ")
-        for start in range(1, len(words)):
-            candidates.add(" ".join(words[start:]))
+        candidates: set[str] = set()
+        # The row's own key and its form without qualifiers (#2748) index it alike.
+        for form in {product_key, product_match_key(product_key)}:
+            candidates.add(form)
+            if vendor_key:
+                candidates.add(f"{vendor_key} {form}")
+            words = form.split(" ")
+            for start in range(1, len(words)):
+                candidates.add(" ".join(words[start:]))
         for candidate in candidates:
             if candidate:
                 index.setdefault(candidate, []).append(i)
     return keys, index
 
 
-def _keys_match(label: str, vendor_key: str, product_key: str) -> bool:
-    """:func:`matches_case` on keys already folded (*label* folded with :func:`_key`)."""
-    if product_key == label:
-        return True
-    if vendor_key and f"{vendor_key} {product_key}" == label:
-        return True
-    return _publisher_prefixed(label, vendor_key, product_key)
+def keys_match(label: str, vendor_key: str, product_key: str) -> bool:
+    """:func:`matches_case` on keys already folded (*label* folded with :func:`_key`).
+
+    The product is tried as stored, then without its trailing qualifiers (:func:`product_match_key`,
+    #2748); the label is compared as given.
+    """
+    for prod in dict.fromkeys((product_key, product_match_key(product_key))):
+        if prod == label or (vendor_key and f"{vendor_key} {prod}" == label):
+            return True
+        if _publisher_prefixed(label, vendor_key, prod):
+            return True
+    return False
+
+
+def _label_candidates(index: Mapping[str, list[int]], folded: str) -> list[int]:
+    """The rows :func:`_row_index` indexed under a folded label."""
+    return sorted(set(index.get(folded, ()))) if folded else []
 
 
 def inventory_version_counts(
@@ -588,9 +678,9 @@ def inventory_version_counts(
         on_version: dict[str, set[str]] = {}
         counted: set[str] = set()
         folded = _key(label)
-        for i in sorted(set(index.get(folded, ()))) if folded else ():
+        for i in _label_candidates(index, folded):
             vendor_key, product_key = keys[i]
-            if not _keys_match(folded, vendor_key, product_key):
+            if not keys_match(folded, vendor_key, product_key):
                 continue
             _vendor, _product, version, asset_ids = rows[i]
             ids = {str(a) for a in asset_ids or ()}
@@ -618,25 +708,29 @@ def matching_product_keys(stored: Iterable[str], labels: Iterable[str]) -> list[
     label's whole key (a publisher-prefixed product, ``google llc google chrome``): the rule the
     unanchored ``LIKE '% key'`` of the read applied in the database, which no index serves.
     Each stored key is indexed by its word suffixes once, so the cost is linear in keys plus labels.
+    A stored key with trailing qualifiers (``mozilla thunderbird (x64 fr)``) is also indexed by its
+    :func:`product_match_key` form, so it is covered by the label of its product (#2748).
     """
     stored = list(dict.fromkeys(k for k in stored if k))
-    present = set(stored)
+    by_form: dict[str, list[str]] = {}
     by_suffix: dict[str, list[str]] = {}
     for key in stored:
-        rest = key
-        while " " in rest:
-            rest = rest.split(" ", 1)[1]
-            by_suffix.setdefault(rest, []).append(key)
+        for form in dict.fromkeys((key, product_match_key(key))):
+            by_form.setdefault(form, []).append(key)
+            rest = form
+            while " " in rest:
+                rest = rest.split(" ", 1)[1]
+                by_suffix.setdefault(rest, []).append(key)
     out: dict[str, None] = {}
     for label in dict.fromkeys(labels):
         keys = product_keys(label)
         if not keys:
             continue
         for key in keys:
-            if key in present:
-                out[key] = None
-        for key in by_suffix.get(keys[0], ()):
-            out[key] = None
+            for found in by_form.get(key, ()):
+                out[found] = None
+        for found in by_suffix.get(keys[0], ()):
+            out[found] = None
     return sorted(out)
 
 
@@ -754,9 +848,9 @@ def inventory_platform_sets(rows: Iterable[Any], labels: Iterable[str]) -> dict[
         folded = _key(label)
         found: set[str] = set()
         unknown = False
-        for i in sorted(set(index.get(folded, ()))) if folded else ():
+        for i in _label_candidates(index, folded):
             vendor_key, product_key = keys[i]
-            if not _keys_match(folded, vendor_key, product_key):
+            if not keys_match(folded, vendor_key, product_key):
                 continue
             for platform in rows[i][3] or (None,):
                 named = _platform(platform)
