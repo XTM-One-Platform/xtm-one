@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 import type { CtemCaseAffectedAssets, CtemCaseDetail } from "@/hooks/api/useCtemCasesApi";
-import { CaseVersionsAssetsRow, PAIRED_MAX_CHARS, pairVersionsAndAssets } from "./CaseVersionsAssetsRow";
+import { CaseVersionsAssetsRow, PAIRED_MAX_CHARS, pairVersionsAndAssets, versionsOrAssetsRender } from "./CaseVersionsAssetsRow";
 
 type Kase = Pick<CtemCaseDetail, "remediation_kind" | "fixed_version" | "running_versions" | "affected_assets">;
 
@@ -63,6 +63,16 @@ describe("pairVersionsAndAssets (#2750)", () => {
     expect(pairVersionsAndAssets(withVersion("18.20.4-lts.windows-x64-msi"))).toBe(false);
     expect(pairVersionsAndAssets(withVersion("26.12.1", "p".repeat(PAIRED_MAX_CHARS.platform + 1)))).toBe(false);
     expect(pairVersionsAndAssets(withVersion("26.12.1"))).toBe(true);
+  });
+});
+
+describe("versionsOrAssetsRender (#2750)", () => {
+  it("renders the row when at least one card draws, never for neither", () => {
+    expect(versionsOrAssetsRender(UPGRADE)).toBe(true);
+    expect(versionsOrAssetsRender({ ...UPGRADE, affected_assets: undefined })).toBe(true);
+    expect(versionsOrAssetsRender({ ...UPGRADE, remediation_kind: "patch" })).toBe(true);
+    expect(versionsOrAssetsRender({ remediation_kind: "patch", affected_assets: undefined })).toBe(false);
+    expect(versionsOrAssetsRender({ remediation_kind: "patch", affected_assets: { ...ASSETS, asset_count: 0, assets: [] } })).toBe(false);
   });
 });
 

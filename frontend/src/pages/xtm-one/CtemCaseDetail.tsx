@@ -77,7 +77,7 @@ import { CaseWaitingGates } from "./ctem/CaseWaitingGates";
 import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
-import { CaseVersionsAssetsRow, pairVersionsAndAssets } from "./ctem/CaseVersionsAssetsRow";
+import { CaseVersionsAssetsRow, pairVersionsAndAssets, versionsOrAssetsRender } from "./ctem/CaseVersionsAssetsRow";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel, signalPivot } from "./ctem/case-issue-label";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
@@ -895,16 +895,19 @@ export default function CtemCaseDetail() {
         />
       </div>
 
-      {/* Running versions next to Affected assets on a wide page, stacked below it or when one card stands alone (#2750). */}
-      <CaseVersionsAssetsRow pairable={pairable}>
-        {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
-        {kase.remediation_kind === "upgrade" && (
-          <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
-        )}
+      {/* Running versions next to Affected assets on a wide page, stacked below it or when one card stands alone (#2750);
+          no row when neither card renders, so the page keeps no empty spacing slot. */}
+      {versionsOrAssetsRender(kase) && (
+        <CaseVersionsAssetsRow pairable={pairable}>
+          {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
+          {kase.remediation_kind === "upgrade" && (
+            <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
+          )}
 
-        {/* The assets the visible issues name, each with the version it runs from the inventory (#1176 slice 3b). */}
-        <CaseAffectedAssets data={kase.affected_assets} paired={pairable} />
-      </CaseVersionsAssetsRow>
+          {/* The assets the visible issues name, each with the version it runs from the inventory (#1176 slice 3b). */}
+          <CaseAffectedAssets data={kase.affected_assets} paired={pairable} />
+        </CaseVersionsAssetsRow>
+      )}
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
