@@ -26,7 +26,7 @@ import {
   evidenceHealthSavedIntegration,
   passIntegrationIds,
 } from "@/lib/organization-profile";
-import { EvidenceHealthRunAsLine } from "./EvidenceHealthRunAsLine";
+import { EvidenceHealthRunAsRow } from "./EvidenceHealthRunAsRow";
 import { LabelledSwitch } from "./LabelledSwitch";
 import { PlatformSourceControls, PlatformSourceObjects } from "./PlatformSourceControls";
 import { PLATFORM_NAME, isProvisioned, platformSourceFixRoute, sourceReasonLine } from "./platform-sources";
@@ -241,17 +241,17 @@ export function SourceConfig({
                   <dd data-testid="ctem-path-source-schedule">{t_i18n("Every {count, plural, one {# hour} other {# hours}}", { count: cadence })}</dd>
                 </>
               )}
+              {/* #2739: who the evidence health pass reads OpenCRQ as, a row of this grid (UX round 4 on #2743, B1). */}
+              {passField === "evidence_health" && (
+                <EvidenceHealthRunAsRow
+                  pass={evidenceHealth}
+                  integration={integrations.find((i) => i.id === evidenceRuns)}
+                  isAdmin={isAdmin}
+                  saving={saving}
+                  onSave={onSave}
+                />
+              )}
             </dl>
-            {/* #2739: who the evidence health pass reads OpenCRQ as, and the administrator's Change. */}
-            {passField === "evidence_health" && (
-              <EvidenceHealthRunAsLine
-                pass={evidenceHealth}
-                integration={integrations.find((i) => i.id === evidenceRuns)}
-                isAdmin={isAdmin}
-                saving={saving}
-                onSave={onSave}
-              />
-            )}
             {(!switchable || noScope) && (
               <span className="flex items-center gap-1.5 text-default-secondary" data-testid="ctem-path-source-missing">
                 <Icon name="info" size={16} aria-hidden />

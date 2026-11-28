@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * "Runs as: <name>  Change" of the OpenCRQ evidence health pass in a path's sources (#2739), on the line pattern of
- * the sources XTM One provisions (`PlatformSourceControls`): who the pass reads OpenCRQ as, the integration's owner
+ * The "Runs as" row of the OpenCRQ evidence health pass in a path's sources (#2739), the same `RunAsRow` as the
+ * sources XTM One provisions (`PlatformSourceControls`), placed in the pass's grid under Runs on and Schedule (UX
+ * round 4 on #2743, B1): who the pass reads OpenCRQ as, the integration's owner
  * until an administrator picks a user. Change opens the same "Act in OpenCRQ as" field, administrators only, and
  * saves `evidence_health.run_as_user_id` through the path panel's profile save.
  */
 import { useState } from "react";
 import { ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
-import { RunAsLine } from "@/components/module-run-as/RunAsLine";
+import { RunAsRow } from "@/components/module-run-as/RunAsRow";
 import { useRunAsUserName } from "@/components/module-run-as/useRunAsUserName";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import { useFormatter } from "@/i18n";
 import { type EvidenceHealthPass, evidenceHealthRunAs, evidenceHealthSavedRunAs } from "@/lib/organization-profile";
 import type { Integration } from "@/types";
 
-export function EvidenceHealthRunAsLine({
+export function EvidenceHealthRunAsRow({
   pass,
   integration,
   isAdmin,
@@ -47,8 +48,8 @@ export function EvidenceHealthRunAsLine({
 
   return (
     <>
-      {/* The line of the provisioned sources (UX round 1 on #2742, B1): one component, its Change named. */}
-      <RunAsLine
+      {/* The row of the provisioned sources (UX round 4 on #2743, B1): one component, its Change named. */}
+      <RunAsRow
         name={name}
         changeLabel={t_i18n("Change the run-as user of {source}", { source: t_i18n("Evidence health") })}
         onChange={isAdmin && integration ? () => setPicked(runAs.userId ?? "") : undefined}

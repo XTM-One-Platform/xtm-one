@@ -21989,7 +21989,6 @@
   "The source could not be turned on.": "The source could not be turned on.",
   "The source could not be turned off": "The source could not be turned off",
   "The integration is not connected.": "The integration is not connected.",
-  "Runs as: {user}": "Runs as: {user}",
   "Turn on {source}": "Turn on {source}",
   "XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.": "XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.",
   "Pick a user with a connected integration to this platform and the rights to create its triggers.": "Pick a user with a connected integration to this platform and the rights to create its triggers.",

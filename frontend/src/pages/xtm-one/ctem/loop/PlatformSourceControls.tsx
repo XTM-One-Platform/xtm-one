@@ -11,6 +11,7 @@
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { Chip, Icon } from "@filigran/design-system";
 import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
+import { RunAsRow } from "@/components/module-run-as/RunAsRow";
 import { useRunAsUserName } from "@/components/module-run-as/useRunAsUserName";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -258,25 +259,13 @@ function PlatformSourceLine({
       />
       {source.enabled && (
         <dl className="col-span-2 grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
-          <dt className="text-default-secondary">{t_i18n("Runs as")}</dt>
-          <dd className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 truncate" data-testid="ctem-platform-source-run-as">
-              {runAs}
-            </span>
-            {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
-            {isAdmin && source.integration_connected && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0"
-                onClick={() => onEnable(source)}
-                aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
-                data-testid="ctem-platform-source-run-as-change"
-              >
-                {t_i18n("Change")}
-              </Button>
-            )}
-          </dd>
+          {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
+          <RunAsRow
+            name={runAs}
+            changeLabel={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
+            onChange={isAdmin && source.integration_connected ? () => onEnable(source) : undefined}
+            testId="ctem-platform-source-run-as"
+          />
           {platformObjectLinks(source).length > 0 && (
             <>
               <dt className="text-default-secondary">{t_i18n("Open in {platform}", { platform: PLATFORM_NAME[source.provider] ?? source.provider })}</dt>

@@ -21989,7 +21989,6 @@
   "The source could not be turned on.": "No se pudo activar la fuente.",
   "The source could not be turned off": "No se pudo desactivar la fuente",
   "The integration is not connected.": "La integración no está conectada.",
-  "Runs as: {user}": "Se ejecuta como: {user}",
   "Turn on {source}": "Activar {source}",
   "XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.": "XTM One crea en {integration} los objetos que entregan esta fuente, como el usuario que elija. Permanecen hasta que desactive la fuente.",
   "Pick a user with a connected integration to this platform and the rights to create its triggers.": "Elija un usuario con una integración conectada a esta plataforma y permiso para crear sus disparadores.",
