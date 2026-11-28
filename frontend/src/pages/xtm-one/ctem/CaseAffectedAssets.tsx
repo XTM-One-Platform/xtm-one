@@ -132,6 +132,8 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             ),
             csv: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map(versionSourceName).join("; "),
             hideable: true,
+            // The last column takes the free width: the others hug their content (#2750).
+            headerClassName: "w-full",
           } satisfies DataTableColumn<CtemCaseAffectedAsset>,
         ]
       : []),
@@ -160,19 +162,21 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
   ];
 
   return (
-    <Card data-testid="ctem-case-affected-assets">
+    // A flex column, so next to Running versions both cards share the row's height and the pager sits at the bottom (#2750).
+    <Card data-testid="ctem-case-affected-assets" className="flex flex-col">
       <CardHeader>
         <CardTitle>
           <CaseCardTitleText icon={CASE_SECTION_ICON.affected_assets}>{t_i18n("Affected assets")}</CaseCardTitleText>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 content-base">
+      <CardContent className="flex flex-1 flex-col gap-3 content-base">
         {!fromInventory && (
           <p className="text-default-secondary" data-testid="ctem-case-affected-assets-no-version">
             {t_i18n("Version source: none yet")}
           </p>
         )}
         <DataTable
+          fill
           framed={false}
           rows={data.assets}
           columns={columns}

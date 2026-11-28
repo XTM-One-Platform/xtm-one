@@ -179,6 +179,8 @@ export function CaseRunningVersions({
       ),
       csv: (r) => r.sources.map(versionSourceName).join("; "),
       hideable: true,
+      // The last column takes the free width: the others hug their content (#2750).
+      headerClassName: "w-full",
     },
   ];
 
@@ -209,13 +211,14 @@ export function CaseRunningVersions({
   const fixNotKnown = versions?.assets_fix_not_known_for_platform ?? 0;
 
   return (
-    <Card data-testid="ctem-case-running-versions">
+    // A flex column, so next to Affected assets both cards share the row's height and the pager sits at the bottom (#2750).
+    <Card data-testid="ctem-case-running-versions" className="flex flex-col">
       <CardHeader>
         <CardTitle>
           <CaseCardTitleText icon={CASE_SECTION_ICON.running_versions}>{t_i18n("Running versions")}</CaseCardTitleText>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 content-base">
+      <CardContent className="flex flex-1 flex-col gap-3 content-base">
         {versions ? (
           <p data-testid="ctem-case-running-versions-summary">
             {t_i18n("The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.", {
@@ -305,6 +308,7 @@ export function CaseRunningVersions({
 
         {rows.length > 0 && (
           <DataTable
+            fill
             framed={false}
             rows={rows}
             columns={columns}
