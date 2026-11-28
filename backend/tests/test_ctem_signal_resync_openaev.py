@@ -118,7 +118,7 @@ async def test_a_window_reads_the_findings_updated_since(monkeypatch: pytest.Mon
     async def _note(*args: Any, **kw: Any) -> bool:
         return True
 
-    windows = resync.validate_windows({"openaev_findings": 7})
+    windows = resync.spans_from_days(resync.validate_windows({"openaev_findings": 7}))
     await resync.resync_openaev_findings(
         lambda: _Session(), windows=windows, now=NOW, note=_note, connect=_connect, api=_api
     )
@@ -180,7 +180,7 @@ async def test_a_failed_findings_route_leaves_the_other_routes_going(monkeypatch
     async def _boom(sessions: Any, *, windows: Any, **kw: Any) -> dict[str, Any]:
         raise RuntimeError("OpenAEV down")
 
-    async def _passes(sessions: Any) -> dict[str, Any]:
+    async def _passes(sessions: Any, **kw: Any) -> dict[str, Any]:
         return {"attack_surface": {"recorded": 1}}
 
     async def _by_path(sessions: Any) -> dict[str, Any]:

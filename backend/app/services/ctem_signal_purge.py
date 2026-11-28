@@ -401,12 +401,21 @@ async def _release_job() -> None:
 
 
 def new_status(
-    job_id: str, actor: Any, *, resync: bool, windows: dict[str, int | None] | None = None
+    job_id: str,
+    actor: Any,
+    *,
+    resync: bool,
+    windows: dict[str, int | None] | None = None,
+    spans: dict[str, int | None] | None = None,
+    skip: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": job_id,
         # The resync window per route the administrator chose (#2578), defaults filled in.
         "windows": windows if resync else None,
+        # The same in hours, and the routes and passes left unticked (#2745); None: from windows.
+        "spans": spans if resync else None,
+        "skip": (skip or []) if resync else [],
         "state": "running",
         "resync": resync,
         "started_by": getattr(actor, "email", None) or str(getattr(actor, "id", "")),
@@ -492,6 +501,9 @@ async def run_job(
                     progress=route_done,
                     windows=status.get("windows"),
                     on_read=tracker.read_one,
+                    # The per-source plan (#2745); None: every route on its days window, as before.
+                    spans=status.get("spans"),
+                    skip=status.get("skip") or [],
                 )
             finally:
                 RESYNC_BYPASS.reset(token)
@@ -614,14 +626,22 @@ async def _announce(status: dict[str, Any]) -> None:
         logger.info("CTEM signal purge: case views not dropped", exc_info=True)
 
 
-async def start(actor: Any, *, resync: bool, windows: dict[str, int | None] | None = None) -> dict[str, Any]:
+async def start(
+    actor: Any,
+    *,
+    resync: bool,
+    windows: dict[str, int | None] | None = None,
+    spans: dict[str, int | None] | None = None,
+    skip: list[str] | None = None,
+) -> dict[str, Any]:
     """Start a job in the background as *actor* (an administrator); its first status. :class:`PurgeBusyError` when one runs.
 
-    *windows* are the resync windows already validated (``ctem_signal_resync.validate_windows``).
+    *windows* are the resync windows already validated (``ctem_signal_resync.validate_windows``);
+    *spans* and *skip* the per-source plan (``ctem_signal_resync.plan``, #2745), when one was sent.
     """
     if not await _take_job():
         raise PurgeBusyError(BUSY_DETAIL)
-    status = new_status(str(uuid.uuid4()), actor, resync=resync, windows=windows)
+    status = new_status(str(uuid.uuid4()), actor, resync=resync, windows=windows, spans=spans, skip=skip)
     await _write_status(status)
     task = asyncio.create_task(run_job(status, actor.id), name=f"ctem-signal-purge:{status['id']}")
     _JOBS.add(task)

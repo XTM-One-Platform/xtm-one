@@ -31,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import (
@@ -49,6 +49,7 @@ from app.models.organization_asset_record import (
 )
 from app.services import organization_asset_store as store
 from app.services import organization_software_store as software_store
+from app.services.ctem_case_versions import keys_match, publisher_key
 from app.services.ctem_fixed_version import compare_versions
 
 #: Rows one page answers by default and at most.
@@ -61,6 +62,11 @@ MAX_BUCKETS = 100
 MAX_RANGE_VERSIONS = 5000
 #: How far a dependency walk goes (versions reached).
 MAX_WALK = software_store.MAX_WALK
+#: How many software one product name is read against at most before the match is decided (#2748).
+MAX_PRODUCT_CANDIDATES = 1000
+#: How many software a miss names as near matches (``similar_products``) and a hit names (``products_matched``).
+MAX_SIMILAR = 10
+MAX_PRODUCTS_NAMED = 20
 
 #: Fields an asset aggregation groups by: the asset's merged fields, plus ``source``.
 ASSET_GROUP_FIELDS: tuple[str, ...] = (
@@ -389,6 +395,72 @@ async def _resolve_software(db: AsyncSession, organization_id: uuid.UUID, ref: s
     return rows[0][0] if len(rows) == 1 else None
 
 
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def _software_named(
+    db: AsyncSession, organization_id: uuid.UUID, product: str, vendor: str
+) -> list[tuple[uuid.UUID, str]]:
+    """The software a product name stands for, ``(id, name)`` (#2748).
+
+    A software id (the id :func:`search_software` answers) names that software. A name matches
+    a software whose product key is the name, or by the rule a CTEM case reads
+    (``ctem_case_versions.keys_match``): behind its publisher (``thunderbird`` is vendor
+    ``Mozilla`` product ``Mozilla Thunderbird``) and without the trailing architecture, locale
+    and version qualifiers device inventories write (``Mozilla Thunderbird (x64 fr)``,
+    ``Oracle VirtualBox 7.2.6``). An edition word is not a qualifier: ``Mozilla Thunderbird ESR``
+    is not ``Mozilla Thunderbird``. One bounded read, then the match on the candidates.
+    """
+    soft = OrganizationSoftware
+    where: list[Any] = [soft.organization_id == organization_id]
+    if vendor.strip():
+        where.append(soft.vendor_key == _key(vendor))
+    text = product.strip()
+    try:
+        software_id = uuid.UUID(text)
+    except ValueError:
+        software_id = None
+    if software_id is not None:
+        by_id = (await db.execute(select(soft.id, soft.name).where(*where, soft.id == software_id))).all()
+        return [(row[0], str(row[1] or "")) for row in by_id]
+    key = _key(text)
+    needle = _like_escape(key)
+    rows = (
+        await db.execute(
+            select(soft.id, soft.name, soft.vendor, soft.product_key)
+            .where(
+                *where,
+                or_(
+                    soft.product_key == key,
+                    soft.product_key.like(needle + " %", escape="\\"),
+                    soft.product_key.like("% " + needle, escape="\\"),
+                    soft.product_key.like("% " + needle + " %", escape="\\"),
+                ),
+            )
+            .order_by(soft.name_key, soft.id)
+            .limit(MAX_PRODUCT_CANDIDATES)
+        )
+    ).all()
+    return [
+        (sid, str(name or ""))
+        for sid, name, row_vendor, product_key in rows
+        if product_key == key or keys_match(key, publisher_key(row_vendor), str(product_key or ""))
+    ]
+
+
+async def _similar_products(
+    db: AsyncSession, organization_id: uuid.UUID, product: str, vendor: str
+) -> list[dict[str, str]]:
+    """The software a name merely contains (:func:`search_software`), named when nothing matched (#2748)."""
+    if not product.strip():
+        return []
+    found = await software_store.list_software(
+        db, organization_id, q=product.strip(), vendor=vendor.strip(), limit=MAX_SIMILAR
+    )
+    return [{"id": str(item["id"]), "name": str(item["name"])} for item in found.items]
+
+
 def version_in_range(
     version: str,
     *,
@@ -437,8 +509,13 @@ async def find_assets_running(
     Windows hosts running X below Y" is one call. Each row carries the asset's criticality,
     internet_facing and os_family and the primary assets it supports (directly or through a group).
 
-    The software is named by *product* (and *vendor*) or by a product-level *cpe*. *version*
-    is an exact version; *min_version* / *max_version* a range (``1.2 <= v < 1.4`` by default).
+    The software is named by *product* (and *vendor*) or by a product-level *cpe*. *product*
+    may be a software id; a name also matches the product behind its publisher and without
+    the trailing architecture, locale and version qualifiers a device inventory writes
+    (``Mozilla Thunderbird (x64 fr)``, ``Oracle VirtualBox 7.2.6``), the software matched
+    named in ``products_matched``. A name that matches nothing answers the software it merely
+    contains in ``similar_products``, so a naming miss never reads as "nobody runs it" (#2748).
+    *version* is an exact version; *min_version* / *max_version* a range (``1.2 <= v < 1.4`` by default).
     Version comparison is semantic (``1.10`` > ``1.9``); a version that is not comparable
     (``unknown``, a build tag) is listed in ``uncomparable`` and never counted inside a range.
     With *through_dependencies*, an asset whose installed software needs a matching version
@@ -447,13 +524,26 @@ async def find_assets_running(
     if not (product.strip() or cpe.strip()):
         raise QueryError("name the software: product (and vendor), or a cpe")
     ver, soft = OrganizationSoftwareVersion, OrganizationSoftware
+    size, start = _limit(limit), _offset(offset)
     where = [ver.organization_id == organization_id, soft.organization_id == organization_id]
+    named: list[tuple[uuid.UUID, str]] = []
     if cpe.strip():
         where.append(soft.cpe == software_store.product_cpe(cpe.strip()))
     else:
-        where.append(soft.product_key == _key(product))
-        if vendor.strip():
-            where.append(soft.vendor_key == _key(vendor))
+        named = await _software_named(db, organization_id, product, vendor)
+        if not named:
+            return page(
+                [],
+                total=0,
+                offset=start,
+                limit=size,
+                versions_matched=0,
+                uncomparable=[],
+                truncated=False,
+                products_matched=[],
+                similar_products=await _similar_products(db, organization_id, product, vendor),
+            )
+        where.append(soft.id.in_([sid for sid, _name in named]))
     candidates = (
         await db.execute(
             select(ver.id, ver.version, soft.name)
@@ -487,12 +577,13 @@ async def find_assets_running(
             uncomparable.append(value)
         elif inside:
             matched.append(version_id)
-    size, start = _limit(limit), _offset(offset)
-    extra = {
+    extra: dict[str, Any] = {
         "versions_matched": len(matched),
         "uncomparable": sorted(set(uncomparable))[:50],
         "truncated": truncated,
     }
+    if named:
+        extra["products_matched"] = sorted({name for _sid, name in named})[:MAX_PRODUCTS_NAMED]
     if not matched:
         return page([], total=0, offset=start, limit=size, **extra)
     # Which matched version each reached version leads back to: the reverse dependency walk.
