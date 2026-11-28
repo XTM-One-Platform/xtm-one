@@ -40,6 +40,11 @@ function longest(texts: Iterable<string | null | undefined>): number {
   return max;
 }
 
+/** Whether at least one of the two cards renders: Running versions on an upgrade case, Affected assets when an asset is named. */
+export function versionsOrAssetsRender(kase: Pick<CtemCaseDetail, "remediation_kind" | "affected_assets">): boolean {
+  return kase.remediation_kind === "upgrade" || (kase.affected_assets?.asset_count ?? 0) > 0;
+}
+
 /** Whether both cards render and every column of both tables fits at half width, read from the case's whole data. */
 export function pairVersionsAndAssets(kase: PairableCase): boolean {
   if (kase.remediation_kind !== "upgrade") return false;
